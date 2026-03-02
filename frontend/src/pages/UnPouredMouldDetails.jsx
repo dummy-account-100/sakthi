@@ -13,11 +13,11 @@ const NotificationModal = ({ data, onClose }) => {
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className={`border-2 w-full max-w-md p-6 rounded-2xl shadow-2xl bg-white ${isError ? 'border-red-200' : 'border-green-200'}`}>
         <div className="flex items-center gap-4">
-           {isLoading ? <Loader className="animate-spin text-blue-600" /> : isError ? <AlertTriangle className="text-red-600" /> : <CheckCircle className="text-green-600" />}
-           <div>
-             <h3 className="font-bold text-lg">{isLoading ? 'Processing...' : isError ? 'Error' : 'Success'}</h3>
-             <p className="text-sm text-gray-600">{data.message}</p>
-           </div>
+          {isLoading ? <Loader className="animate-spin text-blue-600" /> : isError ? <AlertTriangle className="text-red-600" /> : <CheckCircle className="text-green-600" />}
+          <div>
+            <h3 className="font-bold text-lg">{isLoading ? 'Processing...' : isError ? 'Error' : 'Success'}</h3>
+            <p className="text-sm text-gray-600">{data.message}</p>
+          </div>
         </div>
         {!isLoading && <button onClick={onClose} className="mt-4 px-4 py-2 bg-gray-900 text-white rounded text-sm font-bold float-right">Close</button>}
       </div>
@@ -79,43 +79,43 @@ const UnPouredMouldDetails = () => {
       // 1. Fetch Dynamic Master Columns
       const configRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/config/unpoured-mould-details/master`);
       const customCols = (configRes.data.config || []).map(c => ({
-          key: `custom_${c.id}`, 
-          id: c.id, 
-          label: c.reasonName.toUpperCase().replace(' ', '\n'), 
-          group: c.department.toUpperCase(), 
-          isCustom: true
+        key: `custom_${c.id}`,
+        id: c.id,
+        label: c.reasonName.toUpperCase().replace(' ', '\n'),
+        group: c.department.toUpperCase(),
+        isCustom: true
       }));
-      
+
       const mergedColumns = [...baseColumns, ...customCols];
       setAllColumns(mergedColumns);
 
       // 2. Fetch Shift Data
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/unpoured-moulds/details`, { 
-          params: { date: headerData.date, disa: headerData.disaMachine } 
+      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/unpoured-moulds/details`, {
+        params: { date: headerData.date, disa: headerData.disaMachine }
       });
-      
-      const loadedData = { 1: { customValues: {} }, 2: { customValues: {} }, 3: { customValues: {} } };
-      
-      [1, 2, 3].forEach(shift => {
-          mergedColumns.forEach(col => {
-              if (col.isCustom) {
-                  loadedData[shift].customValues[col.id] = res.data[shift]?.customValues?.[col.id] || '';
-              } else {
-                  loadedData[shift][col.key] = res.data[shift]?.[col.key.charAt(0).toUpperCase() + col.key.slice(1)] || '';
-              }
-          });
 
-          loadedData[shift].operatorSignature = res.data[shift]?.OperatorSignature || '';
-          
-          if (loadedData[shift].operatorSignature && sigRefs[shift].current) {
-              sigRefs[shift].current.fromDataURL(loadedData[shift].operatorSignature);
-          } else if (sigRefs[shift].current) {
-              sigRefs[shift].current.clear();
+      const loadedData = { 1: { customValues: {} }, 2: { customValues: {} }, 3: { customValues: {} } };
+
+      [1, 2, 3].forEach(shift => {
+        mergedColumns.forEach(col => {
+          if (col.isCustom) {
+            loadedData[shift].customValues[col.id] = res.data[shift]?.customValues?.[col.id] || '';
+          } else {
+            loadedData[shift][col.key] = res.data[shift]?.[col.key.charAt(0).toUpperCase() + col.key.slice(1)] || '';
           }
+        });
+
+        loadedData[shift].operatorSignature = res.data[shift]?.OperatorSignature || '';
+
+        if (loadedData[shift].operatorSignature && sigRefs[shift].current) {
+          sigRefs[shift].current.fromDataURL(loadedData[shift].operatorSignature);
+        } else if (sigRefs[shift].current) {
+          sigRefs[shift].current.clear();
+        }
       });
 
       setShiftsData(loadedData);
-    } catch (error) { 
+    } catch (error) {
       setNotification({ show: true, type: 'error', message: "Failed to load data." });
     }
     setLoading(false);
@@ -123,13 +123,13 @@ const UnPouredMouldDetails = () => {
 
   const handleInputChange = (shift, key, value, isCustom = false, colId = null) => {
     setShiftsData(prev => {
-        const newShift = { ...prev[shift] };
-        if (isCustom) {
-            newShift.customValues = { ...newShift.customValues, [colId]: value };
-        } else {
-            newShift[key] = value;
-        }
-        return { ...prev, [shift]: newShift };
+      const newShift = { ...prev[shift] };
+      if (isCustom) {
+        newShift.customValues = { ...newShift.customValues, [colId]: value };
+      } else {
+        newShift[key] = value;
+      }
+      return { ...prev, [shift]: newShift };
     });
   };
 
@@ -143,16 +143,16 @@ const UnPouredMouldDetails = () => {
   const getRowTotal = (shift) => {
     let sum = 0;
     allColumns.forEach(col => {
-        if (col.isCustom) sum += (parseInt(shiftsData[shift].customValues?.[col.id]) || 0);
-        else sum += (parseInt(shiftsData[shift]?.[col.key]) || 0);
+      if (col.isCustom) sum += (parseInt(shiftsData[shift].customValues?.[col.id]) || 0);
+      else sum += (parseInt(shiftsData[shift]?.[col.key]) || 0);
     });
     return sum;
   };
 
   const getColTotal = (col) => {
     return [1, 2, 3].reduce((sum, shift) => {
-        if (col.isCustom) return sum + (parseInt(shiftsData[shift].customValues?.[col.id]) || 0);
-        return sum + (parseInt(shiftsData[shift]?.[col.key]) || 0);
+      if (col.isCustom) return sum + (parseInt(shiftsData[shift].customValues?.[col.id]) || 0);
+      return sum + (parseInt(shiftsData[shift]?.[col.key]) || 0);
     }, 0);
   };
 
@@ -161,11 +161,11 @@ const UnPouredMouldDetails = () => {
   const handleSave = async () => {
     setLoading(true);
     const payloadData = { ...shiftsData };
-    
-    [1, 2, 3].forEach(s => { 
-      payloadData[s].rowTotal = getRowTotal(s); 
-      payloadData[s].operatorSignature = (sigRefs[s].current && !sigRefs[s].current.isEmpty()) 
-                                            ? sigRefs[s].current.getCanvas().toDataURL('image/png') : '';
+
+    [1, 2, 3].forEach(s => {
+      payloadData[s].rowTotal = getRowTotal(s);
+      payloadData[s].operatorSignature = (sigRefs[s].current && !sigRefs[s].current.isEmpty())
+        ? sigRefs[s].current.getCanvas().toDataURL('image/png') : '';
     });
 
     try {
@@ -174,8 +174,8 @@ const UnPouredMouldDetails = () => {
       });
       setNotification({ show: true, type: 'success', message: 'Data Saved Successfully!' });
       setTimeout(() => setNotification({ show: false }), 3000);
-    } catch (error) { 
-      setNotification({ show: true, type: 'error', message: 'Failed to save data.' }); 
+    } catch (error) {
+      setNotification({ show: true, type: 'error', message: 'Failed to save data.' });
     }
     setLoading(false);
   };
@@ -183,7 +183,7 @@ const UnPouredMouldDetails = () => {
   const generatePDF = () => {
     setNotification({ show: true, type: 'loading', message: 'Generating PDF...' });
     try {
-      const doc = new jsPDF('l', 'mm', 'a4'); 
+      const doc = new jsPDF('l', 'mm', 'a4');
       const pageWidth = doc.internal.pageSize.getWidth();
 
       doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -196,12 +196,12 @@ const UnPouredMouldDetails = () => {
       const headRow1 = [{ content: 'SHIFT', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } }];
       let currentGroup = null; let groupSpan = 0;
       allColumns.forEach((col) => {
-          if (!currentGroup) { currentGroup = col.group; groupSpan = 1; }
-          else if (currentGroup === col.group) { groupSpan++; }
-          else {
-              headRow1.push({ content: currentGroup, colSpan: groupSpan, styles: { halign: 'center' } });
-              currentGroup = col.group; groupSpan = 1;
-          }
+        if (!currentGroup) { currentGroup = col.group; groupSpan = 1; }
+        else if (currentGroup === col.group) { groupSpan++; }
+        else {
+          headRow1.push({ content: currentGroup, colSpan: groupSpan, styles: { halign: 'center' } });
+          currentGroup = col.group; groupSpan = 1;
+        }
       });
       if (currentGroup) headRow1.push({ content: currentGroup, colSpan: groupSpan, styles: { halign: 'center' } });
       headRow1.push({ content: 'TOTAL', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: [220, 220, 220] } });
@@ -231,15 +231,15 @@ const UnPouredMouldDetails = () => {
         startY: 32, margin: { left: 5, right: 5 }, head: [headRow1, headRow2], body: bodyRows, theme: 'grid',
         styles: { fontSize: 8, cellPadding: { top: 3.5, right: 1, bottom: 3.5, left: 1 }, lineColor: [0, 0, 0], lineWidth: 0.15, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
         headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', minCellHeight: 12 }, bodyStyles: { minCellHeight: 10 },
-        didParseCell: function(data) { if (data.section === 'body' && data.row.index === bodyRows.length - 1) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240]; } }
+        didParseCell: function (data) { if (data.section === 'body' && data.row.index === bodyRows.length - 1) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240]; } }
       });
 
-      const finalY = doc.lastAutoTable.finalY + 15; 
+      const finalY = doc.lastAutoTable.finalY + 15;
       doc.setFontSize(10); doc.setFont('helvetica', 'bold');
       const shiftLabels = { 1: "1st shift", 2: "2nd shift", 3: "3rd shift" };
 
       [1, 2, 3].forEach((shift) => {
-        const xPos = (pageWidth * shift) / 4; 
+        const xPos = (pageWidth * shift) / 4;
         let sig = '';
         if (sigRefs[shift].current && !sigRefs[shift].current.isEmpty()) sig = sigRefs[shift].current.getCanvas().toDataURL('image/png');
         else if (shiftsData[shift].operatorSignature) sig = shiftsData[shift].operatorSignature;
@@ -260,10 +260,10 @@ const UnPouredMouldDetails = () => {
     const groups = [];
     let currentGroup = null;
     allColumns.forEach(col => {
-       if (!currentGroup || currentGroup.name !== col.group) {
-           if (currentGroup) groups.push(currentGroup);
-           currentGroup = { name: col.group, count: 1 };
-       } else { currentGroup.count++; }
+      if (!currentGroup || currentGroup.name !== col.group) {
+        if (currentGroup) groups.push(currentGroup);
+        currentGroup = { name: col.group, count: 1 };
+      } else { currentGroup.count++; }
     });
     if (currentGroup) groups.push(currentGroup);
 
@@ -281,11 +281,11 @@ const UnPouredMouldDetails = () => {
             <span className="text-orange-500 text-2xl">📉</span> Un Poured Mould Details
           </h2>
           <div className="flex items-center gap-3">
-             <select value={headerData.disaMachine} onChange={(e) => setHeaderData({...headerData, disaMachine: e.target.value})} className="bg-gray-800 text-white font-bold border-2 border-orange-500 rounded-md p-2 text-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
-                <option value="DISA - I">DISA - I</option><option value="DISA - II">DISA - II</option><option value="DISA - III">DISA - III</option><option value="DISA - IV">DISA - IV</option>
-             </select>
-             <span className="text-orange-400 text-lg font-black uppercase tracking-wider">Date:</span>
-             <div className="bg-gray-100 text-gray-600 font-bold border-2 border-gray-400 rounded-md p-2 text-lg cursor-not-allowed shadow-inner select-none">{new Date(headerData.date).toLocaleDateString('en-GB')}</div>
+            <select value={headerData.disaMachine} onChange={(e) => setHeaderData({ ...headerData, disaMachine: e.target.value })} className="bg-gray-800 text-white font-bold border-2 border-orange-500 rounded-md p-2 text-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+              <option value="DISA - I">DISA - I</option><option value="DISA - II">DISA - II</option><option value="DISA - III">DISA - III</option><option value="DISA - IV">DISA - IV</option><option value="DISA - V">DISA - V</option><option value="DISA - VI">DISA - VI</option>
+            </select>
+            <span className="text-orange-400 text-lg font-black uppercase tracking-wider">Date:</span>
+            <input type="date" value={headerData.date} onChange={(e) => setHeaderData({ ...headerData, date: e.target.value })} className="bg-white text-gray-700 font-bold border-2 border-orange-500 rounded-md px-2 py-1.5 text-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-sm" />
           </div>
         </div>
 
@@ -302,8 +302,9 @@ const UnPouredMouldDetails = () => {
                   const isNextGroupDifferent = allColumns[idx + 1] && allColumns[idx + 1].group !== col.group;
                   const isLastInGroup = !allColumns[idx + 1] || isNextGroupDifferent;
                   return (
-                  <th key={idx} className={`border border-gray-300 p-2 align-bottom whitespace-pre-wrap leading-snug w-20 ${isLastInGroup ? 'border-r-2 border-r-gray-400' : ''}`}>{col.label}</th>
-                )})}
+                    <th key={idx} className={`border border-gray-300 p-2 align-bottom whitespace-pre-wrap leading-snug w-20 ${isLastInGroup ? 'border-r-2 border-r-gray-400' : ''}`}>{col.label}</th>
+                  )
+                })}
               </tr>
             </thead>
             <tbody>
@@ -311,14 +312,15 @@ const UnPouredMouldDetails = () => {
                 <tr key={shift} className="hover:bg-orange-50/30 transition-colors group h-14">
                   <td className="border border-gray-300 font-black text-gray-700 bg-gray-50 z-10 group-hover:bg-orange-50/80">{shift}</td>
                   {allColumns.map((col, idx) => {
-                     const isNextGroupDifferent = allColumns[idx + 1] && allColumns[idx + 1].group !== col.group;
-                     const isLastInGroup = !allColumns[idx + 1] || isNextGroupDifferent;
-                     const val = col.isCustom ? shiftsData[shift].customValues?.[col.id] : shiftsData[shift][col.key];
-                     return(
-                    <td key={col.key} className={`border border-gray-300 p-0 relative ${isLastInGroup ? 'border-r-2 border-r-gray-400' : ''}`}>
-                      <input type="number" min="0" value={val || ''} onChange={(e) => handleInputChange(shift, col.key, e.target.value, col.isCustom, col.id)} onFocus={(e) => e.target.select()} className="absolute inset-0 w-full h-full text-center text-sm font-bold text-gray-800 bg-transparent outline-none focus:bg-orange-100 focus:ring-inset focus:ring-2 focus:ring-orange-500 [&::-webkit-inner-spin-button]:appearance-none transition-colors" />
-                    </td>
-                  )})}
+                    const isNextGroupDifferent = allColumns[idx + 1] && allColumns[idx + 1].group !== col.group;
+                    const isLastInGroup = !allColumns[idx + 1] || isNextGroupDifferent;
+                    const val = col.isCustom ? shiftsData[shift].customValues?.[col.id] : shiftsData[shift][col.key];
+                    return (
+                      <td key={col.key} className={`border border-gray-300 p-0 relative ${isLastInGroup ? 'border-r-2 border-r-gray-400' : ''}`}>
+                        <input type="number" min="0" value={val || ''} onChange={(e) => handleInputChange(shift, col.key, e.target.value, col.isCustom, col.id)} onFocus={(e) => e.target.select()} className="absolute inset-0 w-full h-full text-center text-sm font-bold text-gray-800 bg-transparent outline-none focus:bg-orange-100 focus:ring-inset focus:ring-2 focus:ring-orange-500 [&::-webkit-inner-spin-button]:appearance-none transition-colors" />
+                      </td>
+                    )
+                  })}
                   <td className="border border-gray-300 font-bold text-gray-800 bg-gray-100 z-10 border-l-2 border-l-orange-300">{getRowTotal(shift) || ''}</td>
                 </tr>
               ))}
@@ -328,8 +330,9 @@ const UnPouredMouldDetails = () => {
                   const isNextGroupDifferent = allColumns[idx + 1] && allColumns[idx + 1].group !== col.group;
                   const isLastInGroup = !allColumns[idx + 1] || isNextGroupDifferent;
                   return (
-                   <td key={col.key} className={`border border-gray-400 text-gray-800 ${isLastInGroup ? 'border-r-2 border-r-gray-500' : ''}`}>{getColTotal(col) || ''}</td>
-                )})}
+                    <td key={col.key} className={`border border-gray-400 text-gray-800 ${isLastInGroup ? 'border-r-2 border-r-gray-500' : ''}`}>{getColTotal(col) || ''}</td>
+                  )
+                })}
                 <td className="border border-gray-400 text-xl text-orange-800 bg-orange-200 z-10 border-l-2 border-l-orange-400 shadow-inner">{getGrandTotal() || '0'}</td>
               </tr>
             </tbody>
@@ -337,25 +340,26 @@ const UnPouredMouldDetails = () => {
         </div>
 
         <div className="p-8 bg-white grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[1, 2, 3].map(shift => (
-                <div key={`sig-${shift}`} className="flex flex-col items-center">
-                    <h3 className="font-bold text-gray-800 mb-3">{shift === 1 ? '1st' : shift === 2 ? '2nd' : '3rd'} Shift Operator</h3>
-                    <div className="border-2 border-dashed border-gray-300 bg-gray-50 rounded-lg w-full max-w-[280px]">
-                        <SignatureCanvas ref={sigRefs[shift]} penColor="blue" canvasProps={{ className: 'w-full h-24 cursor-crosshair rounded-lg' }} />
-                    </div>
-                    <button onClick={() => clearSignature(shift)} className="mt-2 text-xs text-red-500 hover:text-red-700 font-bold uppercase tracking-wider">Clear Signature</button>
-                </div>
-            ))}
+          {[1, 2, 3].map(shift => (
+            <div key={`sig-${shift}`} className="flex flex-col items-center">
+              <h3 className="font-bold text-gray-800 mb-3">{shift === 1 ? '1st' : shift === 2 ? '2nd' : '3rd'} Shift Operator</h3>
+              <div className="border-2 border-dashed border-gray-300 bg-gray-50 rounded-lg w-full max-w-[280px]">
+                <SignatureCanvas ref={sigRefs[shift]} penColor="blue" canvasProps={{ className: 'w-full h-24 cursor-crosshair rounded-lg' }} />
+              </div>
+              <button onClick={() => clearSignature(shift)} className="mt-2 text-xs text-red-500 hover:text-red-700 font-bold uppercase tracking-wider">Clear Signature</button>
+            </div>
+          ))}
         </div>
 
         <div id="checklist-footer" className="bg-slate-100 p-8 border-t border-gray-200 bottom-0 z-20 flex justify-end gap-6 rounded-b-2xl shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-           <button onClick={generatePDF} className="bg-white border-2 border-gray-900 text-gray-900 hover:bg-gray-200 font-bold py-3 px-6 rounded-lg shadow-md uppercase flex items-center gap-2 mt-auto transition-colors"><FileDown size={20} /> PDF</button>
-           <button onClick={handleSave} disabled={loading} className="bg-gray-900 hover:bg-orange-600 text-white font-bold py-3 px-12 rounded-lg shadow-lg uppercase mt-auto transition-colors flex items-center gap-3">{loading ? <Loader className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}{loading ? 'Saving...' : 'Save All Shifts'}</button>
+          <button onClick={generatePDF} className="bg-white border-2 border-gray-900 text-gray-900 hover:bg-gray-200 font-bold py-3 px-6 rounded-lg shadow-md uppercase flex items-center gap-2 mt-auto transition-colors"><FileDown size={20} /> PDF</button>
+          <button onClick={handleSave} disabled={loading} className="bg-gray-900 hover:bg-orange-600 text-white font-bold py-3 px-12 rounded-lg shadow-lg uppercase mt-auto transition-colors flex items-center gap-3">{loading ? <Loader className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}{loading ? 'Saving...' : 'Save All Shifts'}</button>
         </div>
 
       </div>
 
-      <style dangerouslySetInnerHTML={{__html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .custom-scrollbar::-webkit-scrollbar { height: 12px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }

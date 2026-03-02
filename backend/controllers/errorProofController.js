@@ -6,31 +6,55 @@ const PDFDocument = require("pdfkit");
 ===================================================== */
 exports.getDetails = async (req, res) => {
   try {
-    const { machine } = req.query;
+    const { machine, date } = req.query;
 
-    const mainRes = await sql.query`
-      SELECT * FROM ErrorProofVerifications 
-      WHERE DisaMachine = ${machine}
-      ORDER BY RecordDate DESC, Id DESC
+    let mainRes;
+    let reactionRes;
+
+    // 🔥 FIX 1: Fetch the Dynamic Master Configuration
+    const masterRes = await sql.query`
+        SELECT * FROM ErrorProof_Master 
+        WHERE IsDeleted = 0 OR IsDeleted IS NULL 
+        ORDER BY SlNo ASC
     `;
 
-    const reactionRes = await sql.query`
-      SELECT rp.* FROM ReactionPlans rp
-      INNER JOIN ErrorProofVerifications epv ON rp.VerificationId = epv.Id
-      WHERE epv.DisaMachine = ${machine}
-      ORDER BY rp.SNo ASC
-    `;
+    if (date) {
+      mainRes = await sql.query`
+        SELECT * FROM ErrorProofVerifications 
+        WHERE DisaMachine = ${machine} AND FORMAT(RecordDate, 'yyyy-MM-dd') = ${date}
+        ORDER BY RecordDate DESC, Id DESC
+      `;
+      reactionRes = await sql.query`
+        SELECT rp.* FROM ReactionPlans rp
+        INNER JOIN ErrorProofVerifications epv ON rp.VerificationId = epv.Id
+        WHERE epv.DisaMachine = ${machine} AND FORMAT(epv.RecordDate, 'yyyy-MM-dd') = ${date}
+        ORDER BY rp.SNo ASC
+      `;
+    } else {
+      mainRes = await sql.query`
+        SELECT * FROM ErrorProofVerifications 
+        WHERE DisaMachine = ${machine}
+        ORDER BY RecordDate DESC, Id DESC
+      `;
+      reactionRes = await sql.query`
+        SELECT rp.* FROM ReactionPlans rp
+        INNER JOIN ErrorProofVerifications epv ON rp.VerificationId = epv.Id
+        WHERE epv.DisaMachine = ${machine}
+        ORDER BY rp.SNo ASC
+      `;
+    }
 
     const hofsRes = await sql.query`SELECT username AS name FROM dbo.Users WHERE role = 'hof' ORDER BY username`;
     const operatorsRes = await sql.query`SELECT username AS name FROM dbo.Users WHERE role = 'operator' ORDER BY username`;
     const supervisorsRes = await sql.query`SELECT username AS name FROM dbo.Users WHERE role = 'supervisor' ORDER BY username`;
 
     res.json({
+      masterConfig: masterRes.recordset, // 🔥 Send dynamic config to frontend
       verifications: mainRes.recordset,
       reactionPlans: reactionRes.recordset,
       hofs: hofsRes.recordset,
       operators: operatorsRes.recordset,
-      supervisors: supervisorsRes.recordset 
+      supervisors: supervisorsRes.recordset
     });
 
   } catch (err) {
@@ -44,8 +68,8 @@ exports.getDetails = async (req, res) => {
 ===================================================== */
 exports.saveDetails = async (req, res) => {
   try {
-    const { machine, verifications, reactionPlans, headerDetails, operatorSignature } = req.body;
-    const today = new Date().toISOString().split('T')[0];
+    const { machine, verifications, reactionPlans, headerDetails, operatorSignature, date } = req.body;
+    const today = date || new Date().toISOString().split('T')[0];
 
     const transaction = new sql.Transaction();
     await transaction.begin();
@@ -90,10 +114,9 @@ exports.saveDetails = async (req, res) => {
         }
       }
 
-      // 🔥 FIX: Fetch existing signatures before deleting so we don't wipe out the Supervisor's approval
       const validIdsForDeletion = verifications.filter(v => !String(v.Id).startsWith('temp')).map(v => v.Id);
       let existingPlans = [];
-      
+
       if (validIdsForDeletion.length > 0) {
         const idString = validIdsForDeletion.join(',');
         const existingRes = await new sql.Request(transaction).query(`
@@ -108,8 +131,7 @@ exports.saveDetails = async (req, res) => {
       if (reactionPlans && reactionPlans.length > 0) {
         for (const plan of reactionPlans) {
           const finalId = insertedIdMap[plan.VerificationId] || plan.VerificationId;
-          
-          // 🔥 Maps the signature & status back to the row if it was already signed previously
+
           const existing = existingPlans.find(ep => ep.VerificationId === finalId && ep.VerificationDateShift === plan.VerificationDateShift);
           const preservedSig = existing && existing.SupervisorSignature ? existing.SupervisorSignature : (plan.SupervisorSignature || null);
           const preservedStatus = existing && existing.Status === 'Completed' ? 'Completed' : (plan.Status || 'Pending');
@@ -132,7 +154,7 @@ exports.saveDetails = async (req, res) => {
 
     } catch (err) {
       await transaction.rollback();
-      throw err; 
+      throw err;
     }
   } catch (err) {
     console.error("Save Error V2:", err);
@@ -146,7 +168,6 @@ exports.saveDetails = async (req, res) => {
 exports.getSupervisorReports = async (req, res) => {
   try {
     const { name } = req.params;
-    // 🔥 FIX: Select the true unique Identity 'Id' so one signature doesn't complete all rows
     const result = await sql.query`
       SELECT rp.Id as ReactionPlanId, rp.*, epv.DisaMachine, FORMAT(epv.RecordDate, 'yyyy-MM-dd') as RecordDate
       FROM ReactionPlans rp
@@ -155,25 +176,24 @@ exports.getSupervisorReports = async (req, res) => {
       ORDER BY epv.RecordDate DESC
     `;
     res.json(result.recordset);
-  } catch (err) { 
+  } catch (err) {
     console.error("V2 Fetch Supervisor Error:", err);
-    res.status(500).json({ message: "DB error" }); 
+    res.status(500).json({ message: "DB error" });
   }
 };
 
 exports.signSupervisor = async (req, res) => {
   try {
     const { reactionPlanId, signature } = req.body;
-    // 🔥 FIX: Update only the exact row using the unique Id
     await sql.query`
       UPDATE ReactionPlans 
       SET SupervisorSignature = ${signature}, Status = 'Completed' 
       WHERE Id = ${reactionPlanId}
     `;
     res.json({ message: "Signature saved successfully" });
-  } catch (err) { 
+  } catch (err) {
     console.error("V2 Sign Supervisor Error:", err);
-    res.status(500).json({ message: "DB error" }); 
+    res.status(500).json({ message: "DB error" });
   }
 };
 
@@ -183,7 +203,6 @@ exports.signSupervisor = async (req, res) => {
 exports.getHofReports = async (req, res) => {
   try {
     const { name } = req.params;
-    // 🔥 FIX: Format the Date to string natively in SQL so timezones don't shift it backwards
     const result = await sql.query`
       SELECT FORMAT(RecordDate, 'yyyy-MM-dd') as reportDate, DisaMachine as disa, AssignedHOF as hofName,
              MAX(CAST(HOFSignature AS VARCHAR(MAX))) as hofSignature
@@ -193,25 +212,24 @@ exports.getHofReports = async (req, res) => {
       ORDER BY reportDate DESC
     `;
     res.json(result.recordset);
-  } catch (error) { 
+  } catch (error) {
     console.error("V2 Fetch HOF Error:", error);
-    res.status(500).json({ error: "Failed to fetch HOF reports" }); 
+    res.status(500).json({ error: "Failed to fetch HOF reports" });
   }
 };
 
 exports.signHof = async (req, res) => {
   try {
     const { date, line, signature } = req.body;
-    // 🔥 FIX: Compares the SQL formatted string to the exact date passed from frontend
     await sql.query`
       UPDATE ErrorProofVerifications 
       SET HOFSignature = ${signature} 
       WHERE FORMAT(RecordDate, 'yyyy-MM-dd') = ${date} AND DisaMachine = ${line}
     `;
     res.json({ message: "Signature saved successfully" });
-  } catch (error) { 
+  } catch (error) {
     console.error("V2 Sign HOF Error:", error);
-    res.status(500).json({ error: "Failed to save HOF signature" }); 
+    res.status(500).json({ error: "Failed to save HOF signature" });
   }
 };
 
@@ -220,15 +238,15 @@ exports.signHof = async (req, res) => {
 // ==========================================
 exports.generateReport = async (req, res) => {
   try {
-    const { line } = req.query; 
+    const { line } = req.query;
     let verificationQuery = `SELECT * FROM ErrorProofVerifications`;
     let reactionQuery = `SELECT rp.* FROM ReactionPlans rp INNER JOIN ErrorProofVerifications epv ON rp.VerificationId = epv.Id`;
-    
+
     if (line) {
-        verificationQuery += ` WHERE DisaMachine = '${line}'`;
-        reactionQuery += ` WHERE epv.DisaMachine = '${line}'`;
+      verificationQuery += ` WHERE DisaMachine = '${line}'`;
+      reactionQuery += ` WHERE epv.DisaMachine = '${line}'`;
     }
-    
+
     verificationQuery += ` ORDER BY RecordDate ASC, Id ASC`;
     reactionQuery += ` ORDER BY rp.Id ASC`;
 
@@ -236,7 +254,7 @@ exports.generateReport = async (req, res) => {
     const reactionResult = await sql.query(reactionQuery);
 
     const doc = new PDFDocument({ margin: 30, size: "A4", layout: "landscape", autoPageBreak: false, bufferPages: true });
-    const PAGE_HEIGHT = 595.28; 
+    const PAGE_HEIGHT = 595.28;
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "inline; filename=Error_Proof_Check_List_V2.pdf");
@@ -249,7 +267,7 @@ exports.generateReport = async (req, res) => {
     const drawMainHeaders = (y, datesArr = []) => {
       doc.font("Helvetica-Bold").fontSize(14).fillColor('black').text("ERROR PROOF VERIFICATION CHECK LIST - FDY", startX, y, { align: "center" });
       const headerTopY = y + 25;
-      const wLine = 45, wName = 120, wNature = 145, wFreq = 65, wDateBox = 135; 
+      const wLine = 45, wName = 120, wNature = 145, wFreq = 65, wDateBox = 135;
       doc.rect(startX, headerTopY, wLine, 60).stroke(); doc.text("Line", startX, headerTopY + 25, { width: wLine, align: "center" });
       let cx = startX + wLine;
       doc.rect(cx, headerTopY, wName, 60).stroke(); doc.text("Error Proof\nName", cx, headerTopY + 20, { width: wName, align: "center" });
@@ -280,7 +298,7 @@ exports.generateReport = async (req, res) => {
     const dateChunks = last3Dates.length > 0 ? [last3Dates] : [[]];
 
     let y = startY;
-    const wLine = 45, wName = 120, wNature = 145, wFreq = 65, wDateBox = 135; 
+    const wLine = 45, wName = 120, wNature = 145, wFreq = 65, wDateBox = 135;
 
     dateChunks.forEach((chunk, chunkIndex) => {
       if (chunkIndex > 0) { doc.addPage({ layout: "landscape", margin: 30 }); y = startY; }
@@ -291,12 +309,12 @@ exports.generateReport = async (req, res) => {
         doc.font("Helvetica").fontSize(8);
         const nameHeight = doc.heightOfString(proofName || "", { width: wName - 8, align: "center" });
         const natureHeight = doc.heightOfString(proofData.nature || "", { width: wNature - 8, align: "center" });
-        let rowHeight = Math.max(50, nameHeight + 20, natureHeight + 20); 
+        let rowHeight = Math.max(50, nameHeight + 20, natureHeight + 20);
 
         if (y + rowHeight > PAGE_HEIGHT - 120) { doc.addPage({ layout: "landscape", margin: 30 }); y = drawMainHeaders(30, chunk); }
 
         let cx = startX;
-        doc.rect(cx, y, wLine, rowHeight).stroke(); doc.text(proofData.line || "", cx + 2, y + (rowHeight/2 - 5), { width: wLine - 4, align: "center" }); cx += wLine;
+        doc.rect(cx, y, wLine, rowHeight).stroke(); doc.text(proofData.line || "", cx + 2, y + (rowHeight / 2 - 5), { width: wLine - 4, align: "center" }); cx += wLine;
         doc.rect(cx, y, wName, rowHeight).stroke(); doc.text(proofName || "", cx + 4, y + 10, { width: wName - 8, align: "center" }); cx += wName;
         doc.rect(cx, y, wNature, rowHeight).stroke(); doc.text(proofData.nature || "", cx + 4, y + 10, { width: wNature - 8, align: "center" }); cx += wNature;
         doc.rect(cx, y, wFreq, rowHeight).stroke(); doc.text(proofData.frequency || "", cx + 4, y + 10, { width: wFreq - 8, align: "center" }); cx += wFreq;
@@ -316,37 +334,37 @@ exports.generateReport = async (req, res) => {
         y += rowHeight;
       });
 
-      const sigY = y + 20; 
+      const sigY = y + 20;
       if (sigY + 80 > PAGE_HEIGHT - 40) { doc.addPage({ layout: "landscape", margin: 30 }); y = 30; }
 
       doc.font("Helvetica-Bold").fontSize(10).fillColor('black');
       doc.text("Verified By Moulding Incharge", startX, sigY);
-      doc.rect(startX, sigY + 8, 180, 45).stroke(); 
+      doc.rect(startX, sigY + 8, 180, 45).stroke();
 
       doc.text("Reviewed By HOF", startX + 350, sigY);
-      doc.rect(startX + 350, sigY + 8, 180, 45).stroke(); 
+      doc.rect(startX + 350, sigY + 8, 180, 45).stroke();
 
       const latestRecordWithOpSig = filteredRecords.find(r => r.OperatorSignature);
       const latestRecordWithHofSig = filteredRecords.find(r => r.HOFSignature);
 
       if (latestRecordWithOpSig && latestRecordWithOpSig.OperatorSignature.includes('base64,')) {
-          try { 
-              const imgBuffer = Buffer.from(latestRecordWithOpSig.OperatorSignature.split('base64,')[1], 'base64'); 
-              doc.image(imgBuffer, startX + 5, sigY + 12, { fit: [170, 37] }); 
-          } catch(e) {}
+        try {
+          const imgBuffer = Buffer.from(latestRecordWithOpSig.OperatorSignature.split('base64,')[1], 'base64');
+          doc.image(imgBuffer, startX + 5, sigY + 12, { fit: [170, 37] });
+        } catch (e) { }
       }
-      
+
       if (latestRecordWithHofSig && latestRecordWithHofSig.HOFSignature.includes('base64,')) {
-          try { 
-              const imgBuffer = Buffer.from(latestRecordWithHofSig.HOFSignature.split('base64,')[1], 'base64'); 
-              doc.image(imgBuffer, startX + 355, sigY + 12, { fit: [170, 37] }); 
-          } catch(e) {}
+        try {
+          const imgBuffer = Buffer.from(latestRecordWithHofSig.HOFSignature.split('base64,')[1], 'base64');
+          doc.image(imgBuffer, startX + 355, sigY + 12, { fit: [170, 37] });
+        } catch (e) { }
       }
     });
 
     const filteredReactions = reactionResult.recordset.filter(r => {
-        const epvMatch = allRecords.find(e => e.Id === r.VerificationId);
-        return epvMatch && last3Dates.includes(getISODate(epvMatch.RecordDate));
+      const epvMatch = allRecords.find(e => e.Id === r.VerificationId);
+      return epvMatch && last3Dates.includes(getISODate(epvMatch.RecordDate));
     });
 
     if (filteredReactions.length > 0) {
@@ -369,7 +387,7 @@ exports.generateReport = async (req, res) => {
         const epvMatch = allRecords.find(e => e.Id === rRow.VerificationId);
         const dDate = epvMatch ? new Date(epvMatch.RecordDate) : null;
         const dateStr = dDate && !isNaN(dDate) ? `${String(dDate.getDate()).padStart(2, '0')}/${String(dDate.getMonth() + 1).padStart(2, '0')}/${dDate.getFullYear()}` : "";
-        
+
         const hName = doc.heightOfString(rRow.ErrorProofName || "", { width: rColWidths[2] - 8, align: "center" });
         const hProb = doc.heightOfString(rRow.Problem || "", { width: rColWidths[4] - 8, align: "center" });
         let rRowHeight = Math.max(40, hName + 15, hProb + 15);
@@ -378,28 +396,28 @@ exports.generateReport = async (req, res) => {
           doc.addPage({ layout: "landscape", margin: 30 }); ry = drawReactionHeaders(30);
         }
 
-        const rowData = [ 
-            (index + 1).toString(), rRow.ErrorProofNo || "", rRow.ErrorProofName || "", dateStr, rRow.Problem || "", rRow.RootCause || "", 
-            rRow.CorrectiveAction || "", rRow.Status || "", rRow.ReviewedBy || "", rRow.SupervisorSignature || "", rRow.Remarks || "" 
+        const rowData = [
+          (index + 1).toString(), rRow.ErrorProofNo || "", rRow.ErrorProofName || "", dateStr, rRow.Problem || "", rRow.RootCause || "",
+          rRow.CorrectiveAction || "", rRow.Status || "", rRow.ReviewedBy || "", rRow.SupervisorSignature || "", rRow.Remarks || ""
         ];
 
         let currX = startX;
         rowData.forEach((cellText, i) => {
           doc.rect(currX, ry, rColWidths[i], rRowHeight).stroke();
-          
+
           if (i === 9 && cellText && String(cellText).startsWith('data:image')) {
-             try {
-                const imgBuffer = Buffer.from(cellText.split('base64,')[1], 'base64');
-                doc.image(imgBuffer, currX + 2, ry + 2, { fit: [rColWidths[i] - 4, rRowHeight - 4] });
-             } catch(e) {}
+            try {
+              const imgBuffer = Buffer.from(cellText.split('base64,')[1], 'base64');
+              doc.image(imgBuffer, currX + 2, ry + 2, { fit: [rColWidths[i] - 4, rRowHeight - 4] });
+            } catch (e) { }
           } else {
-             const textY = (i === 4 || i === 5 || i === 6 || i === 10 || i === 2) ? ry + 5 : ry + (rRowHeight / 2) - 5;
-             if (i === 7 && String(cellText).toLowerCase() === 'completed') doc.fillColor('green').font('Helvetica-Bold');
-             else if (i === 7 && String(cellText).toLowerCase() === 'pending') doc.fillColor('red').font('Helvetica-Bold');
-             else doc.fillColor('black').font('Helvetica');
-             
-             doc.text(String(cellText), currX + 4, textY, { width: rColWidths[i] - 8, align: "center" });
-             doc.fillColor('black').font('Helvetica');
+            const textY = (i === 4 || i === 5 || i === 6 || i === 10 || i === 2) ? ry + 5 : ry + (rRowHeight / 2) - 5;
+            if (i === 7 && String(cellText).toLowerCase() === 'completed') doc.fillColor('green').font('Helvetica-Bold');
+            else if (i === 7 && String(cellText).toLowerCase() === 'pending') doc.fillColor('red').font('Helvetica-Bold');
+            else doc.fillColor('black').font('Helvetica');
+
+            doc.text(String(cellText), currX + 4, textY, { width: rColWidths[i] - 8, align: "center" });
+            doc.fillColor('black').font('Helvetica');
           }
           currX += rColWidths[i];
         });
@@ -409,14 +427,14 @@ exports.generateReport = async (req, res) => {
 
     const range = doc.bufferedPageRange();
     for (let i = range.start; i < (range.start + range.count); i++) {
-        doc.switchToPage(i);
-        doc.font("Helvetica-Bold").fontSize(9).fillColor('black');
-        doc.text("QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023", 30, PAGE_HEIGHT - 35, { align: "left", lineBreak: false });
+      doc.switchToPage(i);
+      doc.font("Helvetica-Bold").fontSize(9).fillColor('black');
+      doc.text("QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023", 30, PAGE_HEIGHT - 35, { align: "left", lineBreak: false });
     }
 
     doc.end();
-  } catch (err) { 
+  } catch (err) {
     console.error("Report Generation Error V2:", err);
-    res.status(500).json({ message: "Report generation failed" }); 
+    res.status(500).json({ message: "Report generation failed" });
   }
 };

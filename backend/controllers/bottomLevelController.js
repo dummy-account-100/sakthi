@@ -1,19 +1,21 @@
-const sql = require('../db'); // Fixed import to match your db.js
+const sql = require('../db'); 
 
 exports.getChecklistDetails = async (req, res) => {
   try {
     const { date, disaMachine } = req.query;
     
+    // 🔥 FIX: Added "OR M.IsDeleted IS NULL" for safety
     const checklistResult = await sql.query`
       SELECT 
           M.MasterId, M.SlNo, M.CheckPointDesc, 
           ISNULL(T.IsDone, 0) as IsDone, ISNULL(T.IsNA, 0) as IsNA, 
           ISNULL(T.IsHoliday, 0) as IsHoliday, ISNULL(T.IsVatCleaning, 0) as IsVatCleaning,
+          ISNULL(T.IsPreventiveMaintenance, 0) as IsPreventiveMaintenance,
           T.[Sign] as SupervisorName, T.SupervisorSignature, T.AssignedHOF, T.HOFSignature
       FROM BottomLevelAudit_Master M
       LEFT JOIN BottomLevelAudit_Trans T 
           ON M.MasterId = T.MasterId AND T.LogDate = ${date} AND T.DisaMachine = ${disaMachine}
-      WHERE M.IsDeleted = 0
+      WHERE M.IsDeleted = 0 OR M.IsDeleted IS NULL
       ORDER BY M.SlNo ASC
     `;
     
@@ -47,20 +49,21 @@ exports.saveBatchChecklist = async (req, res) => {
         
         const isDoneVal = item.IsDone ? 1 : 0; const isNaVal = item.IsNA ? 1 : 0;
         const isHolidayVal = item.IsHoliday ? 1 : 0; const isVatVal = item.IsVatCleaning ? 1 : 0;
+        const isPrevMaintVal = item.IsPreventiveMaintenance ? 1 : 0; 
 
         const writeRequest = new sql.Request(transaction);
 
         if (checkRes.recordset[0].count > 0) {
           await writeRequest.query`
             UPDATE BottomLevelAudit_Trans 
-            SET IsDone = ${isDoneVal}, IsNA = ${isNaVal}, IsHoliday = ${isHolidayVal}, IsVatCleaning = ${isVatVal}, 
+            SET IsDone = ${isDoneVal}, IsNA = ${isNaVal}, IsHoliday = ${isHolidayVal}, IsVatCleaning = ${isVatVal}, IsPreventiveMaintenance = ${isPrevMaintVal},
                 [Sign] = ${sign}, AssignedHOF = ${assignedHOF}, LastUpdated = GETDATE()
             WHERE MasterId = ${item.MasterId} AND LogDate = ${date} AND DisaMachine = ${disaMachine}
           `;
         } else {
           await writeRequest.query`
-            INSERT INTO BottomLevelAudit_Trans (MasterId, LogDate, DisaMachine, IsDone, IsNA, IsHoliday, IsVatCleaning, [Sign], AssignedHOF)
-            VALUES (${item.MasterId}, ${date}, ${disaMachine}, ${isDoneVal}, ${isNaVal}, ${isHolidayVal}, ${isVatVal}, ${sign}, ${assignedHOF})
+            INSERT INTO BottomLevelAudit_Trans (MasterId, LogDate, DisaMachine, IsDone, IsNA, IsHoliday, IsVatCleaning, IsPreventiveMaintenance, [Sign], AssignedHOF)
+            VALUES (${item.MasterId}, ${date}, ${disaMachine}, ${isDoneVal}, ${isNaVal}, ${isHolidayVal}, ${isVatVal}, ${isPrevMaintVal}, ${sign}, ${assignedHOF})
           `;
         }
       }
@@ -91,9 +94,9 @@ exports.saveNCReport = async (req, res) => {
     const checkRow = await sql.query`SELECT COUNT(*) as count FROM BottomLevelAudit_Trans WHERE MasterId = ${checklistId} AND LogDate = ${reportDate} AND DisaMachine = ${disaMachine}`;
     
     if (checkRow.recordset[0].count > 0) {
-       await sql.query`UPDATE BottomLevelAudit_Trans SET IsDone = 0, IsNA = 0, [Sign] = ${sign} WHERE MasterId = ${checklistId} AND LogDate = ${reportDate} AND DisaMachine = ${disaMachine}`;
+       await sql.query`UPDATE BottomLevelAudit_Trans SET IsDone = 0, IsNA = 0, IsHoliday = 0, IsVatCleaning = 0, IsPreventiveMaintenance = 0, [Sign] = ${sign} WHERE MasterId = ${checklistId} AND LogDate = ${reportDate} AND DisaMachine = ${disaMachine}`;
     } else {
-       await sql.query`INSERT INTO BottomLevelAudit_Trans (MasterId, LogDate, DisaMachine, IsDone, IsNA, [Sign]) VALUES (${checklistId}, ${reportDate}, ${disaMachine}, 0, 0, ${sign})`;
+       await sql.query`INSERT INTO BottomLevelAudit_Trans (MasterId, LogDate, DisaMachine, IsDone, IsNA, IsHoliday, IsVatCleaning, IsPreventiveMaintenance, [Sign]) VALUES (${checklistId}, ${reportDate}, ${disaMachine}, 0, 0, 0, 0, 0, ${sign})`;
     }
     res.json({ success: true });
   } catch (err) { 
@@ -105,8 +108,9 @@ exports.saveNCReport = async (req, res) => {
 exports.getMonthlyReport = async (req, res) => {
   try {
     const { month, year, disaMachine } = req.query;
+    
     const checklistResult = await sql.query`
-      SELECT MasterId, DAY(LogDate) as DayVal, IsDone, IsNA, IsHoliday, IsVatCleaning, [Sign] as SupervisorName, SupervisorSignature, AssignedHOF, HOFSignature
+      SELECT MasterId, DAY(LogDate) as DayVal, IsDone, IsNA, IsHoliday, IsVatCleaning, IsPreventiveMaintenance, [Sign] as SupervisorName, SupervisorSignature, AssignedHOF, HOFSignature
       FROM BottomLevelAudit_Trans
       WHERE MONTH(LogDate) = ${month} AND YEAR(LogDate) = ${year} AND DisaMachine = ${disaMachine}
     `;
@@ -132,7 +136,8 @@ exports.getBulkData = async (req, res) => {
         const { fromDate, toDate } = req.query;
         const request = new sql.Request();
         
-        const masterRes = await request.query(`SELECT * FROM BottomLevelAudit_Master WHERE IsDeleted = 0 ORDER BY SlNo ASC`);
+        // 🔥 FIX: Ensure bulk data export ignores deleted configs
+        const masterRes = await request.query(`SELECT * FROM BottomLevelAudit_Master WHERE IsDeleted = 0 OR IsDeleted IS NULL ORDER BY SlNo ASC`);
         
         let transQuery = `
             SELECT T.*, M.CheckPointDesc, M.SlNo 

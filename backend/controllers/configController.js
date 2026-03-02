@@ -1,4 +1,4 @@
-const sql = require("../db"); // 🔥 FIXED: Safe import
+const sql = require("../db"); // 🔥 Safe import
 
 // Map frontend form IDs to their specific SQL Master Tables
 const tableMapping = {
@@ -20,10 +20,12 @@ exports.getMasterConfig = async (req, res) => {
             return res.status(400).json({ error: 'Config management not supported for this form type.' });
         }
 
-        // 🔥 FIXED: Using new sql.Request() safely
         const request = new sql.Request();
+        
+        // 🔥 FIX 1: Ensure we only fetch items that are NOT soft-deleted
         const result = await request.query(`
             SELECT * FROM ${tableName} 
+            WHERE IsDeleted = 0 OR IsDeleted IS NULL
             ORDER BY SlNo ASC
         `);
 
@@ -142,7 +144,8 @@ exports.saveMasterConfig = async (req, res) => {
                 const request = new sql.Request(transaction);
 
                 if (item.isDeleted) {
-                    await request.query(`DELETE FROM ${tableName} WHERE MasterId = ${item.id}`);
+                    // 🔥 FIX 2: Soft delete instead of Hard delete. This prevents the EREQUEST constraint crash!
+                    await request.query(`UPDATE ${tableName} SET IsDeleted = 1 WHERE MasterId = ${item.id}`);
                 } else {
                     if (type === 'disa-operator') {
                         await request.query(`

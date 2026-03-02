@@ -1,92 +1,13 @@
 const sql = require('../db');
 
-// --- 1. Get Details (DYNAMIC JOIN) ---
+// ==========================================
+//   1. GET CHECKLIST DETAILS (OPERATOR DASHBOARD)
+// ==========================================
 exports.getChecklistDetails = async (req, res) => {
   try {
     const { date, disaMachine } = req.query;
     
-    const checklistResult = await sql.query`
-      SELECT 
-          M.MasterId, M.SlNo, M.CheckPointDesc, M.CheckMethod, 
-          ISNULL(T.IsDone, 0) as IsDone, 
-          ISNULL(T.IsHoliday, 0) as IsHoliday,
-          ISNULL(T.IsVatCleaning, 0) as IsVatCleaning,
-          ISNULL(T.ReadingValue, '') as ReadingValue,
-          T.AssignedHOD, T.OperatorSignature
-      FROM MachineChecklist_Master M
-      LEFT JOIN MachineChecklist_Trans T 
-          ON M.MasterId = T.MasterId 
-          AND T.LogDate = ${date}
-          AND T.DisaMachine = ${disaMachine}
-      WHERE M.IsDeleted = 0
-      ORDER BY M.SlNo ASC
-    `;
-    
-    const hodsResult = await sql.query`SELECT username as OperatorName FROM dbo.Users WHERE role = 'hod' ORDER BY username`;
-    const reportsResult = await sql.query`SELECT * FROM dbo.DisaNonConformanceReport WHERE ReportDate = ${date} AND DisaMachine = ${disaMachine}`;
-
-    res.json({
-      checklist: checklistResult.recordset,
-      operators: hodsResult.recordset, 
-      reports: reportsResult.recordset 
-    });
-  } catch (err) { res.status(500).send(err.message); }
-};
-
-// --- 2. Batch Submit ---
-exports.saveBatchChecklist = async (req, res) => {
-  try {
-    const { items, sign, date, disaMachine, operatorSignature } = req.body; 
-    const transaction = new sql.Transaction();
-    await transaction.begin();
-    try {
-      for (const item of items) {
-        const request = new sql.Request(transaction); 
-        const checkRes = await request.query`SELECT COUNT(*) as count FROM MachineChecklist_Trans WHERE MasterId = ${item.MasterId} AND LogDate = ${date} AND DisaMachine = ${disaMachine}`;
-        
-        const q = checkRes.recordset[0].count > 0 
-          ? `UPDATE MachineChecklist_Trans SET IsDone=@idne, IsHoliday=@ihol, IsVatCleaning=@ivat, ReadingValue=@rval, AssignedHOD=@hod, OperatorSignature=@osig, LastUpdated=GETDATE() WHERE MasterId=@mid AND LogDate=@date AND DisaMachine=@dm`
-          : `INSERT INTO MachineChecklist_Trans (MasterId, LogDate, IsDone, IsHoliday, IsVatCleaning, ReadingValue, AssignedHOD, OperatorSignature, DisaMachine) VALUES (@mid, @date, @idne, @ihol, @ivat, @rval, @hod, @osig, @dm)`;
-
-        const req2 = new sql.Request(transaction);
-        req2.input('mid', item.MasterId).input('date', date).input('dm', disaMachine)
-            .input('idne', item.IsDone ? 1 : 0).input('ihol', item.IsHoliday ? 1 : 0)
-            .input('ivat', item.IsVatCleaning ? 1 : 0).input('rval', item.ReadingValue || '')
-            .input('hod', sign).input('osig', operatorSignature);
-        await req2.query(q);
-      }
-      await transaction.commit();
-      res.json({ success: true });
-    } catch (err) { await transaction.rollback(); throw err; }
-  } catch (err) { res.status(500).send(err.message); }
-};
-
-// --- 3. Bulk Data for Admin Export ---
-exports.getBulkData = async (req, res) => {
-    try {
-        const { fromDate, toDate } = req.query;
-        const request = new sql.Request();
-        
-        const masterRes = await sql.query`SELECT * FROM MachineChecklist_Master WHERE IsDeleted = 0 ORDER BY SlNo ASC`;
-        const transRes = await sql.query(`
-            SELECT T.*, M.CheckPointDesc, M.CheckMethod, M.SlNo 
-            FROM MachineChecklist_Trans T
-            INNER JOIN MachineChecklist_Master M ON T.MasterId = M.MasterId
-            WHERE T.LogDate BETWEEN '${fromDate}' AND '${toDate}'
-        `);
-        const ncrRes = await sql.query(`SELECT * FROM DisaNonConformanceReport WHERE ReportDate BETWEEN '${fromDate}' AND '${toDate}'`);
-
-        res.json({ master: masterRes.recordset, trans: transRes.recordset, ncr: ncrRes.recordset });
-    } catch (error) { res.status(500).json({ error: error.message }); }
-};
-
-// ... existing Monthly Report and HOD Sign methods ...
-
-// --- 1. Get Details ---
-exports.getChecklistDetails = async (req, res) => {
-  try {
-    const { date, disaMachine } = req.query;
-    
+    // 🔥 FIX: Safely filters out deleted items so they disappear from the Operator UI
     const checklistResult = await sql.query`
       SELECT 
           M.MasterId, 
@@ -96,18 +17,19 @@ exports.getChecklistDetails = async (req, res) => {
           ISNULL(T.IsDone, 0) as IsDone, 
           ISNULL(T.IsHoliday, 0) as IsHoliday,
           ISNULL(T.IsVatCleaning, 0) as IsVatCleaning,
+          ISNULL(T.IsPreventiveMaintenance, 0) as IsPreventiveMaintenance,
           ISNULL(T.ReadingValue, '') as ReadingValue,
-          T.Sign,
+          T.AssignedHOD,
           T.OperatorSignature -- Send signature to frontend to pre-fill pad
       FROM MachineChecklist_Master M
       LEFT JOIN MachineChecklist_Trans T 
           ON M.MasterId = T.MasterId 
           AND T.LogDate = ${date}
           AND T.DisaMachine = ${disaMachine}
+      WHERE M.IsDeleted = 0 OR M.IsDeleted IS NULL
       ORDER BY M.SlNo ASC
     `;
     
-    // 🔥 Changed: Fetch users with role 'hod' instead of operators
     const hodsResult = await sql.query`SELECT username as OperatorName FROM dbo.Users WHERE role = 'hod' ORDER BY username`;
     
     const reportsResult = await sql.query`
@@ -117,7 +39,7 @@ exports.getChecklistDetails = async (req, res) => {
 
     res.json({
       checklist: checklistResult.recordset,
-      operators: hodsResult.recordset, // Sent as "operators" to not break frontend var names
+      operators: hodsResult.recordset, 
       reports: reportsResult.recordset 
     });
 
@@ -127,7 +49,9 @@ exports.getChecklistDetails = async (req, res) => {
   }
 };
 
-// --- 2. Batch Submit ---
+// ==========================================
+//   2. BATCH SUBMIT CHECKLIST
+// ==========================================
 exports.saveBatchChecklist = async (req, res) => {
   try {
     // 'sign' is now the assigned HOD name
@@ -149,6 +73,7 @@ exports.saveBatchChecklist = async (req, res) => {
         const isDoneVal = item.IsDone ? 1 : 0;
         const isHolidayVal = item.IsHoliday ? 1 : 0;
         const isVatVal = item.IsVatCleaning ? 1 : 0; 
+        const isPrevMaintVal = item.IsPreventiveMaintenance ? 1 : 0; 
         const readingVal = item.ReadingValue || ''; 
 
         const writeRequest = new sql.Request(transaction);
@@ -156,14 +81,14 @@ exports.saveBatchChecklist = async (req, res) => {
         if (checkRes.recordset[0].count > 0) {
           await writeRequest.query`
             UPDATE MachineChecklist_Trans 
-            SET IsDone = ${isDoneVal}, IsHoliday = ${isHolidayVal}, IsVatCleaning = ${isVatVal}, 
+            SET IsDone = ${isDoneVal}, IsHoliday = ${isHolidayVal}, IsVatCleaning = ${isVatVal}, IsPreventiveMaintenance = ${isPrevMaintVal},
                 ReadingValue = ${readingVal}, AssignedHOD = ${sign}, OperatorSignature = ${operatorSignature}, LastUpdated = GETDATE()
             WHERE MasterId = ${item.MasterId} AND LogDate = ${date} AND DisaMachine = ${disaMachine}
           `;
         } else {
           await writeRequest.query`
-            INSERT INTO MachineChecklist_Trans (MasterId, LogDate, IsDone, IsHoliday, IsVatCleaning, ReadingValue, AssignedHOD, OperatorSignature, DisaMachine)
-            VALUES (${item.MasterId}, ${date}, ${isDoneVal}, ${isHolidayVal}, ${isVatVal}, ${readingVal}, ${sign}, ${operatorSignature}, ${disaMachine})
+            INSERT INTO MachineChecklist_Trans (MasterId, LogDate, IsDone, IsHoliday, IsVatCleaning, IsPreventiveMaintenance, ReadingValue, AssignedHOD, OperatorSignature, DisaMachine)
+            VALUES (${item.MasterId}, ${date}, ${isDoneVal}, ${isHolidayVal}, ${isVatVal}, ${isPrevMaintVal}, ${readingVal}, ${sign}, ${operatorSignature}, ${disaMachine})
           `;
         }
       }
@@ -181,9 +106,10 @@ exports.saveBatchChecklist = async (req, res) => {
   }
 };
 
-// --- 3. Save NC Report ---
+// ==========================================
+//   3. SAVE NC REPORT
+// ==========================================
 exports.saveNCReport = async (req, res) => {
-  // (Unchanged from original)
   try {
     const { 
         checklistId, slNo, reportDate, ncDetails, correction, 
@@ -210,13 +136,13 @@ exports.saveNCReport = async (req, res) => {
     
     if (checkRow.recordset[0].count > 0) {
        await sql.query`
-           UPDATE MachineChecklist_Trans SET IsDone = 0, Sign = ${sign} 
+           UPDATE MachineChecklist_Trans SET IsDone = 0, IsHoliday = 0, IsVatCleaning = 0, IsPreventiveMaintenance = 0, Sign = ${sign} 
            WHERE MasterId = ${checklistId} AND LogDate = ${reportDate} AND DisaMachine = ${disaMachine}
        `;
     } else {
        await sql.query`
-           INSERT INTO MachineChecklist_Trans (MasterId, LogDate, IsDone, Sign, DisaMachine) 
-           VALUES (${checklistId}, ${reportDate}, 0, ${sign}, ${disaMachine})
+           INSERT INTO MachineChecklist_Trans (MasterId, LogDate, IsDone, IsHoliday, IsVatCleaning, IsPreventiveMaintenance, Sign, DisaMachine) 
+           VALUES (${checklistId}, ${reportDate}, 0, 0, 0, 0, ${sign}, ${disaMachine})
        `;
     }
 
@@ -226,14 +152,15 @@ exports.saveNCReport = async (req, res) => {
   }
 };
 
-// --- 4. Monthly Report (Updated for PDF generation) ---
+// ==========================================
+//   4. MONTHLY REPORT & PDF GENERATION
+// ==========================================
 exports.getMonthlyReport = async (req, res) => {
   try {
     const { month, year, disaMachine } = req.query;
     
-    // 🔥 Added OperatorSignature, AssignedHOD, and HODSignature to the fetch
     const checklistResult = await sql.query`
-      SELECT MasterId, DAY(LogDate) as DayVal, IsDone, IsHoliday, IsVatCleaning, ReadingValue, OperatorSignature, AssignedHOD, HODSignature
+      SELECT MasterId, DAY(LogDate) as DayVal, IsDone, IsHoliday, IsVatCleaning, IsPreventiveMaintenance, ReadingValue, OperatorSignature, AssignedHOD, HODSignature
       FROM MachineChecklist_Trans
       WHERE MONTH(LogDate) = ${month} 
         AND YEAR(LogDate) = ${year} 
@@ -264,13 +191,12 @@ exports.getMonthlyReport = async (req, res) => {
 };
 
 // ==========================================
-//        HOD DASHBOARD APIS (NEW)
+//   5. HOD DASHBOARD APIS
 // ==========================================
 exports.getReportsByHOD = async (req, res) => {
   try {
     const { name } = req.params;
     
-    // Get unique dates and machines assigned to this HOD that need signing
     const result = await sql.query`
       SELECT DISTINCT LogDate as reportDate, DisaMachine as disa, AssignedHOD as hodName, MAX(HODSignature) as hodSignature
       FROM MachineChecklist_Trans 
@@ -289,7 +215,6 @@ exports.signReportByHOD = async (req, res) => {
   try {
     const { date, disaMachine, signature } = req.body;
     
-    // Apply HOD signature to all records for that day and machine
     await sql.query`
       UPDATE MachineChecklist_Trans 
       SET HODSignature = ${signature} 
@@ -302,15 +227,16 @@ exports.signReportByHOD = async (req, res) => {
   }
 };
 
-// 🔥 ADD THIS FUNCTION TO THE BOTTOM OF THE FILE
+// ==========================================
+//   6. ADMIN BULK DATA EXPORT
+// ==========================================
 exports.getBulkData = async (req, res) => {
     try {
         const { fromDate, toDate } = req.query;
-        // Make sure you have access to your db pool/sql here
         const request = new sql.Request();
         
-        // 1. Fetch Dynamic Master Columns
-        const masterRes = await request.query(`SELECT * FROM MachineChecklist_Master WHERE IsDeleted = 0 ORDER BY SlNo ASC`);
+        // 🔥 FIX: Hides soft-deleted master columns from the bulk export too
+        const masterRes = await request.query(`SELECT * FROM MachineChecklist_Master WHERE IsDeleted = 0 OR IsDeleted IS NULL ORDER BY SlNo ASC`);
         
         let transQuery = `
             SELECT T.*, M.CheckPointDesc, M.CheckMethod, M.SlNo 
@@ -319,7 +245,6 @@ exports.getBulkData = async (req, res) => {
         `;
         let ncrQuery = `SELECT * FROM DisaNonConformanceReport`;
 
-        // 2. Filter by Date if provided
         if (fromDate && toDate) {
             transQuery += ` WHERE T.LogDate BETWEEN @fromDate AND @toDate`;
             ncrQuery += ` WHERE ReportDate BETWEEN @fromDate AND @toDate`;
@@ -330,7 +255,6 @@ exports.getBulkData = async (req, res) => {
         const transRes = await request.query(transQuery);
         const ncrRes = await request.query(ncrQuery);
 
-        // 3. Send back to Admin Dashboard for PDF Generation
         res.json({ master: masterRes.recordset, trans: transRes.recordset, ncr: ncrRes.recordset });
     } catch (error) { 
         console.error("Error fetching bulk data:", error);

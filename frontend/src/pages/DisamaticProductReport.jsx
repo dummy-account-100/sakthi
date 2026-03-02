@@ -8,26 +8,26 @@ const getProductionDateTime = () => {
   const now = new Date();
   const hours = now.getHours();
   const mins = now.getMinutes();
-  const time = hours + mins / 60; 
+  const time = hours + mins / 60;
 
   let shift = "I";
   if (time >= 7 && time < 15.5) {
-    shift = "I"; 
+    shift = "I";
   } else if (time >= 15.5 && time < 24) {
-    shift = "II"; 
+    shift = "II";
   } else {
-    shift = "III"; 
+    shift = "III";
   }
 
   const prodDate = new Date(now);
   if (hours < 7) {
     prodDate.setDate(prodDate.getDate() - 1);
   }
-  
+
   const year = prodDate.getFullYear();
   const month = String(prodDate.getMonth() + 1).padStart(2, '0');
   const day = String(prodDate.getDate()).padStart(2, '0');
-  
+
   return { date: `${year}-${month}-${day}`, shift };
 };
 
@@ -98,7 +98,7 @@ const DisamaticProductReport = () => {
     shift: initShift,
     incharge: "",
     member: "",
-    ppOperator: "", 
+    ppOperator: "",
     significantEvent: "",
     maintenance: "",
     supervisorName: "",
@@ -161,8 +161,7 @@ const DisamaticProductReport = () => {
       }
     };
     checkOnLoad();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [formData.disa, formData.date, formData.shift]);
 
   useEffect(() => {
     axios.get(`${process.env.REACT_APP_API_URL}/api/delays`).then((res) => setDelaysMaster(res.data));
@@ -180,9 +179,9 @@ const DisamaticProductReport = () => {
 
   const handleDisaChange = async (e) => {
     const selectedDisa = e.target.value;
-    
-    setFormData((prev) => ({ 
-      ...prev, 
+
+    setFormData((prev) => ({
+      ...prev,
       disa: selectedDisa,
       incharge: "", member: "", ppOperator: "", supervisorName: ""
     }));
@@ -192,7 +191,7 @@ const DisamaticProductReport = () => {
         const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/forms/last-personnel`, {
           params: { disa: selectedDisa, date: formData.date, shift: formData.shift }
         });
-        
+
         if (res.data) {
           setFormData((prev) => ({
             ...prev,
@@ -211,7 +210,7 @@ const DisamaticProductReport = () => {
         });
         const fetchedCounter = Number(counterRes.data.lastMouldCounter) || 0;
         setPreviousMouldCounter(fetchedCounter);
-        
+
         recalculateChain(productions, fetchedCounter);
 
       } catch (err) {
@@ -242,7 +241,7 @@ const DisamaticProductReport = () => {
     if (updated[index].startTime && updated[index].endTime) {
       const start = new Date(`1970-01-01T${updated[index].startTime}`);
       const end = new Date(`1970-01-01T${updated[index].endTime}`);
-      let diff = (end - start) / 60000; 
+      let diff = (end - start) / 60000;
       if (diff < 0) diff += 1440;
       updated[index].duration = Math.round(diff);
     } else {
@@ -276,7 +275,7 @@ const DisamaticProductReport = () => {
   const addProduction = () => {
     setProductions([...productions, { componentName: "", pouredWeight: "", mouldCounterNo: "", produced: 0, poured: "", cycleTime: "", mouldsPerHour: "", remarks: "" }]);
   };
-  
+
   const removeProduction = (index) => {
     if (productions.length === 1) return;
     const updated = productions.filter((_, i) => i !== index);
@@ -285,7 +284,7 @@ const DisamaticProductReport = () => {
 
   const updateProduction = (index, field, value, extraValue = null) => {
     const updated = [...productions];
-    
+
     if (field === "componentName") {
       updated[index].componentName = value;
       updated[index].pouredWeight = extraValue;
@@ -293,8 +292,8 @@ const DisamaticProductReport = () => {
     }
     else if (field === "mouldCounterNo") {
       updated[index][field] = value;
-      recalculateChain(updated); 
-    } 
+      recalculateChain(updated);
+    }
     else if (field === "cycleTime") {
       updated[index][field] = value;
       const c = Number(value);
@@ -304,7 +303,7 @@ const DisamaticProductReport = () => {
         updated[index].mouldsPerHour = "";
       }
       setProductions(updated);
-    } 
+    }
     else {
       updated[index][field] = value;
       setProductions(updated);
@@ -312,11 +311,11 @@ const DisamaticProductReport = () => {
   };
 
   const recalculateChain = (list, baseCounter = previousMouldCounter) => {
-    let prev = baseCounter; 
+    let prev = baseCounter;
     const newList = list.map((item) => {
       const current = Number(item.mouldCounterNo) || 0;
       const produced = current ? Math.max(0, current - prev) : 0;
-      if (current) prev = current; 
+      if (current) prev = current;
       return { ...item, produced };
     });
     setProductions(newList);
@@ -331,15 +330,15 @@ const DisamaticProductReport = () => {
       });
 
       const lastItem = productions[productions.length - 1];
-      const newPreviousCounter = lastItem.mouldCounterNo 
-        ? Number(lastItem.mouldCounterNo) 
+      const newPreviousCounter = lastItem.mouldCounterNo
+        ? Number(lastItem.mouldCounterNo)
         : previousMouldCounter;
       setPreviousMouldCounter(newPreviousCounter);
 
       const { date: newDate, shift: newShift } = getProductionDateTime();
       setFormData((prev) => ({
         ...initialFormState,
-        disa: prev.disa, 
+        disa: prev.disa,
         date: newDate,
         shift: newShift,
         incharge: prev.incharge,
@@ -381,14 +380,14 @@ const DisamaticProductReport = () => {
   return (
     <div className="min-h-screen bg-[#2d2d2d] flex flex-col items-center justify-center p-6">
       <ToastContainer position="top-right" autoClose={3000} theme="colored" />
-      
+
       <div className="bg-white w-full max-w-[90rem] rounded-xl p-8 shadow-2xl overflow-x-auto">
         <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">
           DISAMATIC PRODUCTION REPORT
         </h2>
 
         <form onSubmit={handleSubmit} className="min-w-[1100px] flex flex-col gap-6">
-          
+
           <div className="grid grid-cols-3 gap-6 bg-gray-100 p-4 rounded-lg border border-gray-300">
             <div>
               <label className="font-bold text-gray-700 block mb-1">DISA- *</label>
@@ -398,11 +397,13 @@ const DisamaticProductReport = () => {
                 <option value="II">II</option>
                 <option value="III">III</option>
                 <option value="IV">IV</option>
+                <option value="V">V</option>
+                <option value="VI">VI</option>
               </select>
             </div>
             <div>
               <label className="font-bold text-gray-700 block mb-1">Date</label>
-              <input type="date" name="date" required value={formData.date} readOnly className="w-full border border-gray-300 p-2 rounded bg-gray-200 cursor-not-allowed text-gray-600 outline-none" />
+              <input type="date" name="date" required value={formData.date} onChange={handleChange} className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 bg-white cursor-pointer text-gray-700" />
             </div>
             <div>
               <label className="font-bold text-gray-700 block mb-1">Shift</label>
@@ -433,20 +434,20 @@ const DisamaticProductReport = () => {
                   <button type="button" onClick={() => removeProduction(index)} className="absolute top-2 right-2 text-red-600 font-bold hover:text-red-800">✕</button>
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  
+
                   <div>
                     <label className="font-medium text-sm text-gray-700">Mould Counter No. *</label>
                     <input type="number" required value={prod.mouldCounterNo} onChange={(e) => updateProduction(index, "mouldCounterNo", e.target.value)} className="w-full border border-gray-300 p-2 rounded focus:outline-orange-500" />
                   </div>
                   <div>
                     <label className="font-medium text-sm text-gray-700 block mb-1">Component Name *</label>
-                    <SearchableSelect 
-                      key={`prod-comp-${index}-${resetKey}`} 
-                      options={components} 
-                      displayKey="description" 
-                      required 
-                      value={prod.componentName} 
-                      onSelect={(item) => updateProduction(index, "componentName", item.description, item.pouredWeight)} 
+                    <SearchableSelect
+                      key={`prod-comp-${index}-${resetKey}`}
+                      options={components}
+                      displayKey="description"
+                      required
+                      value={prod.componentName}
+                      onSelect={(item) => updateProduction(index, "componentName", item.description, item.pouredWeight)}
                     />
                     {prod.pouredWeight != null && prod.pouredWeight !== "" && (
                       <p className="text-sm font-semibold text-blue-600 mt-2 ml-1">
@@ -581,38 +582,38 @@ const DisamaticProductReport = () => {
                       <SearchableSelect key={`hardness-${index}-${resetKey}`} options={components} displayKey="description" required value={item.componentName} onSelect={(comp) => updateMouldHardness(index, "componentName", comp.description)} />
                     </td>
                     <td className="border border-gray-300 p-2 align-top">
-                      <input 
-                        type="number" step="0.01" required 
-                        value={item.penetrationPP} 
-                        onChange={(e) => updateMouldHardness(index, "penetrationPP", e.target.value)} 
-                        className={`w-full border border-gray-300 p-2 rounded focus:outline-orange-500 ${item.penetrationPP && Number(item.penetrationPP) < 20 ? 'border-red-500' : ''}`} 
+                      <input
+                        type="number" step="0.01" required
+                        value={item.penetrationPP}
+                        onChange={(e) => updateMouldHardness(index, "penetrationPP", e.target.value)}
+                        className={`w-full border border-gray-300 p-2 rounded focus:outline-orange-500 ${item.penetrationPP && Number(item.penetrationPP) < 20 ? 'border-red-500' : ''}`}
                       />
                       {item.penetrationPP && Number(item.penetrationPP) < 20 && <p className="text-red-500 text-xs mt-1 font-medium">Min: 20</p>}
                     </td>
                     <td className="border border-gray-300 p-2 align-top">
-                      <input 
-                        type="number" step="0.01" required 
-                        value={item.penetrationSP} 
-                        onChange={(e) => updateMouldHardness(index, "penetrationSP", e.target.value)} 
-                        className={`w-full border border-gray-300 p-2 rounded focus:outline-orange-500 ${item.penetrationSP && Number(item.penetrationSP) < 20 ? 'border-red-500' : ''}`} 
+                      <input
+                        type="number" step="0.01" required
+                        value={item.penetrationSP}
+                        onChange={(e) => updateMouldHardness(index, "penetrationSP", e.target.value)}
+                        className={`w-full border border-gray-300 p-2 rounded focus:outline-orange-500 ${item.penetrationSP && Number(item.penetrationSP) < 20 ? 'border-red-500' : ''}`}
                       />
                       {item.penetrationSP && Number(item.penetrationSP) < 20 && <p className="text-red-500 text-xs mt-1 font-medium">Min: 20</p>}
                     </td>
                     <td className="border border-gray-300 p-2 align-top">
-                      <input 
-                        type="number" required 
-                        value={item.bScalePP} 
-                        onChange={(e) => updateMouldHardness(index, "bScalePP", e.target.value)} 
-                        className={`w-full border border-gray-300 p-2 rounded focus:outline-orange-500 ${item.bScalePP && Number(item.bScalePP) < 85 ? 'border-red-500' : ''}`} 
+                      <input
+                        type="number" required
+                        value={item.bScalePP}
+                        onChange={(e) => updateMouldHardness(index, "bScalePP", e.target.value)}
+                        className={`w-full border border-gray-300 p-2 rounded focus:outline-orange-500 ${item.bScalePP && Number(item.bScalePP) < 85 ? 'border-red-500' : ''}`}
                       />
                       {item.bScalePP && Number(item.bScalePP) < 85 && <p className="text-red-500 text-xs mt-1 font-medium">Min: 85</p>}
                     </td>
                     <td className="border border-gray-300 p-2 align-top">
-                      <input 
-                        type="number" required 
-                        value={item.bScaleSP} 
-                        onChange={(e) => updateMouldHardness(index, "bScaleSP", e.target.value)} 
-                        className={`w-full border border-gray-300 p-2 rounded focus:outline-orange-500 ${item.bScaleSP && Number(item.bScaleSP) < 85 ? 'border-red-500' : ''}`} 
+                      <input
+                        type="number" required
+                        value={item.bScaleSP}
+                        onChange={(e) => updateMouldHardness(index, "bScaleSP", e.target.value)}
+                        className={`w-full border border-gray-300 p-2 rounded focus:outline-orange-500 ${item.bScaleSP && Number(item.bScaleSP) < 85 ? 'border-red-500' : ''}`}
                       />
                       {item.bScaleSP && Number(item.bScaleSP) < 85 && <p className="text-red-500 text-xs mt-1 font-medium">Min: 85</p>}
                     </td>
@@ -650,20 +651,20 @@ const DisamaticProductReport = () => {
                       <SearchableSelect key={`patternTemp-${index}-${resetKey}`} options={components} displayKey="description" required value={pt.componentName} onSelect={(item) => updatePatternTemp(index, "componentName", item.description)} />
                     </td>
                     <td className="border border-gray-300 p-2 align-top">
-                      <input 
-                        type="number" min={45} required 
-                        value={pt.pp} 
-                        onChange={(e) => updatePatternTemp(index, "pp", e.target.value)} 
-                        className={`w-full border border-gray-300 p-2 rounded focus:outline-orange-500 ${pt.pp && Number(pt.pp) < 45 ? 'border-red-500' : ''}`} 
+                      <input
+                        type="number" min={45} required
+                        value={pt.pp}
+                        onChange={(e) => updatePatternTemp(index, "pp", e.target.value)}
+                        className={`w-full border border-gray-300 p-2 rounded focus:outline-orange-500 ${pt.pp && Number(pt.pp) < 45 ? 'border-red-500' : ''}`}
                       />
                       {pt.pp && Number(pt.pp) < 45 && <p className="text-red-500 text-xs mt-1 font-medium">Min: 45</p>}
                     </td>
                     <td className="border border-gray-300 p-2 align-top">
-                      <input 
-                        type="number" min={45} required 
-                        value={pt.sp} 
-                        onChange={(e) => updatePatternTemp(index, "sp", e.target.value)} 
-                        className={`w-full border border-gray-300 p-2 rounded focus:outline-orange-500 ${pt.sp && Number(pt.sp) < 45 ? 'border-red-500' : ''}`} 
+                      <input
+                        type="number" min={45} required
+                        value={pt.sp}
+                        onChange={(e) => updatePatternTemp(index, "sp", e.target.value)}
+                        className={`w-full border border-gray-300 p-2 rounded focus:outline-orange-500 ${pt.sp && Number(pt.sp) < 45 ? 'border-red-500' : ''}`}
                       />
                       {pt.sp && Number(pt.sp) < 45 && <p className="text-red-500 text-xs mt-1 font-medium">Min: 45</p>}
                     </td>
@@ -690,7 +691,7 @@ const DisamaticProductReport = () => {
               <textarea name="maintenance" value={formData.maintenance} onChange={handleChange} className="w-full border border-gray-300 p-2 rounded focus:outline-orange-500 h-20 resize-y" placeholder="Enter maintenance details..." />
             </div>
           </div>
-          
+
           <div className="w-1/3">
             <SearchableSelect key={`supervisor-${resetKey}`} label="Supervisor Name *" options={supervisors} displayKey="supervisorName" required value={formData.supervisorName} onSelect={(item) => setFormData({ ...formData, supervisorName: item.supervisorName })} />
           </div>
@@ -704,7 +705,7 @@ const DisamaticProductReport = () => {
               Submit Form
             </button>
           </div>
-          
+
         </form>
       </div>
     </div>

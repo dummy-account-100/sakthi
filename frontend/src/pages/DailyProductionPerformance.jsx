@@ -13,12 +13,12 @@ const getProductionDate = () => {
   if (hours < 7) {
     prodDate.setDate(prodDate.getDate() - 1);
   }
-  
+
   const year = prodDate.getFullYear();
   const month = String(prodDate.getMonth() + 1).padStart(2, '0');
   const day = String(prodDate.getDate()).padStart(2, '0');
-  
-  return `${year}-${month}-${day}`; 
+
+  return `${year}-${month}-${day}`;
 };
 
 // ==========================================
@@ -60,7 +60,7 @@ const SearchableSelect = ({ label, options, displayKey, onSelect, required, valu
                 onClick={() => {
                   setSearch(item[displayKey]);
                   setOpen(false);
-                  onSelect(item); 
+                  onSelect(item);
                 }}
                 className="p-2 hover:bg-orange-100 cursor-pointer text-sm border-b border-gray-100 last:border-0"
               >
@@ -81,14 +81,14 @@ const SearchableSelect = ({ label, options, displayKey, onSelect, required, valu
 // ==========================================
 const DailyProductionPerformance = () => {
   const [productionDate, setProductionDate] = useState(getProductionDate());
-  const [disa, setDisa] = useState(""); 
+  const [disa, setDisa] = useState("");
   const [resetKey, setResetKey] = useState(0);
 
   const opSigCanvas = useRef({});
 
   // --- DROPDOWN DATA ---
   const [components, setComponents] = useState([]);
-  
+
   // 🔥 NEW: Separate states for each role
   const [incharges, setIncharges] = useState([]);
   const [hofs, setHofs] = useState([]);
@@ -123,14 +123,14 @@ const DailyProductionPerformance = () => {
   useEffect(() => {
     const fetchData = async () => {
       if (!productionDate || !disa) {
-        setDelays([]); 
-        return; 
+        setDelays([]);
+        return;
       }
-      
+
       try {
         const sumRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/daily-performance/summary?date=${productionDate}&disa=${disa}`);
         const fetchedData = sumRes.data;
-        
+
         setSummary((prev) => {
           const newSummary = { ...prev };
           ["I", "II", "III"].forEach(s => {
@@ -158,12 +158,12 @@ const DailyProductionPerformance = () => {
     };
 
     fetchData();
-  }, [productionDate, disa]); 
+  }, [productionDate, disa]);
 
   // --- STATE: DETAILS TABLE ---
   const [details, setDetails] = useState([
     {
-      patternCode: "", itemDescription: "", planned: "", unplanned: "", 
+      patternCode: "", itemDescription: "", planned: "", unplanned: "",
       mouldsProd: "", mouldsPour: "", cavity: "", unitWeight: "", totalWeight: "",
     },
   ]);
@@ -250,29 +250,29 @@ const DailyProductionPerformance = () => {
     const signatureData = opSigCanvas.current.getCanvas().toDataURL("image/png");
 
     const payload = {
-        productionDate, disa, summary, details, unplannedReasons, signatures, delays,
-        operatorSignature: signatureData 
+      productionDate, disa, summary, details, unplannedReasons, signatures, delays,
+      operatorSignature: signatureData
     };
 
     try {
-        await axios.post(`${process.env.REACT_APP_API_URL}/api/daily-performance`, payload);
-        toast.success("Report saved successfully!");
-        
-        setSummary({
-            I: { pouredMoulds: "", tonnage: "", casted: "", value: "" },
-            II: { pouredMoulds: "", tonnage: "", casted: "", value: "" },
-            III: { pouredMoulds: "", tonnage: "", casted: "", value: "" },
-        });
-        setDetails([{ patternCode: "", itemDescription: "", planned: "", unplanned: "", mouldsProd: "", mouldsPour: "", cavity: "", unitWeight: "", totalWeight: "" }]);
-        setUnplannedReasons("");
-        setSignatures({ incharge: "", hof: "", hod: "" });
-        setDisa(""); 
-        opSigCanvas.current.clear(); 
-        setResetKey(prev => prev + 1); 
+      await axios.post(`${process.env.REACT_APP_API_URL}/api/daily-performance`, payload);
+      toast.success("Report saved successfully!");
+
+      setSummary({
+        I: { pouredMoulds: "", tonnage: "", casted: "", value: "" },
+        II: { pouredMoulds: "", tonnage: "", casted: "", value: "" },
+        III: { pouredMoulds: "", tonnage: "", casted: "", value: "" },
+      });
+      setDetails([{ patternCode: "", itemDescription: "", planned: "", unplanned: "", mouldsProd: "", mouldsPour: "", cavity: "", unitWeight: "", totalWeight: "" }]);
+      setUnplannedReasons("");
+      setSignatures({ incharge: "", hof: "", hod: "" });
+      setDisa("");
+      opSigCanvas.current.clear();
+      setResetKey(prev => prev + 1);
 
     } catch (err) {
-        console.error(err);
-        toast.error("Submission failed.");
+      console.error(err);
+      toast.error("Submission failed.");
     }
   };
 
@@ -283,9 +283,9 @@ const DailyProductionPerformance = () => {
     }
 
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/daily-performance/download-pdf`, { 
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/daily-performance/download-pdf`, {
         params: { date: productionDate, disa: disa },
-        responseType: "blob" 
+        responseType: "blob"
       });
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -295,7 +295,7 @@ const DailyProductionPerformance = () => {
       document.body.appendChild(link);
       link.click();
       link.parentNode.removeChild(link);
-      
+
       toast.success("PDF Downloaded successfully!");
     } catch (err) {
       console.error("Download failed", err);
@@ -312,19 +312,19 @@ const DailyProductionPerformance = () => {
       <ToastContainer position="top-right" autoClose={3000} theme="colored" />
 
       <div className="bg-white w-full max-w-[90rem] rounded-xl p-8 shadow-2xl overflow-x-auto border-4 border-gray-100">
-        
+
         {/* HEADER */}
         <div className="flex justify-between items-center border-b-2 border-gray-800 pb-4 mb-6">
           <h1 className="text-2xl font-bold text-gray-800 tracking-wide uppercase">
             DAILY PRODUCTION PERFORMANCE (FOUNDRY - B)
           </h1>
-          
+
           <div className="flex items-center gap-6">
             <div className="w-40">
               <label className="font-bold text-gray-700 block mb-1 text-sm">DISA- *</label>
-              <select 
-                name="disa" required value={disa} 
-                onChange={(e) => setDisa(e.target.value)} 
+              <select
+                name="disa" required value={disa}
+                onChange={(e) => setDisa(e.target.value)}
                 className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 text-sm font-semibold"
               >
                 <option value="">Select</option>
@@ -332,14 +332,16 @@ const DailyProductionPerformance = () => {
                 <option value="II">II</option>
                 <option value="III">III</option>
                 <option value="IV">IV</option>
+                <option value="V">V</option>
+                <option value="VI">VI</option>
               </select>
             </div>
 
             <div className="w-48">
               <label className="font-bold text-gray-700 block mb-1 text-sm">DATE OF PRODUCTION :</label>
-              <input 
-                type="date" value={productionDate} readOnly
-                className="w-full border border-gray-300 p-2 rounded bg-gray-100 cursor-not-allowed outline-none text-sm font-semibold text-gray-500" 
+              <input
+                type="date" value={productionDate} onChange={(e) => setProductionDate(e.target.value)}
+                className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 text-sm font-semibold text-gray-700 bg-white cursor-pointer"
               />
             </div>
           </div>
@@ -394,17 +396,17 @@ const DailyProductionPerformance = () => {
             <div className="flex items-center justify-end mb-2">
               <button type="button" onClick={addDetailRow} className="bg-orange-500 hover:bg-orange-600 text-white font-bold px-4 py-1 rounded shadow text-sm">+ Add Row</button>
             </div>
-            
+
             <table className="w-full border-collapse border border-gray-800 text-sm text-center relative z-0">
               <thead className="bg-gray-100 text-gray-800 font-bold border-b-2 border-gray-800">
                 <tr>
-                  <th className="border border-gray-800 p-2 w-10" rowSpan="2">Sl.<br/>No.</th>
+                  <th className="border border-gray-800 p-2 w-10" rowSpan="2">Sl.<br />No.</th>
                   <th className="border border-gray-800 p-2 w-48" rowSpan="2">Pattern Code *</th>
                   <th className="border border-gray-800 p-2 w-64" rowSpan="2">Item Description</th>
                   <th className="border border-gray-800 p-1" colSpan="2">Item</th>
-                  <th className="border border-gray-800 p-2 w-24" rowSpan="2">Number of<br/>Moulds Prod. *</th>
-                  <th className="border border-gray-800 p-2 w-24" rowSpan="2">Number of<br/>Moulds Pour. *</th>
-                  <th className="border border-gray-800 p-2 w-16" rowSpan="2">No. of<br/>Cavity</th>
+                  <th className="border border-gray-800 p-2 w-24" rowSpan="2">Number of<br />Moulds Prod. *</th>
+                  <th className="border border-gray-800 p-2 w-24" rowSpan="2">Number of<br />Moulds Pour. *</th>
+                  <th className="border border-gray-800 p-2 w-16" rowSpan="2">No. of<br />Cavity</th>
                   <th className="border border-gray-800 p-2 w-56" rowSpan="2">Poured WT (Kg)</th>
                   <th className="border border-gray-800 p-2 w-10" rowSpan="2">Act</th>
                 </tr>
@@ -417,16 +419,16 @@ const DailyProductionPerformance = () => {
                 {details.map((row, index) => (
                   <tr key={index} className="bg-white hover:bg-gray-50 transition-colors">
                     <td className="border border-gray-800 p-1 font-bold">{index + 1}</td>
-                    
+
                     <td className="border border-gray-800 p-1 relative overflow-visible">
-                      <SearchableSelect 
+                      <SearchableSelect
                         key={`pattern-${index}-${resetKey}`}
                         options={components} displayKey="code" required
                         value={row.patternCode} placeholder="Select Code"
-                        onSelect={(item) => handleComponentSelect(index, item)} 
+                        onSelect={(item) => handleComponentSelect(index, item)}
                       />
                     </td>
-                    
+
                     <td className="border border-gray-800 p-0">
                       <input type="text" value={row.itemDescription} readOnly className="w-full h-full text-left outline-none bg-gray-50 text-gray-700 py-2 px-2 cursor-not-allowed" />
                     </td>
@@ -462,7 +464,7 @@ const DailyProductionPerformance = () => {
                     </td>
                   </tr>
                 ))}
-                
+
                 {/* DETAILS TOTAL ROW */}
                 <tr className="bg-gray-100 font-bold text-gray-800 border-t-2 border-gray-800">
                   <td className="border border-gray-800 p-2"></td><td className="border border-gray-800 p-2"></td><td className="border border-gray-800 p-2"></td><td className="border border-gray-800 p-2"></td>
@@ -518,37 +520,37 @@ const DailyProductionPerformance = () => {
           {/* 5. SIGNATURES & ASSIGNMENTS */}
           <div className="flex justify-between items-end mt-8 mb-4 px-10 gap-6">
             <div className="flex flex-col w-64">
-                <label className="font-bold text-gray-700 block mb-1 text-sm text-center">Operator Signature *</label>
-                <div className="border-2 border-dashed border-gray-400 rounded-lg overflow-hidden h-24 mb-1">
-                    <SignatureCanvas ref={opSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-full cursor-crosshair bg-gray-50' }} />
-                </div>
-                <button type="button" onClick={() => opSigCanvas.current.clear()} className="text-xs text-red-500 hover:text-red-700 font-bold self-end uppercase">Clear</button>
+              <label className="font-bold text-gray-700 block mb-1 text-sm text-center">Operator Signature *</label>
+              <div className="border-2 border-dashed border-gray-400 rounded-lg overflow-hidden h-24 mb-1">
+                <SignatureCanvas ref={opSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-full cursor-crosshair bg-gray-50' }} />
+              </div>
+              <button type="button" onClick={() => opSigCanvas.current.clear()} className="text-xs text-red-500 hover:text-red-700 font-bold self-end uppercase">Clear</button>
             </div>
-            
+
             {/* 🔥 USES DEDICATED FETCHED USERS */}
             <div className="w-64">
-              <SearchableSelect 
+              <SearchableSelect
                 key={`sign-inc-${resetKey}`} label="Assign In-charge *" required
-                options={incharges} displayKey="name" value={signatures.incharge} 
-                onSelect={(item) => setSignatures({...signatures, incharge: item.name})} 
+                options={incharges} displayKey="name" value={signatures.incharge}
+                onSelect={(item) => setSignatures({ ...signatures, incharge: item.name })}
               />
             </div>
             <div className="w-64">
-              <SearchableSelect 
+              <SearchableSelect
                 key={`sign-hof-${resetKey}`} label="Assign HOF *" required
-                options={hofs} displayKey="name" value={signatures.hof} 
-                onSelect={(item) => setSignatures({...signatures, hof: item.name})} 
+                options={hofs} displayKey="name" value={signatures.hof}
+                onSelect={(item) => setSignatures({ ...signatures, hof: item.name })}
               />
             </div>
             <div className="w-64">
-              <SearchableSelect 
+              <SearchableSelect
                 key={`sign-hod-${resetKey}`} label="Assign HOD - Production *" required
-                options={hods} displayKey="name" value={signatures.hod} 
-                onSelect={(item) => setSignatures({...signatures, hod: item.name})} 
+                options={hods} displayKey="name" value={signatures.hod}
+                onSelect={(item) => setSignatures({ ...signatures, hod: item.name })}
               />
             </div>
           </div>
-          
+
           {/* BUTTONS */}
           <div className="flex justify-end gap-4 mt-2 pt-4 border-t border-gray-300">
             <button type="button" onClick={handleDownload} className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-2 rounded font-bold transition-colors flex items-center gap-2 shadow-lg"><span>⬇️</span> Generate Report (PDF)</button>
