@@ -140,9 +140,9 @@ exports.signReport = async (req, res) => {
 // ==========================================
 exports.createReport = async (req, res) => {
   const {
-    disa, date, shift, incharge, member, 
+    disa, date, shift, incharge, member,
     ppOperator, supervisorName, maintenance, significantEvent,
-    productions = [], 
+    productions = [],
     nextShiftPlans = [], mouldHardness = [], patternTemps = [], delays = []
   } = req.body;
 
@@ -164,7 +164,7 @@ exports.createReport = async (req, res) => {
 
     if (productions.length > 0) {
       const firstProduced = Number(productions[0].produced);
-      
+
       await sql.query`
         WITH CTE AS (
           SELECT TOP 1 p.produced
@@ -303,7 +303,7 @@ exports.downloadAllReports = async (req, res) => {
     reports.forEach(r => {
       const dateStr = new Date(r.reportDate).toISOString().split('T')[0];
       const key = `${dateStr}_${r.shift}_${r.disa}`;
-      
+
       if (!grouped[key]) {
         grouped[key] = {
           date: r.reportDate,
@@ -319,14 +319,14 @@ exports.downloadAllReports = async (req, res) => {
           maintenances: new Set()
         };
       }
-      
+
       grouped[key].reportIds.push(r.id);
       grouped[key].incharge = r.incharge || grouped[key].incharge;
       grouped[key].member = r.member || grouped[key].member;
       grouped[key].ppOperator = r.ppOperator || grouped[key].ppOperator;
       grouped[key].supervisorName = r.supervisorName || grouped[key].supervisorName;
       grouped[key].supervisorSignature = r.supervisorSignature || grouped[key].supervisorSignature;
-      
+
       if (r.significantEvent && r.significantEvent.trim()) grouped[key].sigEvents.add(r.significantEvent);
       if (r.maintenance && r.maintenance.trim()) grouped[key].maintenances.add(r.maintenance);
     });
@@ -339,43 +339,43 @@ exports.downloadAllReports = async (req, res) => {
     doc.pipe(res);
 
     const startX = 30;
-    const pageBottom = 780; 
+    const pageBottom = 780;
     const tableWidth = 535;
 
     const checkPageBreak = (neededHeight) => {
       if (doc.y + neededHeight > pageBottom) {
         doc.addPage();
-        return true; 
+        return true;
       }
       return false;
     };
 
     const drawCellText = (text, x, y, w, h, align = 'center', font = 'Helvetica', fontSize = 9) => {
       const content = (text !== null && text !== undefined && text !== "") ? text.toString() : "-";
-      
+
       const finalAlign = (content === "-") ? 'center' : align;
       const finalFont = (content === "-") ? 'Helvetica-Bold' : font;
 
       doc.font(finalFont).fontSize(fontSize).fillColor('black');
 
-      const innerWidth = w - 10; 
+      const innerWidth = w - 10;
       const textHeight = doc.heightOfString(content, { width: innerWidth });
-      const topPad = h > textHeight ? (h - textHeight) / 2 : 5; 
-      
-      doc.text(content, x + 5, y + topPad, { 
-        width: innerWidth, 
+      const topPad = h > textHeight ? (h - textHeight) / 2 : 5;
+
+      doc.text(content, x + 5, y + topPad, {
+        width: innerWidth,
         align: finalAlign,
       });
     };
 
     for (let i = 0; i < reportGroups.length; i++) {
       const g = reportGroups[i];
-      if (i > 0) doc.addPage(); 
+      if (i > 0) doc.addPage();
 
       // --- HEADER WITH LOGO ---
       let currentY = 30;
       doc.rect(startX, currentY, tableWidth, 60).stroke();
-      
+
       const logoPath = path.join(__dirname, 'logo.jpg');
       if (fs.existsSync(logoPath)) {
         doc.image(logoPath, startX + 5, currentY + 10, { fit: [120, 40], align: 'center', valign: 'center' });
@@ -384,7 +384,7 @@ exports.downloadAllReports = async (req, res) => {
       }
 
       doc.moveTo(startX + 130, currentY).lineTo(startX + 130, currentY + 60).stroke();
-      
+
       doc.font('Helvetica-Bold').fontSize(11).text(`DISAMATIC PRODUCTION REPORT`, startX + 130, currentY + 18, { width: 270, align: 'center' });
       doc.fontSize(11).text(`DISA - ${g.disa}`, startX + 130, currentY + 35, { width: 270, align: 'center' });
 
@@ -396,7 +396,7 @@ exports.downloadAllReports = async (req, res) => {
       doc.text(`Shift      : ${g.shift}`, metaX + 5, currentY + 28);
       doc.moveTo(metaX, currentY + 40).lineTo(startX + tableWidth, currentY + 40).stroke();
       doc.text(`Incharge: ${g.incharge || "-"}`, metaX + 5, currentY + 48);
-      currentY += 60; 
+      currentY += 60;
 
       doc.rect(startX, currentY, tableWidth, 25).stroke();
       doc.font('Helvetica-Bold').text("Member Present:", startX + 5, currentY + 8);
@@ -418,7 +418,7 @@ exports.downloadAllReports = async (req, res) => {
         const headerHeight = 25;
         let xPos = startX;
         doc.rect(startX, currentY, tableWidth, headerHeight).fillColor('#f3f4f6').stroke();
-        doc.fillColor('black'); 
+        doc.fillColor('black');
 
         columns.forEach(col => {
           drawCellText(col.label, xPos, currentY - 2, col.w, headerHeight, 'center', 'Helvetica-Bold', 8);
@@ -435,12 +435,12 @@ exports.downloadAllReports = async (req, res) => {
         } else {
           data.forEach((row, idx) => {
             const sno = idx + 1;
-            let maxH = 20; 
-            
+            let maxH = 20;
+
             doc.font('Helvetica').fontSize(9);
             columns.forEach(col => {
               const val = col.key === 'sno' ? sno.toString() : (row[col.key] || "-").toString();
-              const textH = doc.heightOfString(val, { width: col.w - 10 }); 
+              const textH = doc.heightOfString(val, { width: col.w - 10 });
               if (textH + 12 > maxH) maxH = textH + 12;
             });
 
@@ -459,7 +459,7 @@ exports.downloadAllReports = async (req, res) => {
           if (totalConfig) {
             let totals = {};
             totalConfig.sumCols.forEach(k => totals[k] = 0);
-            
+
             let totalTonnage = 0;
 
             data.forEach(r => {
@@ -480,16 +480,16 @@ exports.downloadAllReports = async (req, res) => {
             let rX = startX;
             doc.font('Helvetica-Bold').fontSize(9);
             columns.forEach(col => {
-              let cellText = " "; 
+              let cellText = " ";
               let align = 'center';
-              
+
               if (col.key === totalConfig.labelCol) {
                 cellText = totalConfig.labelText;
                 align = 'right';
               } else if (totalConfig.sumCols.includes(col.key)) {
                 cellText = totals[col.key].toString();
               } else if (totalConfig.calcTonnage && col.key === 'remarks') {
-                cellText = `Tonnage: ${totalTonnage > 0 ? (totalTonnage / 1000).toFixed(3) + ' t' : '-'}`; 
+                cellText = `Tonnage: ${totalTonnage > 0 ? (totalTonnage / 1000).toFixed(3) + ' t' : '-'}`;
               }
 
               drawCellText(cellText, rX, currentY, col.w, 20, align, 'Helvetica-Bold');
@@ -516,8 +516,8 @@ exports.downloadAllReports = async (req, res) => {
         LEFT JOIN Component c ON p.componentName = c.description
         WHERE p.reportId IN (${idsList}) 
         ORDER BY p.id ASC
-      `, 
-      { labelCol: 'componentName', labelText: 'Total : ', sumCols: ['produced', 'poured'], calcTonnage: true });
+      `,
+        { labelCol: 'componentName', labelText: 'Total : ', sumCols: ['produced', 'poured'], calcTonnage: true });
 
       // 2. Next Shift Plan
       await drawDynamicTable("Next Shift Plan :", [
@@ -534,7 +534,7 @@ exports.downloadAllReports = async (req, res) => {
         { label: "Minutes", key: "durationMinutes", w: 100 },
         { label: "Time Range", key: "durationTime", w: 165 }
       ], `SELECT * FROM DisamaticDelays WHERE reportId IN (${idsList}) ORDER BY id ASC`,
-      { labelCol: 'delay', labelText: 'Total Minutes : ', sumCols: ['durationMinutes'] });
+        { labelCol: 'delay', labelText: 'Total Minutes : ', sumCols: ['durationMinutes'] });
 
       if (checkPageBreak(80)) currentY = 50;
       doc.font('Helvetica-Bold').fontSize(10).text("Mould Hardness :", startX, currentY + 8);
@@ -545,10 +545,10 @@ exports.downloadAllReports = async (req, res) => {
 
       doc.rect(startX, currentY, tableWidth, 30).fillColor('#f3f4f6').stroke();
       doc.fillColor('black').font('Helvetica-Bold').fontSize(8);
-      
+
       drawCellText("S.No", startX, currentY, 30, 30); doc.rect(startX, currentY, 30, 30).stroke();
       drawCellText("Component Name", startX + 30, currentY, 120, 30); doc.rect(startX + 30, currentY, 120, 30).stroke();
-      
+
       doc.rect(startX + 150, currentY, 90, 15).stroke();
       drawCellText("Mould Penetration", startX + 150, currentY, 90, 15, 'center', 'Helvetica-Bold', 7);
       drawCellText("PP", startX + 150, currentY + 15, 45, 15); doc.rect(startX + 150, currentY + 15, 45, 15).stroke();
@@ -590,10 +590,10 @@ exports.downloadAllReports = async (req, res) => {
 
       const ptResult = await sql.query(`SELECT * FROM DisamaticPatternTemp WHERE reportId IN (${idsList}) ORDER BY id ASC`);
       const ptData = ptResult.recordset;
-      
+
       const sigEventText = Array.from(g.sigEvents).join(' | ') || "-";
       doc.font('Helvetica').fontSize(9);
-      const sigH = doc.heightOfString(sigEventText, { width: 240 }) + 35; 
+      const sigH = doc.heightOfString(sigEventText, { width: 240 }) + 35;
 
       let ptTableHeight = 15;
       let ptRowHeights = [];
@@ -605,7 +605,7 @@ exports.downloadAllReports = async (req, res) => {
         ptData.forEach(pt => {
           let h = 20;
           doc.font('Helvetica').fontSize(9);
-          let cnH = doc.heightOfString(pt.componentName || "-", { width: 140 }); 
+          let cnH = doc.heightOfString(pt.componentName || "-", { width: 140 });
           if (cnH + 12 > h) h = cnH + 12;
           ptTableHeight += h;
           ptRowHeights.push(h);
@@ -620,9 +620,9 @@ exports.downloadAllReports = async (req, res) => {
       doc.fillColor('black').font('Helvetica-Bold').fontSize(8);
       doc.text("Pattern Temp. in C°", startX + 5, currentY + 4);
       doc.text("Significant Event :", startX + 285, currentY + 4);
-      
+
       doc.moveTo(startX + 280, currentY).lineTo(startX + 280, currentY + splitBlockH + 15).stroke();
-      
+
       currentY += 15;
       const blockStartY = currentY;
 
@@ -633,33 +633,33 @@ exports.downloadAllReports = async (req, res) => {
       currentY += 15;
 
       if (ptData.length === 0) {
-          drawCellText("-", startX, currentY, 30, 20); doc.rect(startX, currentY, 30, 20).stroke();
-          drawCellText("-", startX + 30, currentY, 150, 20); doc.rect(startX + 30, currentY, 150, 20).stroke();
-          drawCellText("-", startX + 180, currentY, 50, 20); doc.rect(startX + 180, currentY, 50, 20).stroke();
-          drawCellText("-", startX + 230, currentY, 50, 20); doc.rect(startX + 230, currentY, 50, 20).stroke();
-          currentY += 20;
+        drawCellText("-", startX, currentY, 30, 20); doc.rect(startX, currentY, 30, 20).stroke();
+        drawCellText("-", startX + 30, currentY, 150, 20); doc.rect(startX + 30, currentY, 150, 20).stroke();
+        drawCellText("-", startX + 180, currentY, 50, 20); doc.rect(startX + 180, currentY, 50, 20).stroke();
+        drawCellText("-", startX + 230, currentY, 50, 20); doc.rect(startX + 230, currentY, 50, 20).stroke();
+        currentY += 20;
       } else {
-          ptData.forEach((pt, j) => {
-            let rH = ptRowHeights[j];
-            drawCellText(j + 1, startX, currentY, 30, rH); doc.rect(startX, currentY, 30, rH).stroke();
-            drawCellText(pt.componentName, startX + 30, currentY, 150, rH, 'left'); doc.rect(startX + 30, currentY, 150, rH).stroke();
-            drawCellText(pt.pp, startX + 180, currentY, 50, rH); doc.rect(startX + 180, currentY, 50, rH).stroke();
-            drawCellText(pt.sp, startX + 230, currentY, 50, rH); doc.rect(startX + 230, currentY, 50, rH).stroke();
-            currentY += rH;
-          });
+        ptData.forEach((pt, j) => {
+          let rH = ptRowHeights[j];
+          drawCellText(j + 1, startX, currentY, 30, rH); doc.rect(startX, currentY, 30, rH).stroke();
+          drawCellText(pt.componentName, startX + 30, currentY, 150, rH, 'left'); doc.rect(startX + 30, currentY, 150, rH).stroke();
+          drawCellText(pt.pp, startX + 180, currentY, 50, rH); doc.rect(startX + 180, currentY, 50, rH).stroke();
+          drawCellText(pt.sp, startX + 230, currentY, 50, rH); doc.rect(startX + 230, currentY, 50, rH).stroke();
+          currentY += rH;
+        });
       }
 
       if (currentY < blockStartY + splitBlockH) {
-          let diff = (blockStartY + splitBlockH) - currentY;
-          doc.rect(startX, currentY, 30, diff).stroke();
-          doc.rect(startX + 30, currentY, 150, diff).stroke();
-          doc.rect(startX + 180, currentY, 50, diff).stroke();
-          doc.rect(startX + 230, currentY, 50, diff).stroke();
+        let diff = (blockStartY + splitBlockH) - currentY;
+        doc.rect(startX, currentY, 30, diff).stroke();
+        doc.rect(startX + 30, currentY, 150, diff).stroke();
+        doc.rect(startX + 180, currentY, 50, diff).stroke();
+        doc.rect(startX + 230, currentY, 50, diff).stroke();
       }
 
       doc.font('Helvetica').fontSize(9).text(sigEventText, startX + 285, blockStartY + 5, { width: 245 });
       doc.rect(startX + 280, blockStartY, 255, splitBlockH).stroke();
-      
+
       currentY = blockStartY + splitBlockH;
 
       const maintText = Array.from(g.maintenances).join(' | ') || "-";
@@ -671,14 +671,14 @@ exports.downloadAllReports = async (req, res) => {
       // --- UPDATED FOOTER TO SHOW SUPERVISOR SIGNATURE ---
       // --- UPDATED FOOTER TO SHOW SUPERVISOR SIGNATURE STACKED ---
       const footerHeight = 50; // Increased height to fit stacked text
-      doc.rect(startX, currentY, tableWidth, footerHeight).stroke(); 
-      
+      doc.rect(startX, currentY, tableWidth, footerHeight).stroke();
+
       // 1. Draw Supervisor Name on the first line
       doc.font('Helvetica-Bold').fontSize(9).text(`Supervisor Name : ${g.supervisorName || "-"}`, startX + 330, currentY + 10);
-      
+
       // 2. Draw "Signature :" label directly below the name
       doc.text("Signature :", startX + 330, currentY + 30);
-      
+
       // 3. Draw Signature Image next to the "Signature :" label
       if (g.supervisorSignature && g.supervisorSignature.startsWith("data:image")) {
         try {
@@ -694,11 +694,168 @@ exports.downloadAllReports = async (req, res) => {
       // Move the document control text down slightly to fit the taller footer
       doc.fontSize(7).font('Helvetica').text("QF/07/FBP-03, Rev.No: 02 dt 01.10.2024", startX + 5, currentY + 35);
     }
-    
+
     doc.end();
 
   } catch (error) {
     console.error("PDF Generation Error:", error);
     if (!res.headersSent) res.status(500).json({ error: "Failed to generate PDF" });
+  }
+};
+
+// ==========================================
+//   ADMIN: BULK DATA FOR DATE RANGE
+// ==========================================
+exports.getBulkData = async (req, res) => {
+  const { fromDate, toDate } = req.query;
+  try {
+    const reportsRes = await sql.query`
+      SELECT * FROM DisamaticProductReport
+      WHERE CAST(reportDate AS DATE) BETWEEN CAST(${fromDate} AS DATE) AND CAST(${toDate} AS DATE)
+      ORDER BY reportDate ASC, shift ASC, disa ASC, id ASC`;
+    const reports = reportsRes.recordset;
+
+    const result = [];
+    for (const rep of reports) {
+      const productions = (await sql.query`SELECT * FROM DisamaticProduction WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const delays = (await sql.query`SELECT * FROM DisamaticDelays WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const nextShiftPlans = (await sql.query`SELECT * FROM DisamaticNextShiftPlan WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const mouldHardness = (await sql.query`SELECT * FROM DisamaticMouldHardness WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const patternTemps = (await sql.query`SELECT * FROM DisamaticPatternTemp WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      result.push({ ...rep, productions, delays, nextShiftPlans, mouldHardness, patternTemps });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("getBulkData error:", err);
+    res.status(500).json({ error: "Failed to fetch bulk data", details: err.message });
+  }
+};
+
+// ==========================================
+//   ADMIN: FETCH REPORT BY EXACT DATE
+// ==========================================
+exports.getByDate = async (req, res) => {
+  const { date, disa, shift } = req.query;
+  if (!date) return res.status(400).json({ error: "date is required" });
+
+  try {
+    let reportsRes;
+    if (disa && shift) {
+      reportsRes = await sql.query`
+        SELECT * FROM DisamaticProductReport
+        WHERE CAST(reportDate AS DATE) = CAST(${date} AS DATE) AND disa = ${disa} AND shift = ${shift}
+        ORDER BY id ASC`;
+    } else if (disa) {
+      reportsRes = await sql.query`
+        SELECT * FROM DisamaticProductReport
+        WHERE CAST(reportDate AS DATE) = CAST(${date} AS DATE) AND disa = ${disa}
+        ORDER BY shift ASC, id ASC`;
+    } else {
+      reportsRes = await sql.query`
+        SELECT * FROM DisamaticProductReport
+        WHERE CAST(reportDate AS DATE) = CAST(${date} AS DATE)
+        ORDER BY shift ASC, disa ASC, id ASC`;
+    }
+
+    const reports = reportsRes.recordset;
+    const result = [];
+    for (const rep of reports) {
+      const productions = (await sql.query`SELECT * FROM DisamaticProduction WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const delays = (await sql.query`SELECT * FROM DisamaticDelays WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const nextShiftPlans = (await sql.query`SELECT * FROM DisamaticNextShiftPlan WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const mouldHardness = (await sql.query`SELECT * FROM DisamaticMouldHardness WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const patternTemps = (await sql.query`SELECT * FROM DisamaticPatternTemp WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      result.push({ ...rep, productions, delays, nextShiftPlans, mouldHardness, patternTemps });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("getByDate error:", err);
+    res.status(500).json({ error: "Failed to fetch report by date", details: err.message });
+  }
+};
+
+// ==========================================
+//   ADMIN: UPDATE DISAMATIC REPORT
+// ==========================================
+exports.updateDisamaticReport = async (req, res) => {
+  const { id } = req.params;
+  const { incharge, member, ppOperator, supervisorName, significantEvent, maintenance,
+    productions, delays, nextShiftPlans, mouldHardness, patternTemps } = req.body;
+
+  try {
+    await sql.query`
+      UPDATE DisamaticProductReport SET
+        incharge = ${incharge || null},
+        member = ${member || null},
+        ppOperator = ${ppOperator || null},
+        supervisorName = ${supervisorName || null},
+        significantEvent = ${significantEvent || null},
+        maintenance = ${maintenance || null}
+      WHERE id = ${Number(id)}`;
+
+    // Update productions
+    if (productions) {
+      for (const p of productions) {
+        if (p.id) {
+          await sql.query`UPDATE DisamaticProduction SET
+            componentName = ${p.componentName || ''},
+            mouldCounterNo = ${Number(p.mouldCounterNo) || 0},
+            produced = ${p.produced !== null && p.produced !== undefined ? Number(p.produced) : null},
+            poured = ${Number(p.poured) || 0},
+            cycleTime = ${Number(p.cycleTime) || 0},
+            mouldsPerHour = ${Number(p.mouldsPerHour) || 0},
+            remarks = ${p.remarks || null}
+            WHERE id = ${Number(p.id)}`;
+        }
+      }
+    }
+
+    // Update delays
+    if (delays) {
+      for (const d of delays) {
+        if (d.id) {
+          await sql.query`UPDATE DisamaticDelays SET
+            delay = ${d.delay || d.delayType || ''},
+            durationMinutes = ${Number(d.durationMinutes || d.duration) || 0},
+            durationTime = ${d.durationTime || ''}
+            WHERE id = ${Number(d.id)}`;
+        }
+      }
+    }
+
+    // Update mould hardness
+    if (mouldHardness) {
+      for (const h of mouldHardness) {
+        if (h.id) {
+          await sql.query`UPDATE DisamaticMouldHardness SET
+            componentName = ${h.componentName || ''},
+            penetrationPP = ${Number(h.penetrationPP) || 0},
+            penetrationSP = ${Number(h.penetrationSP) || 0},
+            bScalePP = ${Number(h.bScalePP) || 0},
+            bScaleSP = ${Number(h.bScaleSP) || 0},
+            remarks = ${h.remarks || null}
+            WHERE id = ${Number(h.id)}`;
+        }
+      }
+    }
+
+    // Update pattern temps
+    if (patternTemps) {
+      for (const pt of patternTemps) {
+        if (pt.id) {
+          await sql.query`UPDATE DisamaticPatternTemp SET
+            componentName = ${pt.componentName || ''},
+            pp = ${Number(pt.pp) || 0},
+            sp = ${Number(pt.sp) || 0},
+            remarks = ${pt.remarks || null}
+            WHERE id = ${Number(pt.id)}`;
+        }
+      }
+    }
+
+    res.json({ message: "Report updated successfully" });
+  } catch (err) {
+    console.error("updateDisamaticReport error:", err);
+    res.status(500).json({ error: "Failed to update report", details: err.message });
   }
 };
