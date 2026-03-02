@@ -7,11 +7,9 @@ const path = require("path");
 //   SUBMIT DAILY PRODUCTION PERFORMANCE
 // ==========================================
 exports.createDailyPerformance = async (req, res) => {
-  // 🔥 NEW: Destructure operatorSignature from the body
   const { productionDate, disa, summary, details, unplannedReasons, signatures, delays, operatorSignature } = req.body;
 
   try {
-    // 1. Insert Main Report (Now includes operatorSignature)
     const reportResult = await sql.query`
             INSERT INTO DailyPerformanceReport (productionDate, disa, unplannedReasons, incharge, hof, hod, operatorSignature)
             OUTPUT INSERTED.id
@@ -20,7 +18,6 @@ exports.createDailyPerformance = async (req, res) => {
 
     const reportId = reportResult.recordset[0].id;
 
-    // 2. Insert Summary Data
     const shifts = ["I", "II", "III"];
     for (let shift of shifts) {
       const sData = summary[shift];
@@ -30,7 +27,6 @@ exports.createDailyPerformance = async (req, res) => {
                         ${Number(sData.tonnage) || 0}, ${Number(sData.casted) || 0}, ${Number(sData.value) || 0})`;
     }
 
-    // 3. Insert Details Data
     if (details && details.length > 0) {
       for (let d of details) {
         if (d.patternCode) {
@@ -45,7 +41,6 @@ exports.createDailyPerformance = async (req, res) => {
       }
     }
 
-    // 4. Insert Delays Data into the Productiondelays table
     if (delays && delays.length > 0) {
       for (let delay of delays) {
         await sql.query`
@@ -119,11 +114,8 @@ exports.getDelaysByDateAndDisa = async (req, res) => {
 // ==========================================
 exports.getFormUsers = async (req, res) => {
   try {
-    // Fetches supervisors for the "In-charge" dropdown
     const incharges = await sql.query`SELECT username as name FROM dbo.Users WHERE role = 'operator' ORDER BY username ASC`;
-    // Fetches HOFs
     const hofs = await sql.query`SELECT username as name FROM dbo.Users WHERE role = 'hof' ORDER BY username ASC`;
-    // Fetches HODs
     const hods = await sql.query`SELECT username as name FROM dbo.Users WHERE role = 'hod' ORDER BY username ASC`;
 
     res.json({
@@ -206,42 +198,52 @@ exports.signHod = async (req, res) => {
 };
 
 // ==========================================
-//           DOWNLOAD PDF REPORT
+// 🔥 BULK MULTI-PAGE PDF GENERATOR
 // ==========================================
 exports.downloadPDF = async (req, res) => {
-  const { date, disa } = req.query;
+  const { date, disa, fromDate, toDate } = req.query;
 
-  if (!date || !disa) {
-    return res.status(400).json({ message: "Date and DISA are required to download the report." });
+  if (!date && !fromDate) {
+    return res.status(400).json({ message: "Date parameters are required." });
   }
 
   try {
-    // 1. Fetch ALL Main Reports for this Date & DISA
-    const reportQuery = await sql.query`
-      SELECT * FROM DailyPerformanceReport 
-      WHERE CAST(productionDate AS DATE) = CAST(${date} AS DATE) AND disa = ${disa}
-      ORDER BY id DESC
-    `;
-    const reports = reportQuery.recordset;
+    let reports = [];
 
-    if (reports.length === 0) {
-      return res.status(404).json({ message: "No report found for this Date and DISA. Please submit the form first." });
+    // If Date Range is provided (Admin Bulk Export)
+    if (fromDate && toDate) {
+      const reportQuery = await sql.query`
+        SELECT * FROM DailyPerformanceReport 
+        WHERE CAST(productionDate AS DATE) BETWEEN CAST(${fromDate} AS DATE) AND CAST(${toDate} AS DATE)
+        ORDER BY productionDate ASC, disa ASC, id ASC
+      `;
+      reports = reportQuery.recordset;
+    } 
+    // If exact date & disa is provided (Single Export)
+    else if (date && disa) {
+      const safeDisa = disa.replace('DISA - ', '').trim();
+      const reportQuery = await sql.query`
+        SELECT * FROM DailyPerformanceReport 
+        WHERE CAST(productionDate AS DATE) = CAST(${date} AS DATE) 
+        AND (disa = ${safeDisa} OR disa = 'DISA - ' + ${safeDisa})
+        ORDER BY id DESC
+      `;
+      reports = reportQuery.recordset;
     }
 
-    // 2. Fetch Delays Data
-    const delaysQuery = await sql.query`
-      SELECT r.shift, d.durationMinutes as duration, d.delay as reason
-      FROM DisamaticProductReport r
-      JOIN DisamaticDelays d ON r.id = d.reportId
-      WHERE CAST(r.reportDate AS DATE) = CAST(${date} AS DATE) AND r.disa = ${disa}
-      ORDER BY r.shift, d.id
-    `;
-    const delaysData = delaysQuery.recordset;
+    if (!reports || reports.length === 0) {
+      // Send 200 with exists:false flag to gracefully tell the frontend to stop without a 404 error
+      return res.status(200).json({ exists: false, message: "No reports found for this range." });
+    }
 
-    // --- INITIALIZE PDF ---
     const doc = new PDFDocument({ margin: 30, size: 'A4', bufferPages: true });
+    
+    const filename = (fromDate && toDate) 
+        ? `Performance_Reports_${fromDate}_to_${toDate}.pdf` 
+        : `Performance_Report_DISA-${disa}_${date}.pdf`;
+
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="Daily_Performance_${date}_${disa}.pdf"`);
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     doc.pipe(res);
 
     const startX = 30;
@@ -279,19 +281,32 @@ exports.downloadPDF = async (req, res) => {
 
       const textHeight = doc.heightOfString(content, { width: innerWidth });
       const topPad = h > textHeight ? (h - textHeight) / 2 : 2;
-
       doc.fillColor('black').text(content, x + 2, y + topPad, { width: innerWidth, align: align });
     };
 
     // ==========================================
-    //       LOOP THROUGH ALL REPORTS (DESC)
+    //       LOOP THROUGH ALL REPORTS
     // ==========================================
     for (let rIndex = 0; rIndex < reports.length; rIndex++) {
       const report = reports[rIndex];
       const reportId = report.id;
+      
+      // Extract specific date and disa for this exact report to fetch accurate delays
+      const reportDateStr = new Date(report.productionDate).toISOString().split('T')[0];
+      const safeDisa = report.disa.replace('DISA - ', '').trim();
 
       const summaryData = (await sql.query`SELECT * FROM DailyPerformanceSummary WHERE reportId = ${reportId}`).recordset;
       const detailsData = (await sql.query`SELECT * FROM DailyPerformanceDetails WHERE reportId = ${reportId} ORDER BY id ASC`).recordset;
+      
+      const delaysQuery = await sql.query`
+        SELECT r.shift, d.durationMinutes as duration, d.delay as reason
+        FROM DisamaticProductReport r
+        JOIN DisamaticDelays d ON r.id = d.reportId
+        WHERE CAST(r.reportDate AS DATE) = CAST(${reportDateStr} AS DATE) 
+        AND (r.disa = ${safeDisa} OR r.disa = 'DISA - ' + ${safeDisa})
+        ORDER BY r.shift, d.id
+      `;
+      const delaysData = delaysQuery.recordset;
 
       if (rIndex > 0) {
         doc.addPage();
@@ -313,7 +328,7 @@ exports.downloadPDF = async (req, res) => {
 
       // DATE Row
       doc.rect(startX, currentY, tableWidth, 20).stroke();
-      doc.font('Helvetica-Bold').fontSize(10).text(`DATE OF PRODUCTION : ${date.split('-').reverse().join('-')}           DISA: ${disa}`, startX + 5, currentY + 6);
+      doc.font('Helvetica-Bold').fontSize(10).text(`DATE OF PRODUCTION : ${reportDateStr.split('-').reverse().join('-')}           DISA: ${report.disa}`, startX + 5, currentY + 6);
       currentY += 20;
 
       // 2. SUMMARY TABLE
@@ -435,7 +450,6 @@ exports.downloadPDF = async (req, res) => {
         });
       }
 
-      // Details Total Row
       checkPageBreak(20);
       xPos = startX;
       const offsetW = detCols[0].w + detCols[1].w + detCols[2].w + detCols[3].w + detCols[4].w;
@@ -449,35 +463,26 @@ exports.downloadPDF = async (req, res) => {
       drawCell(detTotalWeight > 0 ? Math.round(detTotalWeight) : "", xPos, currentY, detCols[8].w, 20, 'center', 'Helvetica', 9, true);
       currentY += 30;
 
-      // ==========================================
-      // 🔥 FOOTER REASONS & SIGNATURES UPDATE
-      // ==========================================
       checkPageBreak(80);
       doc.rect(startX, currentY, tableWidth, 40).stroke();
       doc.font('Helvetica-Bold').fontSize(8).text("Reasons for producing un-planned items.", startX + 5, currentY + 5);
       doc.font('Helvetica').text(report.unplannedReasons || "-", startX + 5, currentY + 15, { width: tableWidth - 10 });
       currentY += 40;
 
-      // Draw the Signature Box (Taller to fit images above text)
       doc.rect(startX, currentY, tableWidth, 50).stroke();
 
-      // 1. Draw Operator Signature Image
       if (report.operatorSignature && report.operatorSignature.startsWith('data:image')) {
         try {
           const imgBuffer = Buffer.from(report.operatorSignature.split('base64,')[1], 'base64');
           doc.image(imgBuffer, startX + 20, currentY + 5, { fit: [100, 25] });
         } catch (e) { }
       }
-
-      // 2. Draw HOF Signature Image (We will build the HOF signing step next!)
       if (report.hofSignature && report.hofSignature.startsWith('data:image')) {
         try {
           const imgBuffer = Buffer.from(report.hofSignature.split('base64,')[1], 'base64');
           doc.image(imgBuffer, startX + 220, currentY + 5, { fit: [100, 25] });
         } catch (e) { }
       }
-
-      // 3. Draw HOD Signature Image (We will build the HOD signing step next!)
       if (report.hodSignature && report.hodSignature.startsWith('data:image')) {
         try {
           const imgBuffer = Buffer.from(report.hodSignature.split('base64,')[1], 'base64');
@@ -485,7 +490,6 @@ exports.downloadPDF = async (req, res) => {
         } catch (e) { }
       }
 
-      // Draw Signature Text Labels
       doc.font('Helvetica-Bold').fontSize(9);
       doc.text(`In-charge: ${report.incharge || "-"}`, startX + 20, currentY + 35);
       doc.text(`HOF: ${report.hof || "-"}`, startX + 220, currentY + 35);
@@ -548,11 +552,9 @@ exports.downloadPDF = async (req, res) => {
       checkPageBreak(20);
       doc.font('Helvetica').fontSize(8).fillColor('black');
       doc.text("QF/07/FBP-15, Rev.No:01 dt 10.06.2019", startX, currentY);
-
     }
 
     doc.end();
-
   } catch (error) {
     console.error("PDF Generation Error:", error);
     if (!res.headersSent) res.status(500).json({ error: "Failed to generate PDF" });
@@ -629,7 +631,6 @@ exports.updateReport = async (req, res) => {
   const { summary, details, unplannedReasons, incharge, hof, hod } = req.body;
 
   try {
-    // Update main report fields
     await sql.query`
             UPDATE DailyPerformanceReport 
             SET unplannedReasons = ${unplannedReasons || null},
@@ -638,7 +639,6 @@ exports.updateReport = async (req, res) => {
                 hod = ${hod || null}
             WHERE id = ${Number(id)}`;
 
-    // Update summary rows
     if (summary) {
       for (const shift of Object.keys(summary)) {
         const s = summary[shift];
@@ -654,7 +654,6 @@ exports.updateReport = async (req, res) => {
       }
     }
 
-    // Update detail rows
     if (details && details.length > 0) {
       for (const d of details) {
         if (d.id) {

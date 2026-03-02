@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+// --- Utility for Formatting ---
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
     return new Date(dateStr).toLocaleDateString('en-GB');
@@ -12,7 +13,7 @@ const getReportMonthYear = (fromDate) => {
 };
 
 // ============================================================================
-// 1. UNPOURED MOULD DETAILS
+// 1. UNPOURED MOULD DETAILS (FIXED: Supports Multiple DISAs per day for Admin)
 // ============================================================================
 export const generateUnPouredMouldPDF = async (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
@@ -51,91 +52,99 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
 
     const allColumns = [...baseColumns, ...customCols];
 
-    const groupedByDate = {};
+    // 🔥 FIX: Group by Date AND Machine so multiple DISAs don't overwrite each other
+    const groupedData = {};
     records.forEach(row => {
         const dateKey = String(row.RecordDate).split('T')[0];
-        if (!groupedByDate[dateKey]) groupedByDate[dateKey] = { 1: {}, 2: {}, 3: {} };
-        groupedByDate[dateKey][row.Shift] = row;
+        const machine = row.DisaMachine || 'DISA - I';
+
+        if (!groupedData[dateKey]) groupedData[dateKey] = {};
+        if (!groupedData[dateKey][machine]) groupedData[dateKey][machine] = { 1: {}, 2: {}, 3: {} };
+        
+        groupedData[dateKey][machine][row.Shift] = row;
     });
 
-    const dates = Object.keys(groupedByDate).sort();
+    let pageIndex = 0;
 
-    dates.forEach((dateKey, pageIndex) => {
-        if (pageIndex > 0) doc.addPage();
+    Object.keys(groupedData).sort().forEach(dateKey => {
+        Object.keys(groupedData[dateKey]).sort().forEach(machine => {
+            if (pageIndex > 0) doc.addPage();
+            pageIndex++;
 
-        const shiftsData = groupedByDate[dateKey];
-        const disa = shiftsData[1]?.DisaMachine || shiftsData[2]?.DisaMachine || shiftsData[3]?.DisaMachine || 'DISA - I';
+            const shiftsData = groupedData[dateKey][machine];
+            const disa = machine;
 
-        doc.setFontSize(16); doc.setFont('helvetica', 'bold');
-        doc.text("UN POURED MOULD DETAILS", 148.5, 15, { align: 'center' });
-        doc.setFontSize(11); doc.text(` ${disa}`, 8, 25);
-        doc.text(`DATE: ${formatDate(dateKey)}`, 289 - doc.getTextWidth(`DATE: ${formatDate(dateKey)}`) - 8, 25);
+            doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+            doc.text("UN POURED MOULD DETAILS", 148.5, 15, { align: 'center' });
+            doc.setFontSize(11); doc.text(` ${disa}`, 8, 25);
+            doc.text(`DATE: ${formatDate(dateKey)}`, 289 - doc.getTextWidth(`DATE: ${formatDate(dateKey)}`) - 8, 25);
 
-        const headRow1 = [{ content: 'SHIFT', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } }];
-        let currentGroup = null; let groupSpan = 0;
-        allColumns.forEach((col) => {
-            if (!currentGroup) { currentGroup = col.group; groupSpan = 1; }
-            else if (currentGroup === col.group) { groupSpan++; }
-            else {
-                headRow1.push({ content: currentGroup, colSpan: groupSpan, styles: { halign: 'center' } });
-                currentGroup = col.group; groupSpan = 1;
-            }
-        });
-        if (currentGroup) headRow1.push({ content: currentGroup, colSpan: groupSpan, styles: { halign: 'center' } });
-        headRow1.push({ content: 'TOTAL', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: [220, 220, 220] } });
-        
-        // 🔥 Add signature column header to PDF
-        headRow1.push({ content: 'SIGNATURE', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } });
-
-        const headRow2 = allColumns.map(col => ({ content: col.label, styles: { halign: 'center', valign: 'middle', fontSize: 5.5 } }));
-
-        const bodyRows = [1, 2, 3].map(shift => {
-            const row = [shift.toString()];
-            let rowTotal = 0;
-            allColumns.forEach(col => {
-                const val = col.isCustom ? shiftsData[shift]?.customValues?.[col.id] : shiftsData[shift]?.[col.key];
-                row.push(val === '' || val === null || val === undefined ? '-' : val.toString());
-                rowTotal += parseInt(val) || 0;
+            const headRow1 = [{ content: 'SHIFT', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } }];
+            let currentGroup = null; let groupSpan = 0;
+            allColumns.forEach((col) => {
+                if (!currentGroup) { currentGroup = col.group; groupSpan = 1; }
+                else if (currentGroup === col.group) { groupSpan++; }
+                else {
+                    headRow1.push({ content: currentGroup, colSpan: groupSpan, styles: { halign: 'center' } });
+                    currentGroup = col.group; groupSpan = 1;
+                }
             });
-            row.push(rowTotal === 0 ? '-' : rowTotal.toString());
-            row.push(''); // Empty cell for image
-            return row;
-        });
+            if (currentGroup) headRow1.push({ content: currentGroup, colSpan: groupSpan, styles: { halign: 'center' } });
+            headRow1.push({ content: 'TOTAL', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: [220, 220, 220] } });
+            headRow1.push({ content: 'SIGNATURE', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } });
 
-        const totalRow = ['TOTAL'];
-        let grandTotal = 0;
-        allColumns.forEach(col => {
-            const colTotal = [1, 2, 3].reduce((sum, shift) => {
-                const val = col.isCustom ? shiftsData[shift]?.customValues?.[col.id] : shiftsData[shift]?.[col.key];
-                return sum + (parseInt(val) || 0);
-            }, 0);
-            totalRow.push(colTotal === 0 ? '-' : colTotal.toString());
-            grandTotal += colTotal;
-        });
-        totalRow.push(grandTotal === 0 ? '-' : grandTotal.toString());
-        totalRow.push('-');
-        bodyRows.push(totalRow);
+            const headRow2 = allColumns.map(col => ({ content: col.label, styles: { halign: 'center', valign: 'middle', fontSize: 5.5 } }));
 
-        autoTable(doc, {
-            startY: 32, margin: { left: 5, right: 5 }, head: [headRow1, headRow2], body: bodyRows, theme: 'grid',
-            styles: { fontSize: 8, cellPadding: { top: 3.5, right: 1, bottom: 3.5, left: 1 }, lineColor: [0, 0, 0], lineWidth: 0.15, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
-            headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', minCellHeight: 12 }, bodyStyles: { minCellHeight: 10 },
-            columnStyles: { [allColumns.length + 2]: { cellWidth: 25 } },
-            didDrawCell: function(data) {
-                // 🔥 Draw the signature image in the last column
-                if (data.section === 'body' && data.column.index === allColumns.length + 2 && data.row.index < 3) {
-                    const shift = data.row.index + 1;
-                    const sigData = shiftsData[shift]?.OperatorSignature;
-                    if (sigData && sigData.startsWith('data:image')) {
-                        try { doc.addImage(sigData, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) {}
+            const bodyRows = [1, 2, 3].map(shift => {
+                const row = [shift.toString()];
+                let rowTotal = 0;
+                allColumns.forEach(col => {
+                    const val = col.isCustom ? shiftsData[shift]?.customValues?.[col.id] : shiftsData[shift]?.[col.key];
+                    row.push(val === '' || val === null || val === undefined ? '-' : val.toString());
+                    rowTotal += parseInt(val) || 0;
+                });
+                row.push(rowTotal === 0 ? '-' : rowTotal.toString());
+                row.push('SIG'); // Placeholder for image
+                return row;
+            });
+
+            const totalRow = ['TOTAL'];
+            let grandTotal = 0;
+            allColumns.forEach(col => {
+                const colTotal = [1, 2, 3].reduce((sum, shift) => {
+                    const val = col.isCustom ? shiftsData[shift]?.customValues?.[col.id] : shiftsData[shift]?.[col.key];
+                    return sum + (parseInt(val) || 0);
+                }, 0);
+                totalRow.push(colTotal === 0 ? '-' : colTotal.toString());
+                grandTotal += colTotal;
+            });
+            totalRow.push(grandTotal === 0 ? '-' : grandTotal.toString());
+            totalRow.push('-');
+            bodyRows.push(totalRow);
+
+            autoTable(doc, {
+                startY: 32, margin: { left: 5, right: 5 }, head: [headRow1, headRow2], body: bodyRows, theme: 'grid',
+                styles: { fontSize: 8, cellPadding: { top: 3.5, right: 1, bottom: 3.5, left: 1 }, lineColor: [0, 0, 0], lineWidth: 0.15, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
+                headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', minCellHeight: 12 }, bodyStyles: { minCellHeight: 10 },
+                columnStyles: { [allColumns.length + 2]: { cellWidth: 25 } },
+                didDrawCell: function(data) {
+                    if (data.section === 'body' && data.column.index === allColumns.length + 2 && data.row.index < 3) {
+                        const shift = data.row.index + 1;
+                        const sigData = shiftsData[shift]?.OperatorSignature;
+                        if (sigData && sigData.startsWith('data:image')) {
+                            try { doc.addImage(sigData, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) {}
+                        }
+                    }
+                },
+                didParseCell: function (data) { 
+                    if (data.section === 'body' && data.row.index === bodyRows.length - 1) { 
+                        data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240]; 
+                    } 
+                    if (data.section === 'body' && data.column.index === allColumns.length + 2 && data.row.index < 3) {
+                        if (data.cell.raw === 'SIG') data.cell.text = ''; 
                     }
                 }
-            },
-            didParseCell: function (data) { 
-                if (data.section === 'body' && data.row.index === bodyRows.length - 1) { 
-                    data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240]; 
-                } 
-            }
+            });
         });
     });
 
@@ -145,160 +154,155 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
 // ============================================================================
 // 2. DMM SETTING PARAMETERS
 // ============================================================================
+// ============================================================================
+// 2. DMM SETTING PARAMETERS (FIXED: Correct Data Structure & Flat Row Mapping)
+// ============================================================================
 export const generateDmmSettingPDF = async (data, dateRange) => {
-    const doc = new jsPDF('l', 'mm', 'a4');
+    const doc = new jsPDF('l', 'mm', 'a4');
 
-    const metaRecords = data.meta || [];
-    const transRecords = data.trans || [];
-    
-    if (metaRecords.length === 0) {
-        doc.setFontSize(14); doc.text("No data found for the selected date range.", 148.5, 40, { align: 'center' });
-        doc.save(`DMM_Setting_Bulk_${dateRange.from}_to_${dateRange.to}.pdf`);
-        return;
-    }
+    // 🔥 FIX 1: Correctly target the 'trans' array sent from the backend
+    const records = data.trans || data.records || (Array.isArray(data) ? data : []);
+    
+    if (records.length === 0) {
+        doc.setFontSize(14); doc.text("No data found for the selected date range.", 148.5, 40, { align: 'center' });
+        doc.save(`DMM_Setting_Bulk_${dateRange.from}_to_${dateRange.to}.pdf`);
+        return;
+    }
 
-    let customCols = [];
-    try {
-        const configRes = await fetch('http://localhost:5000/api/config/dmm-setting-parameters/master');
-        const configData = await configRes.json();
-        customCols = (configData.config || []).map(c => ({
-            key: `custom_${c.id}`, id: c.id, label: c.columnLabel.replace('\\n', '\n'), isCustom: true
-        }));
-    } catch(e) { console.error("Could not fetch DMM Custom Schema for PDF"); }
+    let customCols = [];
+    try {
+        const configRes = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/config/dmm-setting-parameters/master`);
+        const configData = await configRes.json();
+        customCols = (configData.config || []).map(c => ({
+            key: `custom_${c.id}`, id: c.id, label: c.columnLabel.replace('\\n', '\n'), isCustom: true
+        }));
+    } catch(e) { console.error("Could not fetch DMM Custom Schema for PDF", e); }
 
-    const baseColumns = [
-        { key: 'Customer', label: 'CUSTOMER' }, { key: 'ItemDescription', label: 'ITEM DESCRIPTION' }, { key: 'Time', label: 'TIME' },
-        { key: 'PpThickness', label: 'PP\nTHICKNESS' }, { key: 'PpHeight', label: 'PP\nHEIGHT' },
-        { key: 'SpThickness', label: 'SP\nTHICKNESS' }, { key: 'SpHeight', label: 'SP\nHEIGHT' },
-        { key: 'CoreMaskOut', label: 'CORE MASK\n(OUT)' }, { key: 'CoreMaskIn', label: 'CORE MASK\n(IN)' },
-        { key: 'SandShotPressure', label: 'SAND SHOT\nPRESSURE' }, { key: 'CorrectionShotTime', label: 'CORRECTION\nSHOT TIME' },
-        { key: 'SqueezePressure', label: 'SQUEEZE\nPRESSURE' }, { key: 'PpStripAccel', label: 'PP STRIP\nACCEL' },
-        { key: 'PpStripDist', label: 'PP STRIP\nDIST' }, { key: 'SpStripAccel', label: 'SP STRIP\nACCEL' },
-        { key: 'SpStripDist', label: 'SP STRIP\nDIST' }, { key: 'MouldThickness', label: 'MOULD\nTHICKNESS' },
-        { key: 'CloseUpForce', label: 'CLOSE UP\nFORCE' }, { key: 'Remarks', label: 'REMARKS' }
-    ];
+    const baseColumns = [
+        { key: 'Customer', label: 'CUSTOMER' }, { key: 'ItemDescription', label: 'ITEM DESCRIPTION' }, { key: 'Time', label: 'TIME' },
+        { key: 'PpThickness', label: 'PP\nTHICKNESS' }, { key: 'PpHeight', label: 'PP\nHEIGHT' },
+        { key: 'SpThickness', label: 'SP\nTHICKNESS' }, { key: 'SpHeight', label: 'SP\nHEIGHT' },
+        { key: 'CoreMaskOut', label: 'CORE MASK\n(OUT)' }, { key: 'CoreMaskIn', label: 'CORE MASK\n(IN)' },
+        { key: 'SandShotPressure', label: 'SAND SHOT\nPRESSURE' }, { key: 'CorrectionShotTime', label: 'CORRECTION\nSHOT TIME' },
+        { key: 'SqueezePressure', label: 'SQUEEZE\nPRESSURE' }, { key: 'PpStripAccel', label: 'PP STRIP\nACCEL' },
+        { key: 'PpStripDist', label: 'PP STRIP\nDIST' }, { key: 'SpStripAccel', label: 'SP STRIP\nACCEL' },
+        { key: 'SpStripDist', label: 'SP STRIP\nDIST' }, { key: 'MouldThickness', label: 'MOULD\nTHICKNESS' },
+        { key: 'CloseUpForce', label: 'CLOSE UP\nFORCE' }, { key: 'Remarks', label: 'REMARKS' }
+    ];
 
-    const allColumns = [...baseColumns, ...customCols];
+    const allColumns = [...baseColumns, ...customCols];
 
-    const groupedData = {};
-    metaRecords.forEach(m => {
-        const d = String(m.RecordDate).split('T')[0];
-        const machine = m.DisaMachine;
-        const shift = m.Shift;
+    // 🔥 FIX 2: Rebuild the data grouping directly from the flat records array
+    const groupedData = {};
+    records.forEach(row => {
+        const d = String(row.RecordDate || row.date).split('T')[0];
+        const machine = row.DisaMachine || 'DISA - I';
+        const shift = row.Shift;
 
-        if (!groupedData[d]) groupedData[d] = {};
-        if (!groupedData[d][machine]) groupedData[d][machine] = { shiftsMeta: {}, shiftsData: {} };
+        if (!groupedData[d]) groupedData[d] = {};
+        if (!groupedData[d][machine]) groupedData[d][machine] = { shiftsMeta: {}, shiftsData: { 1: [], 2: [], 3: [] } };
+        
+        // Populate Meta info (Operator, Supervisor, Idle Status) once per shift
+        if (!groupedData[d][machine].shiftsMeta[shift]) {
+            groupedData[d][machine].shiftsMeta[shift] = {
+                operator: row.OperatorName || '',
+                supervisor: row.SupervisorName || '',
+                supervisorSignature: row.SupervisorSignature || '',
+                isIdle: row.IsIdle === true || Number(row.IsIdle) === 1
+            };
+        }
         
-        if (!groupedData[d][machine].shiftsMeta[shift]) {
-            groupedData[d][machine].shiftsMeta[shift] = {
-                operator: m.OperatorName || '',
-                supervisor: m.SupervisorName || '',
-                supervisorSignature: m.SupervisorSignature || '',
-                isIdle: m.IsIdle === true || m.IsIdle === 1
-            };
-            groupedData[d][machine].shiftsData[shift] = [];
-        }
-    });
+        // Push the actual row data to that shift
+        groupedData[d][machine].shiftsData[shift].push(row);
+    });
 
-    transRecords.forEach(t => {
-        const d = String(t.RecordDate).split('T')[0];
-        if (groupedData[d] && groupedData[d][t.DisaMachine]) {
-            groupedData[d][t.DisaMachine].shiftsData[t.Shift].push(t);
-        }
-    });
+    let isFirstPage = true;
 
-    let isFirstPage = true;
+    Object.keys(groupedData).sort().forEach(dateKey => {
+        Object.keys(groupedData[dateKey]).sort().forEach(machine => {
+            if (!isFirstPage) doc.addPage();
+            isFirstPage = false;
 
-    Object.keys(groupedData).sort().forEach(dateKey => {
-        Object.keys(groupedData[dateKey]).sort().forEach(machine => {
-            if (!isFirstPage) doc.addPage();
-            isFirstPage = false;
+            const machineData = groupedData[dateKey][machine];
+            
+            doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+            doc.text("SAKTHI AUTO COMPONENT LIMITED", 148.5, 10, { align: 'center' });
+            doc.setFontSize(16); doc.text("DMM SETTING PARAMETERS CHECK SHEET", 148.5, 18, { align: 'center' });
 
-            const machineData = groupedData[dateKey][machine];
-            
-            doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-            doc.text("SAKTHI AUTO COMPONENT LIMITED", 148.5, 10, { align: 'center' });
-            doc.setFontSize(16); doc.text("DMM SETTING PARAMETERS CHECK SHEET", 148.5, 18, { align: 'center' });
+            doc.setFontSize(10); doc.setFont('helvetica', 'normal');
+            doc.text(` ${machine}`, 10, 28);
+            doc.text(`DATE: ${formatDate(dateKey)}`, 280, 28, { align: 'right' });
 
-            doc.setFontSize(10); doc.setFont('helvetica', 'normal');
-            doc.text(` ${machine}`, 10, 28);
-            doc.text(`DATE: ${formatDate(dateKey)}`, 280, 28, { align: 'right' });
+            autoTable(doc, {
+                startY: 32, margin: { left: 10, right: 10 },
+                head: [['SHIFT', 'OPERATOR NAME', 'VERIFIED BY', 'SIGNATURE']],
+                body: [1, 2, 3].map(s => {
+                    const m = machineData.shiftsMeta[s] || {};
+                    return [`SHIFT ${s === 1 ? 'I' : s === 2 ? 'II' : 'III'}`, m.operator || '-', m.supervisor || '-', ''];
+                }),
+                theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle' },
+                headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+                didDrawCell: function (data) {
+                    if (data.section === 'body' && data.column.index === 3) {
+                        const m = machineData.shiftsMeta[data.row.index + 1] || {};
+                        if (m.supervisorSignature && m.supervisorSignature.startsWith('data:image')) {
+                            try { doc.addImage(m.supervisorSignature, 'PNG', data.cell.x + 2, data.cell.y + 1, data.cell.width - 4, data.cell.height - 2); } catch (e) {}
+                        }
+                    }
+                }
+            });
 
-            autoTable(doc, {
-                startY: 32, margin: { left: 10, right: 10 },
-                head: [['SHIFT', 'OPERATOR NAME', 'VERIFIED BY', 'SIGNATURE']],
-                body: [1, 2, 3].map(s => {
-                    const m = machineData.shiftsMeta[s] || {};
-                    return [`SHIFT ${s === 1 ? 'I' : s === 2 ? 'II' : 'III'}`, m.operator || '-', m.supervisor || '-', ''];
-                }),
-                theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle' },
-                headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-                didDrawCell: function (data) {
-                    if (data.section === 'body' && data.column.index === 3) {
-                        const m = machineData.shiftsMeta[data.row.index + 1] || {};
-                        if (m.supervisorSignature && m.supervisorSignature.startsWith('data:image')) {
-                            try { doc.addImage(m.supervisorSignature, 'PNG', data.cell.x + 2, data.cell.y + 1, data.cell.width - 4, data.cell.height - 2); } catch (e) {}
-                        }
-                    }
-                }
-            });
+            let currentY = doc.lastAutoTable.finalY + 8;
 
-            let currentY = doc.lastAutoTable.finalY + 8;
+            [1, 2, 3].forEach((shift, index) => {
+                const m = machineData.shiftsMeta[shift] || {};
+                const t = machineData.shiftsData[shift] || [];
+                const isIdle = m.isIdle;
+                const shiftLabel = shift === 1 ? 'I' : shift === 2 ? 'II' : 'III';
 
-            [1, 2, 3].forEach((shift, index) => {
-                const m = machineData.shiftsMeta[shift] || {};
-                const t = machineData.shiftsData[shift] || [];
-                const isIdle = m.isIdle === true || Number(m.isIdle) === 1;
-                const shiftLabel = shift === 1 ? 'I' : shift === 2 ? 'II' : 'III';
+                const tableHeader = [
+                    [{ content: `SHIFT ${shiftLabel}`, colSpan: allColumns.length + 1, styles: { halign: 'center', fontStyle: 'bold', fillColor: [200, 200, 200], textColor: [0, 0, 0] } }],
+                    [{ content: 'S.No', styles: { cellWidth: 8 } }, ...allColumns.map(col => ({ content: col.label, styles: { cellWidth: 'wrap' } }))]
+                ];
 
-                const tableHeader = [
-                    [{ content: `SHIFT ${shiftLabel}`, colSpan: allColumns.length + 1, styles: { halign: 'center', fontStyle: 'bold', fillColor: [200, 200, 200], textColor: [0, 0, 0] } }],
-                    [{ content: 'S.No', styles: { cellWidth: 8 } }, ...allColumns.map(col => ({ content: col.label, styles: { cellWidth: 'wrap' } }))]
-                ];
+                let tableBody = [];
+                if (isIdle) {
+                    tableBody.push([{ content: 'L I N E   I D L E', colSpan: allColumns.length + 1, styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', fontSize: 14, textColor: [100, 100, 100], fillColor: [245, 245, 245], minCellHeight: 15 } }]);
+                } else {
+                    // 🔥 FIX 3: Iterate straight over the flat rows!
+                    const rowsArr = t.length > 0 ? t : [{}]; // empty row just to draw the table if no data exists
 
-                let tableBody = [];
-                if (isIdle) {
-                    tableBody.push([{ content: 'L I N E   I D L E', colSpan: allColumns.length + 1, styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', fontSize: 14, textColor: [100, 100, 100], fillColor: [245, 245, 245], minCellHeight: 15 } }]);
-                } else {
-                    const rowsObj = {};
-                    t.forEach(record => {
-                        if (!rowsObj[record.RowUUID]) rowsObj[record.RowUUID] = {};
-                        rowsObj[record.RowUUID][record.MasterId] = record.Value;
-                    });
-                    
-                    const rowsArr = Object.values(rowsObj);
-                    if(rowsArr.length === 0) rowsArr.push({});
+                    tableBody = rowsArr.map((row, idx) => {
+                        const pdfRow = [(idx + 1).toString()];
+                        allColumns.forEach(col => {
+                            // Extract standard column OR custom column using the exact keys
+                            const val = col.isCustom ? (row.customValues ? row.customValues[col.id] : '') : row[col.key];
+                            pdfRow.push(val === '' || val === null || val === undefined ? '-' : val.toString());
+                        });
+                        return pdfRow;
+                    });
+                }
 
-                    tableBody = rowsArr.map((row, idx) => {
-                        const pdfRow = [(idx + 1).toString()];
-                        allColumns.forEach(col => {
-                            const val = row[col.MasterId || col.id];
-                            pdfRow.push(val === '' || val === null || val === undefined ? '-' : val.toString());
-                        });
-                        return pdfRow;
-                    });
-                }
+                autoTable(doc, {
+                    startY: currentY, margin: { left: 5, right: 5 }, head: tableHeader, body: tableBody, theme: 'grid',
+                    styles: { fontSize: 5.5, cellPadding: 0.8, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
+                    headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 5 },
+                    columnStyles: { 0: { cellWidth: 8 } }
+                });
 
-                autoTable(doc, {
-                    startY: currentY, margin: { left: 5, right: 5 }, head: tableHeader, body: tableBody, theme: 'grid',
-                    styles: { fontSize: 5.5, cellPadding: 0.8, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
-                    headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 5 },
-                    columnStyles: { 0: { cellWidth: 8 } }
-                });
+                currentY = doc.lastAutoTable.finalY + 5;
+                if (currentY > 175 && index < 2) { doc.setFontSize(8); doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200); doc.addPage(); currentY = 15; }
+            });
 
-                currentY = doc.lastAutoTable.finalY + 5;
-                if (currentY > 175 && index < 2) { doc.setFontSize(8); doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200); doc.addPage(); currentY = 15; }
-            });
+            doc.setFontSize(8); doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200);
+        });
+    });
 
-            doc.setFontSize(8); doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200);
-        });
-    });
-
-    doc.save(`DMM_Setting_Parameters_Bulk_${dateRange.from}_to_${dateRange.to}.pdf`);
+    doc.save(`DMM_Setting_Parameters_Bulk_${dateRange.from}_to_${dateRange.to}.pdf`);
 };
 
 // ============================================================================
-// 3 & 4. DISA OPERATOR & LPA CHECKLIST (FIXED "SIG 1" BUG)
+// 3 & 4. DISA OPERATOR & LPA CHECKLIST
 // ============================================================================
 export const generateChecklistPDF = (data, dateRange, title1, title2) => {
     const doc = new jsPDF('l', 'mm', 'a4');
@@ -386,7 +390,6 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
         const sig2Row = ["", sig2Label, ""];
         
         for (let i = 1; i <= 31; i++) {
-           // We push empty strings because we will draw the image based on the maps in didDrawCell
            sig1Row.push("");
            sig2Row.push("");
         }
@@ -403,7 +406,6 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
             headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0] },
             columnStyles: { 0: { cellWidth: 8 }, 1: { cellWidth: 60 }, 2: { cellWidth: 25 }, ...dynamicColumnStyles },
             didDrawCell: function(data) {
-                // Draw Signature Images if they exist
                 if (data.row.index >= tableBody.length && data.column.index > 2) {
                     const dayIndex = data.column.index - 2; 
                     const isSig1Row = data.row.index === tableBody.length;
@@ -419,7 +421,6 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
             didParseCell: function (data) {
                 if (data.row.index >= tableBody.length && data.column.index === 1) data.cell.styles.fontStyle = 'bold';
                 
-                // 🔥 CRITICAL FIX: Erase EVERYTHING inside the signature cells so "SIG 1" never prints
                 if (data.row.index >= tableBody.length && data.column.index > 2) {
                     data.cell.text = [];
                 }
@@ -453,7 +454,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
             const ncRows = machineNc.map((report, index) => [
                 index + 1, formatDate(report.ReportDate), report.NonConformityDetails || '', report.Correction || '',
                 report.RootCause || '', report.CorrectiveAction || '', report.TargetDate ? formatDate(report.TargetDate) : '',
-                report.Responsibility || '', '', report.Status || '' // Leave 8 empty for image
+                report.Responsibility || '', '', report.Status || ''
             ]);
 
             autoTable(doc, {
@@ -471,7 +472,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
                 },
                 didParseCell: function(data) {
                     if (isLPA && data.section === 'body' && data.column.index === 8) {
-                        data.cell.text = []; // Force empty string
+                        data.cell.text = [];
                     }
                     if (data.section === 'body' && data.column.index === 9) {
                         const statusText = (data.cell.text || [])[0] || '';

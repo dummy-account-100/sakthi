@@ -6,7 +6,6 @@ import {
     Settings, FileText, LogOut, Edit, Trash2, UserPlus, Eye
 } from 'lucide-react';
 
-// PDF GENERATORS
 import {
     generateUnPouredMouldPDF, generateDmmSettingPDF, generateChecklistPDF,
     generateErrorProofPDF, generateDisaSettingAdjustmentPDF
@@ -14,7 +13,6 @@ import {
 
 import { removeToken, getUser } from '../utils/auth';
 
-// CONFIG COMPONENTS
 import ConfigFourMColumns from './ConfigFourMColumns';
 import ConfigLpa from './ConfigLpa';
 import ConfigDisaColumns from './ConfigDisaColumns';
@@ -22,8 +20,6 @@ import ConfigUnpouredMould from './ConfigUnpouredMould';
 import ConfigDmmSetting from './ConfigDmmSetting';
 import ConfigErrorProof from './ConfigErrorProof';
 import ConfigDisaChecklist from './ConfigDisaChecklist';
-
-// ADMIN FORM EDITOR
 import AdminFormEditor from './AdminFormEditor';
 
 const NotificationToast = ({ data, onClose }) => {
@@ -41,12 +37,7 @@ const NotificationToast = ({ data, onClose }) => {
 
     return (
         <div className="fixed top-6 right-6 z-[200] animate-slide-in-right">
-            <div className={`
-                flex items-center gap-4 px-6 py-4 rounded-xl shadow-2xl backdrop-blur-md border 
-                ${isError ? 'bg-red-500/10 border-red-500/30 text-red-200'
-                    : isLoading ? 'bg-[#ff9100]/10 border-[#ff9100]/30 text-[#ff9100]'
-                        : 'bg-green-500/10 border-green-500/30 text-green-200'}
-            `}>
+            <div className={`flex items-center gap-4 px-6 py-4 rounded-xl shadow-2xl backdrop-blur-md border ${isError ? 'bg-red-500/10 border-red-500/30 text-red-200' : isLoading ? 'bg-[#ff9100]/10 border-[#ff9100]/30 text-[#ff9100]' : 'bg-green-500/10 border-green-500/30 text-green-200'}`}>
                 <div className="flex-shrink-0">
                     {isLoading ? <Loader className="w-6 h-6 animate-spin" /> : isError ? <AlertTriangle className="w-6 h-6 text-red-500" /> : <CheckCircle className="w-6 h-6 text-green-500" />}
                 </div>
@@ -71,17 +62,15 @@ const AdminDashboard = () => {
     };
 
     const [activeView, setActiveView] = useState('grid');
-
     const [actionModal, setActionModal] = useState({ show: false, selectedForm: null });
     const [pdfModal, setPdfModal] = useState({ show: false, selectedForm: null });
     const [dateRange, setDateRange] = useState({ from: '', to: '' });
     const [loading, setLoading] = useState(false);
     const [notification, setNotification] = useState({ show: false, type: '', message: '' });
 
-    // View by Date state
     const [datePickerModal, setDatePickerModal] = useState({ show: false, selectedForm: null });
     const [viewDate, setViewDate] = useState('');
-    const [adminEditView, setAdminEditView] = useState(null); // { form, date }
+    const [adminEditView, setAdminEditView] = useState(null);
 
     const [users, setUsers] = useState([]);
     const [loadingUsers, setLoadingUsers] = useState(false);
@@ -106,9 +95,7 @@ const AdminDashboard = () => {
     ];
 
     useEffect(() => {
-        if (activeView === 'users') {
-            fetchUsers();
-        }
+        if (activeView === 'users') fetchUsers();
     }, [activeView]);
 
     const fetchUsers = async () => {
@@ -190,117 +177,145 @@ const AdminDashboard = () => {
         setActionModal({ show: false, selectedForm: null });
 
         if (configForms.includes(form.id)) {
-            if (form.id === '4m-change') {
-                setActiveView('4m-config');
-            } else if (form.id === 'disa-setting-adjustment') {
-                setActiveView('disa-config');
-            } else if (form.id === 'unpoured-mould-details') {
-                setActiveView('unpoured-config');
-            } else if (form.id === 'dmm-setting-parameters') {
-                setActiveView('dmm-config');
-            } else if (form.id === 'error-proof') {
-                setActiveView('ep-config');
-            } else if (form.id === 'disa-operator') {
-                setActiveView('checklist-config');
-            } else if (form.id === 'lpa') {
-                setActiveView('lpa-config'); // 🔥 Added LPA Routing
-            } else {
-                navigate(`/admin/config/${form.id}`);
-            }
+            if (form.id === '4m-change') setActiveView('4m-config');
+            else if (form.id === 'disa-setting-adjustment') setActiveView('disa-config');
+            else if (form.id === 'unpoured-mould-details') setActiveView('unpoured-config');
+            else if (form.id === 'dmm-setting-parameters') setActiveView('dmm-config');
+            else if (form.id === 'error-proof') setActiveView('ep-config');
+            else if (form.id === 'disa-operator') setActiveView('checklist-config');
+            else if (form.id === 'lpa') setActiveView('lpa-config');
+            else navigate(`/admin/config/${form.id}`);
         } else {
             navigate(`/${form.id}`);
         }
     };
 
-    const handleDownloadPDF = async () => {
-        if (!dateRange.from || !dateRange.to) {
-            setNotification({ show: true, type: 'error', message: 'Please select both From and To dates.' });
-            return;
-        }
+    // =========================================================================
+    // 🔥 FIXED BULK DOWNLOADER FOR PERFORMANCE REPORT
+    // =========================================================================
+  // =========================================================================
+    // 🔥 FIXED BULK DOWNLOADER FOR PERFORMANCE REPORT & PDF GENERATORS
+    // =========================================================================
+    const handleDownloadPDF = async () => {
+        if (!dateRange.from || !dateRange.to) {
+            setNotification({ show: true, type: 'error', message: 'Please select both From and To dates.' });
+            return;
+        }
 
-        setLoading(true);
-        setNotification({ show: true, type: 'loading', message: 'Generating PDF Report...' });
+        setLoading(true);
+        setNotification({ show: true, type: 'loading', message: 'Generating PDF Report...' });
 
-        try {
-            // Server-rendered PDF forms: open in new tab
-            const serverPdfForms = ['4m-change', 'performance', 'disamatic-report'];
-            if (serverPdfForms.includes(pdfModal.selectedForm.id)) {
-                let url = '';
-                if (pdfModal.selectedForm.id === '4m-change') {
-                    url = `${process.env.REACT_APP_API_URL}/api/4m-change/report?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
-                } else if (pdfModal.selectedForm.id === 'performance') {
-                    // Performance: use the per-disa download-pdf endpoint (prompts for DISA in a new window)
-                    // For bulk admin export we use download-pdf with a fixed date (from = to) or open modal asking disa
-                    url = `${process.env.REACT_APP_API_URL}/api/daily-performance/download-pdf?date=${dateRange.from}&disa=I`;
-                    // We open a separate tab for each DISA
-                    ['I', 'II', 'III', 'IV'].forEach(d => {
-                        window.open(`${process.env.REACT_APP_API_URL}/api/daily-performance/download-pdf?date=${dateRange.from}&disa=${d}`, '_blank');
-                    });
-                    setNotification({ show: true, type: 'success', message: 'PDF reports opened in new tabs for all DISA machines!' });
-                    setPdfModal({ show: false, selectedForm: null });
-                    setLoading(false);
-                    return;
-                } else if (pdfModal.selectedForm.id === 'disamatic-report') {
-                    url = `${process.env.REACT_APP_API_URL}/api/forms/download-pdf?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
-                }
-                if (url) {
-                    window.open(url, '_blank');
-                    setNotification({ show: true, type: 'success', message: 'Report generated in new tab!' });
-                    setPdfModal({ show: false, selectedForm: null });
-                }
+        try {
+            // 1. PERFECTED PERFORMANCE REPORT EXPORT
+            if (pdfModal.selectedForm.id === 'performance') {
+                const url = `${process.env.REACT_APP_API_URL}/api/daily-performance/download-pdf?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
+                
+                const response = await axios.get(url, { responseType: 'blob' });
+                
+                // If it returned our custom JSON exists: false flag
+                if (response.data.type === 'application/json') {
+                    setNotification({ show: true, type: 'error', message: 'No records found for the selected date range.' });
+                    setLoading(false);
+                    return;
+                }
+
+                // Download the combined PDF
+                const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+                const link = document.createElement('a');
+                link.href = blobUrl;
+                link.setAttribute('download', `Performance_Reports_${dateRange.from}_to_${dateRange.to}.pdf`);
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                window.URL.revokeObjectURL(blobUrl);
+
+                setNotification({ show: true, type: 'success', message: `Report Downloaded Successfully!` });
+                setPdfModal({ show: false, selectedForm: null });
+                setLoading(false);
+                return;
+            }
+
+            // 2. Other Server rendered PDFs
+            const serverPdfForms = ['4m-change', 'disamatic-report'];
+            if (serverPdfForms.includes(pdfModal.selectedForm.id)) {
+                let url = '';
+                if (pdfModal.selectedForm.id === '4m-change') {
+                    url = `${process.env.REACT_APP_API_URL}/api/4m-change/report?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
+                } else if (pdfModal.selectedForm.id === 'disamatic-report') {
+                    url = `${process.env.REACT_APP_API_URL}/api/forms/download-pdf?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
+                }
+                if (url) {
+                    window.open(url, '_blank');
+                    setNotification({ show: true, type: 'success', message: 'Report generated in new tab!' });
+                    setPdfModal({ show: false, selectedForm: null });
+                }
+                setLoading(false);
+                return;
+            }
+
+            // 3. Client rendered PDFs
+            let apiRoute = `${process.env.REACT_APP_API_URL}/api/reports/${pdfModal.selectedForm.id}`;
+            if (pdfModal.selectedForm.id === 'disa-setting-adjustment') apiRoute = `${process.env.REACT_APP_API_URL}/api/disa/records`;
+            else if (pdfModal.selectedForm.id === 'error-proof') apiRoute = `${process.env.REACT_APP_API_URL}/api/error-proof/bulk-data`;
+            else if (pdfModal.selectedForm.id === 'unpoured-mould-details') apiRoute = `${process.env.REACT_APP_API_URL}/api/unpoured-moulds/bulk-data`;
+            else if (pdfModal.selectedForm.id === 'dmm-setting-parameters') apiRoute = `${process.env.REACT_APP_API_URL}/api/dmm-settings/bulk-data`;
+            else if (pdfModal.selectedForm.id === 'disa-operator') apiRoute = `${process.env.REACT_APP_API_URL}/api/disa-checklist/bulk-data`;
+            else if (pdfModal.selectedForm.id === 'lpa') apiRoute = `${process.env.REACT_APP_API_URL}/api/bottom-level-audit/bulk-data`;
+
+            const res = await axios.get(apiRoute, { params: { fromDate: dateRange.from, toDate: dateRange.to } });
+            let data = res.data;
+
+            // 🔥 FIX: Sanitize SQL Server Dates!
+            // This strips 'T00:00:00.000Z' off the dates so the PDF generator's exact match filters succeed.
+            const sanitizeDates = (arr) => arr.map(row => ({
+                ...row,
+                RecordDate: row.RecordDate ? row.RecordDate.split('T')[0] : row.RecordDate,
+                date: row.date ? row.date.split('T')[0] : row.date
+            }));
+
+            if (Array.isArray(data)) {
+                data = sanitizeDates(data);
+            } else if (data && typeof data === 'object') {
+                if (data.trans) data.trans = sanitizeDates(data.trans);
+                if (data.records) data.records = sanitizeDates(data.records);
+            }
+
+            // 🔥 PREVENT CRASH: Check if data is truly empty before passing to PDF Generator
+            let isEmpty = false;
+            if (Array.isArray(data) && data.length === 0) isEmpty = true;
+            else if (data && data.trans && data.trans.length === 0) isEmpty = true;
+            else if (data && data.records && data.records.length === 0) isEmpty = true;
+
+            if (isEmpty) {
+                setNotification({ show: true, type: 'error', message: 'No data found for the selected date range.' });
                 setLoading(false);
                 return;
             }
 
-            // CLIENT-SIDE PDFS
-            let apiRoute = `${process.env.REACT_APP_API_URL}/api/reports/${pdfModal.selectedForm.id}`;
-            if (pdfModal.selectedForm.id === 'disa-setting-adjustment') {
-                apiRoute = `${process.env.REACT_APP_API_URL}/api/disa/records`;
-            } else if (pdfModal.selectedForm.id === 'error-proof') {
-                apiRoute = `${process.env.REACT_APP_API_URL}/api/error-proof/bulk-data`;
-            } else if (pdfModal.selectedForm.id === 'unpoured-mould-details') {
-                apiRoute = `${process.env.REACT_APP_API_URL}/api/unpoured-moulds/bulk-data`;
-            } else if (pdfModal.selectedForm.id === 'dmm-setting-parameters') {
-                apiRoute = `${process.env.REACT_APP_API_URL}/api/dmm-settings/bulk-data`;
-            } else if (pdfModal.selectedForm.id === 'disa-operator') {
-                apiRoute = `${process.env.REACT_APP_API_URL}/api/disa-checklist/bulk-data`;
-            } else if (pdfModal.selectedForm.id === 'lpa') {
-                apiRoute = `${process.env.REACT_APP_API_URL}/api/bottom-level-audit/bulk-data`;
-            }
+            switch (pdfModal.selectedForm.id) {
+                case 'unpoured-mould-details': generateUnPouredMouldPDF(data, dateRange); break;
+                case 'dmm-setting-parameters': generateDmmSettingPDF(data, dateRange); break;
+                case 'disa-operator': generateChecklistPDF(data, dateRange, "DISA MACHINE OPERATOR CHECK SHEET", "Non-Conformance Report"); break;
+                case 'lpa': generateChecklistPDF(data, dateRange, "LAYERED PROCESS AUDIT - BOTTOM LEVEL", "Non-Conformance Report"); break;
+                case 'error-proof': generateErrorProofPDF(data, dateRange); break;
+                case 'disa-setting-adjustment': generateDisaSettingAdjustmentPDF(data, dateRange); break;
+                default:
+                    setNotification({ show: true, type: 'error', message: 'Report format mapping not found.' });
+                    setLoading(false);
+                    return;
+            }
 
-            const res = await axios.get(apiRoute, {
-                params: { fromDate: dateRange.from, toDate: dateRange.to }
-            });
+            setNotification({ show: true, type: 'success', message: 'Bulk Export Downloaded Successfully!' });
+            setPdfModal({ show: false, selectedForm: null });
 
-            const data = res.data;
+        } catch (error) {
+            console.error("PDF Generation Error: ", error);
+            setNotification({ show: true, type: 'error', message: 'Failed to generate PDF.' });
+        }
 
-            switch (pdfModal.selectedForm.id) {
-                case 'unpoured-mould-details': generateUnPouredMouldPDF(data, dateRange); break;
-                case 'dmm-setting-parameters': generateDmmSettingPDF(data, dateRange); break;
-                case 'disa-operator': generateChecklistPDF(data, dateRange, "DISA MACHINE OPERATOR CHECK SHEET", "Non-Conformance Report"); break;
-                case 'lpa': generateChecklistPDF(data, dateRange, "LAYERED PROCESS AUDIT - BOTTOM LEVEL", "Non-Conformance Report"); break;
-                case 'error-proof': generateErrorProofPDF(data, dateRange); break;
-                case 'disa-setting-adjustment': generateDisaSettingAdjustmentPDF(data, dateRange); break;
-                default:
-                    setNotification({ show: true, type: 'error', message: 'Report format mapping not found.' });
-                    setLoading(false);
-                    return;
-            }
+        setLoading(false);
+    };
 
-            setNotification({ show: true, type: 'success', message: 'Bulk Export Downloaded Successfully!' });
-            setPdfModal({ show: false, selectedForm: null });
-
-        } catch (error) {
-            console.error("PDF Generation Error: ", error);
-            setNotification({ show: true, type: 'error', message: 'Failed to generate PDF.' });
-        }
-
-        setLoading(false);
-    };
-
-    // ==========================================
-    //   RENDER: ADMIN EDIT VIEW (View by Date)
-    // ==========================================
     if (adminEditView) {
         return (
             <AdminFormEditor
@@ -311,76 +326,14 @@ const AdminDashboard = () => {
         );
     }
 
-    // ==========================================
-    //   RENDER: CONFIG VIEWS
-    // ==========================================
-    if (activeView === 'unpoured-config') {
-        return (
-            <div className="relative w-full min-h-screen bg-gray-100">
-                <button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button>
-                <ConfigUnpouredMould onBack={() => setActiveView('grid')} />
-            </div>
-        );
-    }
+    if (activeView === 'unpoured-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigUnpouredMould onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'disa-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigDisaColumns onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === '4m-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigFourMColumns onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'dmm-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigDmmSetting onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'ep-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigErrorProof onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'checklist-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigDisaChecklist onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'lpa-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigLpa onBack={() => setActiveView('grid')} /></div>);
 
-    if (activeView === 'disa-config') {
-        return (
-            <div className="relative w-full min-h-screen bg-gray-100">
-                <button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button>
-                <ConfigDisaColumns onBack={() => setActiveView('grid')} />
-            </div>
-        );
-    }
-
-    if (activeView === '4m-config') {
-        return (
-            <div className="relative w-full min-h-screen bg-gray-100">
-                <button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button>
-                <ConfigFourMColumns onBack={() => setActiveView('grid')} />
-            </div>
-        );
-    }
-
-    if (activeView === 'dmm-config') {
-        return (
-            <div className="relative w-full min-h-screen bg-gray-100">
-                <button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button>
-                <ConfigDmmSetting onBack={() => setActiveView('grid')} />
-            </div>
-        );
-    }
-
-    if (activeView === 'ep-config') {
-        return (
-            <div className="relative w-full min-h-screen bg-gray-100">
-                <button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button>
-                <ConfigErrorProof onBack={() => setActiveView('grid')} />
-            </div>
-        );
-    }
-
-    if (activeView === 'checklist-config') {
-        return (
-            <div className="relative w-full min-h-screen bg-gray-100">
-                <button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button>
-                <ConfigDisaChecklist onBack={() => setActiveView('grid')} />
-            </div>
-        );
-    }
-
-    // 🔥 Added ConfigLpa view handling
-    if (activeView === 'lpa-config') {
-        return (
-            <div className="relative w-full min-h-screen bg-gray-100">
-                <button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button>
-                <ConfigLpa onBack={() => setActiveView('grid')} />
-            </div>
-        );
-    }
-
-    // ==========================================
-    //   RENDER: USER MANAGEMENT VIEW
-    // ==========================================
     if (activeView === 'users') {
         return (
             <div className="relative w-full min-h-screen bg-[#2d2d2d] flex flex-col items-center pt-24 pb-10 px-4 font-sans">
@@ -458,7 +411,6 @@ const AdminDashboard = () => {
                     </div>
                 </div>
 
-                {/* ADD USER MODAL */}
                 {isAddModalOpen && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
                         <div className="bg-white rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] w-full max-w-md overflow-hidden scale-in">
@@ -495,7 +447,6 @@ const AdminDashboard = () => {
                     </div>
                 )}
 
-                {/* EDIT USER MODAL */}
                 {isEditModalOpen && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
                         <div className="bg-white rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] w-full max-w-md overflow-hidden scale-in">
@@ -531,16 +482,12 @@ const AdminDashboard = () => {
         );
     }
 
-    // ==========================================
-    //   RENDER: DEFAULT DASHBOARD GRID
-    // ==========================================
     return (
         <div className="h-screen w-screen bg-[#2d2d2d] flex flex-col overflow-hidden font-sans relative">
             <NotificationToast data={notification} onClose={() => setNotification(prev => ({ ...prev, show: false }))} />
 
             <div className="h-1.5 bg-[#ff9100] flex-shrink-0 shadow-[0_0_15px_rgba(255,145,0,0.5)]" />
 
-            {/* Navigation Bar */}
             <div className="w-full flex justify-between items-center px-10 pt-6 absolute top-0 left-0 z-10">
                 <Link to="/admin" className="flex items-center gap-2 text-[#ff9100] font-bold uppercase tracking-wider text-sm hover:text-white transition-colors bg-white/5 px-4 py-2 rounded-lg border border-white/10 hover:border-[#ff9100]/50 shadow-lg backdrop-blur-sm">
                     ← Back to Dashboard
@@ -558,7 +505,6 @@ const AdminDashboard = () => {
                 </div>
             </div>
 
-            {/* Corporate Header */}
             <div className="py-8 pt-16 flex-shrink-0 flex flex-col items-center">
                 <h1 className="text-[2.5rem] md:text-[3.5rem] font-black text-center text-white tracking-tighter uppercase leading-tight drop-shadow-lg">
                     Admin Dashboard
@@ -595,7 +541,6 @@ const AdminDashboard = () => {
 
             <div className="h-1.5 bg-[#ff9100] flex-shrink-0 mt-auto" />
 
-            {/* --- Action Selection Modal --- */}
             {actionModal.show && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-[#383838] border border-white/10 w-full max-w-lg rounded-3xl shadow-[0_0_60px_rgba(0,0,0,0.8)] overflow-hidden scale-in relative">
@@ -616,52 +561,19 @@ const AdminDashboard = () => {
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full">
-                                {/* Export Option */}
-                                <button
-                                    onClick={() => openPdfModal(actionModal.selectedForm)}
-                                    className="group flex flex-col items-center justify-center gap-4 bg-[#2a2a2a] hover:bg-[#333] border-2 border-transparent hover:border-[#ff9100]/50 p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 shadow-lg"
-                                >
-                                    <div className="bg-[#ff9100]/10 p-4 rounded-full group-hover:scale-110 transition-transform group-hover:bg-[#ff9100]/20">
-                                        <FileText className="w-8 h-8 text-[#ff9100]" />
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="text-white font-bold uppercase tracking-wide text-sm mb-1">Export Data</div>
-                                        <div className="text-white/40 text-[10px] uppercase font-bold">Generate Bulk PDF</div>
-                                    </div>
+                                <button onClick={() => openPdfModal(actionModal.selectedForm)} className="group flex flex-col items-center justify-center gap-4 bg-[#2a2a2a] hover:bg-[#333] border-2 border-transparent hover:border-[#ff9100]/50 p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 shadow-lg">
+                                    <div className="bg-[#ff9100]/10 p-4 rounded-full group-hover:scale-110 transition-transform group-hover:bg-[#ff9100]/20"><FileText className="w-8 h-8 text-[#ff9100]" /></div>
+                                    <div className="text-center"><div className="text-white font-bold uppercase tracking-wide text-sm mb-1">Export Data</div><div className="text-white/40 text-[10px] uppercase font-bold">Generate Bulk PDF</div></div>
                                 </button>
-
-                                {/* View by Date Option */}
-                                <button
-                                    onClick={() => handleViewByDate(actionModal.selectedForm)}
-                                    className="group flex flex-col items-center justify-center gap-4 bg-[#2a2a2a] hover:bg-[#333] border-2 border-transparent hover:border-[#ff9100]/50 p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 shadow-lg relative overflow-hidden"
-                                >
-                                    <div className="absolute top-0 right-0 bg-green-600 text-white text-[9px] font-black uppercase tracking-wider py-1 px-3 rounded-bl-lg flex items-center gap-1 shadow-md">
-                                        <Eye size={10} /> Admin Edit
-                                    </div>
-                                    <div className="bg-[#ff9100]/10 p-4 rounded-full group-hover:scale-110 transition-transform group-hover:bg-[#ff9100]/20">
-                                        <Calendar className="w-8 h-8 text-[#ff9100]" />
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="text-white font-bold uppercase tracking-wide text-sm mb-1">View by Date</div>
-                                        <div className="text-white/40 text-[10px] uppercase font-bold">Edit Form Data</div>
-                                    </div>
+                                <button onClick={() => handleViewByDate(actionModal.selectedForm)} className="group flex flex-col items-center justify-center gap-4 bg-[#2a2a2a] hover:bg-[#333] border-2 border-transparent hover:border-[#ff9100]/50 p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 shadow-lg relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 bg-green-600 text-white text-[9px] font-black uppercase tracking-wider py-1 px-3 rounded-bl-lg flex items-center gap-1 shadow-md"><Eye size={10} /> Admin Edit</div>
+                                    <div className="bg-[#ff9100]/10 p-4 rounded-full group-hover:scale-110 transition-transform group-hover:bg-[#ff9100]/20"><Calendar className="w-8 h-8 text-[#ff9100]" /></div>
+                                    <div className="text-center"><div className="text-white font-bold uppercase tracking-wide text-sm mb-1">View by Date</div><div className="text-white/40 text-[10px] uppercase font-bold">Edit Form Data</div></div>
                                 </button>
-
-                                {/* Manage Option */}
-                                <button
-                                    onClick={() => handleManageForm(actionModal.selectedForm)}
-                                    className="group flex flex-col items-center justify-center gap-4 bg-[#2a2a2a] hover:bg-[#333] border-2 border-transparent hover:border-[#ff9100]/50 p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 shadow-lg relative overflow-hidden"
-                                >
-                                    <div className="absolute top-0 right-0 bg-[#ff9100] text-black text-[9px] font-black uppercase tracking-wider py-1 px-3 rounded-bl-lg flex items-center gap-1 shadow-md">
-                                        <Settings size={10} /> Admin Setup
-                                    </div>
-                                    <div className="bg-[#ff9100]/10 p-4 rounded-full group-hover:scale-110 transition-transform group-hover:bg-[#ff9100]/20">
-                                        <Settings className="w-8 h-8 text-[#ff9100]" />
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="text-white font-bold uppercase tracking-wide text-sm mb-1">Manage Form</div>
-                                        <div className="text-white/40 text-[10px] uppercase font-bold">Edit Structure & Parameters</div>
-                                    </div>
+                                <button onClick={() => handleManageForm(actionModal.selectedForm)} className="group flex flex-col items-center justify-center gap-4 bg-[#2a2a2a] hover:bg-[#333] border-2 border-transparent hover:border-[#ff9100]/50 p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 shadow-lg relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 bg-[#ff9100] text-black text-[9px] font-black uppercase tracking-wider py-1 px-3 rounded-bl-lg flex items-center gap-1 shadow-md"><Settings size={10} /> Admin Setup</div>
+                                    <div className="bg-[#ff9100]/10 p-4 rounded-full group-hover:scale-110 transition-transform group-hover:bg-[#ff9100]/20"><Settings className="w-8 h-8 text-[#ff9100]" /></div>
+                                    <div className="text-center"><div className="text-white font-bold uppercase tracking-wide text-sm mb-1">Manage Form</div><div className="text-white/40 text-[10px] uppercase font-bold">Edit Structure & Parameters</div></div>
                                 </button>
                             </div>
                         </div>
@@ -669,7 +581,6 @@ const AdminDashboard = () => {
                 </div>
             )}
 
-            {/* --- View by Date Picker Modal --- */}
             {datePickerModal.show && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-[#383838] border border-white/10 w-full max-w-md rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.6)] overflow-hidden scale-in">
@@ -677,9 +588,7 @@ const AdminDashboard = () => {
                             <h3 className="font-extrabold text-lg text-white uppercase tracking-widest flex items-center gap-2">
                                 <Calendar size={20} className="text-[#ff9100]" /> Select Date
                             </h3>
-                            <button onClick={() => setDatePickerModal({ show: false, selectedForm: null })} className="text-white/40 hover:text-[#ff9100] transition-colors p-1">
-                                <X className="w-6 h-6" />
-                            </button>
+                            <button onClick={() => setDatePickerModal({ show: false, selectedForm: null })} className="text-white/40 hover:text-[#ff9100] transition-colors p-1"><X className="w-6 h-6" /></button>
                         </div>
                         <div className="p-6 flex flex-col gap-5">
                             <div className="bg-white/5 border border-[#ff9100]/30 rounded-xl p-4 text-center">
@@ -687,29 +596,12 @@ const AdminDashboard = () => {
                                 <div className="text-lg font-bold text-white uppercase leading-tight">{datePickerModal.selectedForm?.name}</div>
                             </div>
                             <div>
-                                <label className="flex items-center gap-2 text-xs font-bold text-white/50 uppercase tracking-widest mb-2">
-                                    <Calendar size={14} /> Date
-                                </label>
-                                <input
-                                    type="date"
-                                    value={viewDate}
-                                    onChange={e => setViewDate(e.target.value)}
-                                    className="w-full bg-[#222] border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-[#ff9100] focus:ring-1 focus:ring-[#ff9100] transition-all cursor-pointer font-bold [color-scheme:dark]"
-                                />
+                                <label className="flex items-center gap-2 text-xs font-bold text-white/50 uppercase tracking-widest mb-2"><Calendar size={14} /> Date</label>
+                                <input type="date" value={viewDate} onChange={e => setViewDate(e.target.value)} className="w-full bg-[#222] border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-[#ff9100] focus:ring-1 focus:ring-[#ff9100] transition-all cursor-pointer font-bold [color-scheme:dark]" />
                             </div>
                             <div className="flex gap-4 pt-2">
-                                <button
-                                    onClick={() => setDatePickerModal({ show: false, selectedForm: null })}
-                                    className="flex-1 py-3 text-sm font-bold text-white/60 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all"
-                                >Cancel</button>
-                                <button
-                                    disabled={!viewDate}
-                                    onClick={() => {
-                                        setAdminEditView({ form: datePickerModal.selectedForm, date: viewDate });
-                                        setDatePickerModal({ show: false, selectedForm: null });
-                                    }}
-                                    className="flex-1 bg-[#ff9100] hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl uppercase transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,145,0,0.3)]"
-                                >
+                                <button onClick={() => setDatePickerModal({ show: false, selectedForm: null })} className="flex-1 py-3 text-sm font-bold text-white/60 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all">Cancel</button>
+                                <button disabled={!viewDate} onClick={() => { setAdminEditView({ form: datePickerModal.selectedForm, date: viewDate }); setDatePickerModal({ show: false, selectedForm: null }); }} className="flex-1 bg-[#ff9100] hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl uppercase transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,145,0,0.3)]">
                                     <Eye className="w-5 h-5" /> Load Form
                                 </button>
                             </div>
@@ -718,7 +610,6 @@ const AdminDashboard = () => {
                 </div>
             )}
 
-            {/* --- Date Selection PDF Modal --- */}
             {pdfModal.show && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-[#383838] border border-white/10 w-full max-w-md rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.6)] overflow-hidden scale-in">
@@ -726,57 +617,21 @@ const AdminDashboard = () => {
                             <h3 className="font-extrabold text-lg text-white uppercase tracking-widest flex items-center gap-2">
                                 <FileDown size={20} className="text-[#ff9100]" /> Bulk PDF Export
                             </h3>
-                            <button onClick={() => setPdfModal({ show: false, selectedForm: null })} className="text-white/40 hover:text-[#ff9100] transition-colors p-1">
-                                <X className="w-6 h-6" />
-                            </button>
+                            <button onClick={() => setPdfModal({ show: false, selectedForm: null })} className="text-white/40 hover:text-[#ff9100] transition-colors p-1"><X className="w-6 h-6" /></button>
                         </div>
-
                         <div className="p-6 flex flex-col gap-6">
                             <div className="bg-white/5 border border-[#ff9100]/30 rounded-xl p-4 text-center">
                                 <div className="text-xs font-bold text-[#ff9100] uppercase tracking-widest mb-1">Target Report</div>
                                 <div className="text-lg font-bold text-white uppercase leading-tight">{pdfModal.selectedForm.name}</div>
                             </div>
-
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="flex items-center gap-2 text-xs font-bold text-white/50 uppercase tracking-widest mb-2">
-                                        <Calendar size={14} /> From Date
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={dateRange.from}
-                                        onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })}
-                                        className="w-full bg-[#222] border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-[#ff9100] focus:ring-1 focus:ring-[#ff9100] transition-all cursor-pointer font-bold [color-scheme:dark]"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="flex items-center gap-2 text-xs font-bold text-white/50 uppercase tracking-widest mb-2">
-                                        <Calendar size={14} /> To Date
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={dateRange.to}
-                                        min={dateRange.from}
-                                        onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })}
-                                        className="w-full bg-[#222] border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-[#ff9100] focus:ring-1 focus:ring-[#ff9100] transition-all cursor-pointer font-bold [color-scheme:dark]"
-                                    />
-                                </div>
+                                <div><label className="flex items-center gap-2 text-xs font-bold text-white/50 uppercase tracking-widest mb-2"><Calendar size={14} /> From Date</label><input type="date" value={dateRange.from} onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })} className="w-full bg-[#222] border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-[#ff9100] focus:ring-1 focus:ring-[#ff9100] transition-all cursor-pointer font-bold [color-scheme:dark]" /></div>
+                                <div><label className="flex items-center gap-2 text-xs font-bold text-white/50 uppercase tracking-widest mb-2"><Calendar size={14} /> To Date</label><input type="date" value={dateRange.to} min={dateRange.from} onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })} className="w-full bg-[#222] border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-[#ff9100] focus:ring-1 focus:ring-[#ff9100] transition-all cursor-pointer font-bold [color-scheme:dark]" /></div>
                             </div>
-
                             <div className="flex gap-4 pt-2">
-                                <button
-                                    onClick={() => setPdfModal({ show: false, selectedForm: null })}
-                                    className="flex-1 py-3 text-sm font-bold text-white/60 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={handleDownloadPDF}
-                                    disabled={loading}
-                                    className="flex-1 bg-[#ff9100] hover:bg-orange-500 text-white font-bold py-3 rounded-xl uppercase transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,145,0,0.3)] disabled:opacity-70 disabled:cursor-not-allowed"
-                                >
-                                    {loading ? <Loader className="animate-spin w-5 h-5" /> : <FileDown className="w-5 h-5" />}
-                                    {loading ? 'Generating...' : 'Download'}
+                                <button onClick={() => setPdfModal({ show: false, selectedForm: null })} className="flex-1 py-3 text-sm font-bold text-white/60 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all">Cancel</button>
+                                <button onClick={handleDownloadPDF} disabled={loading} className="flex-1 bg-[#ff9100] hover:bg-orange-500 text-white font-bold py-3 rounded-xl uppercase transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,145,0,0.3)] disabled:opacity-70 disabled:cursor-not-allowed">
+                                    {loading ? <Loader className="animate-spin w-5 h-5" /> : <FileDown className="w-5 h-5" />}{loading ? 'Generating...' : 'Download'}
                                 </button>
                             </div>
                         </div>
