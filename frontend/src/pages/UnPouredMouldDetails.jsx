@@ -396,7 +396,7 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
                 <option value="DISA - I">DISA - I</option><option value="DISA - II">DISA - II</option><option value="DISA - III">DISA - III</option><option value="DISA - IV">DISA - IV</option>
               </select>
               <span className="text-orange-400 text-lg font-black uppercase tracking-wider">Date:</span>
-              <div className="bg-gray-100 text-gray-600 font-bold border-2 border-gray-400 rounded-md p-2 text-lg cursor-not-allowed shadow-inner select-none">{new Date(headerData.date).toLocaleDateString('en-GB')}</div>
+              <input type="date" value={headerData.date} onChange={(e) => setHeaderData({ ...headerData, date: e.target.value })} className="bg-white text-gray-700 font-bold border-2 border-orange-500 rounded-md p-1.5 text-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-sm" />
             </div>
           </div>
         )}

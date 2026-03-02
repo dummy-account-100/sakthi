@@ -407,7 +407,7 @@ const DisamaticProductReport = () => {
             </div>
             <div>
               <label className="font-bold text-gray-700 block mb-1">Shift</label>
-              <select name="shift" required value={formData.shift} disabled className="w-full border border-gray-300 p-2 rounded bg-gray-200 cursor-not-allowed text-gray-600 appearance-none">
+              <select name="shift" required value={formData.shift} onChange={handleChange} className="w-full border border-gray-300 p-2 rounded focus:outline-orange-500 bg-white cursor-pointer text-gray-700">
                 <option value="I">I (7 AM - 3:30 PM)</option>
                 <option value="II">II (3:30 PM - 12 AM)</option>
                 <option value="III">III (12 AM - 7 AM)</option>

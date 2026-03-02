@@ -121,7 +121,7 @@ const UnpouredEditor = ({ date, disa, toast, setToast }) => {
     useEffect(() => {
         setLoading(true);
         axios.get(`${API}/api/unpoured-moulds/details`, { params: { date, disa } })
-            .then(r => setData(r.data)) 
+            .then(r => setData(r.data))
             .catch(() => setToast({ msg: 'Failed to load data', type: 'error' }))
             .finally(() => setLoading(false));
     }, [date, disa]);
@@ -308,11 +308,11 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
         setModalItem(item);
         const existingReport = reportsMap[item.MasterId];
         if (existingReport) {
-            setNcForm({ 
-                ncDetails: existingReport.NonConformityDetails, correction: existingReport.Correction, 
-                rootCause: existingReport.RootCause, correctiveAction: existingReport.CorrectiveAction, 
-                targetDate: existingReport.TargetDate.split('T')[0], responsibility: existingReport.Responsibility, 
-                sign: existingReport.Sign, status: existingReport.Status 
+            setNcForm({
+                ncDetails: existingReport.NonConformityDetails, correction: existingReport.Correction,
+                rootCause: existingReport.RootCause, correctiveAction: existingReport.CorrectiveAction,
+                targetDate: existingReport.TargetDate.split('T')[0], responsibility: existingReport.Responsibility,
+                sign: existingReport.Sign, status: existingReport.Status
             });
         } else {
             setNcForm({ ncDetails: '', correction: '', rootCause: '', correctiveAction: '', targetDate: date, responsibility: '', sign: '', status: 'Pending' });
@@ -323,13 +323,13 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
     const submitReport = async () => {
         if (!ncForm.ncDetails || !ncForm.responsibility) return setToast({ msg: 'Details and Responsibility are mandatory.', type: 'error' });
         try {
-            await axios.post(`${API}/api/disa-checklist/report-nc`, { 
-                checklistId: modalItem.MasterId, slNo: modalItem.SlNo, reportDate: date, disaMachine: disa, ...ncForm 
+            await axios.post(`${API}/api/disa-checklist/report-nc`, {
+                checklistId: modalItem.MasterId, slNo: modalItem.SlNo, reportDate: date, disaMachine: disa, ...ncForm
             });
             setToast({ msg: 'NC Report Logged Successfully.', type: 'success' });
             setIsModalOpen(false);
             setReportsMap(prev => ({ ...prev, [modalItem.MasterId]: { ...ncForm, MasterId: modalItem.MasterId, Status: 'Pending', Name: ncForm.sign } }));
-            
+
             // Mark checklist item as NOT done
             const idx = data.checklist.findIndex(c => c.MasterId === modalItem.MasterId);
             if (idx !== -1) {
@@ -354,7 +354,7 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
     const handleSave = async () => {
         setToast({ msg: 'Saving…', type: 'loading' });
         try {
-            const itemsToSave = data.checklist.map(item => ({ 
+            const itemsToSave = data.checklist.map(item => ({
                 MasterId: item.MasterId, IsDone: item.IsDone, IsHoliday: item.IsHoliday, IsVatCleaning: item.IsVatCleaning, ReadingValue: item.ReadingValue || ''
             }));
             await axios.post(`${API}/api/disa-checklist/submit-batch`, {
@@ -383,11 +383,11 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
                             <th className="p-3 text-center text-[10px] uppercase tracking-widest text-white/50 w-24">OK / Value</th>
                             <th className="p-3 text-center text-[10px] uppercase tracking-widest text-white/50 w-20">Not OK</th>
                             <th className="p-3 text-center text-[10px] uppercase tracking-widest text-white/50 w-20">
-                                Holiday<br/>
+                                Holiday<br />
                                 <input type="checkbox" checked={isGlobalHoliday} onChange={e => handleMasterHolidayToggle(e.target.checked)} className="w-4 h-4 mt-2 accent-[#ff9100] cursor-pointer" />
                             </th>
                             <th className="p-3 text-center text-[10px] uppercase tracking-widest text-white/50 w-24 border-l border-white/5">
-                                VAT Cleaning<br/>
+                                VAT Cleaning<br />
                                 <input type="checkbox" checked={isGlobalVatCleaning} onChange={e => handleMasterVatToggle(e.target.checked)} className="w-4 h-4 mt-2 accent-blue-600 cursor-pointer" />
                             </th>
                         </tr>
@@ -403,10 +403,10 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
                                     <td className="p-3 text-white/40 font-bold">{item.SlNo}</td>
                                     <td className={`p-3 font-bold ${isDisabled ? 'text-white/40 line-through' : 'text-white/90'}`}>{item.CheckPointDesc}</td>
                                     <td className="p-3"><span className={`border border-white/10 text-[10px] font-bold px-2 py-1 rounded uppercase ${isDisabled ? 'text-white/30' : 'text-white/60 bg-black/20'}`}>{item.CheckMethod}</span></td>
-                                    
+
                                     <td className="p-3 text-center">
                                         {isDecimalRow ? (
-                                            <input type="number" step="0.01" value={item.ReadingValue || ''} onChange={e => handleReadingChange(i, e.target.value)} disabled={isDisabled || hasReport} placeholder="0.00" 
+                                            <input type="number" step="0.01" value={item.ReadingValue || ''} onChange={e => handleReadingChange(i, e.target.value)} disabled={isDisabled || hasReport} placeholder="0.00"
                                                 className={`w-16 mx-auto text-center border border-white/10 rounded text-xs font-bold py-1 outline-none transition-colors ${isDisabled || hasReport ? 'bg-black/20 text-white/30 cursor-not-allowed' : 'bg-[#333] text-white focus:border-[#ff9100]'}`} />
                                         ) : (
                                             <div onClick={() => !isDisabled && !hasReport && handleOkClick(item, i)} className={`w-6 h-6 mx-auto rounded border flex items-center justify-center transition-all ${isDisabled ? 'cursor-not-allowed border-white/10 bg-black/20' : 'cursor-pointer'} ${item.IsDone && !hasReport && !isDisabled ? 'bg-green-500 border-green-500 text-white' : 'border-white/20 bg-[#333]'} ${hasReport ? 'opacity-20 cursor-not-allowed' : ''}`}>
@@ -414,13 +414,13 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
                                             </div>
                                         )}
                                     </td>
-                                    
+
                                     <td className="p-3 text-center">
                                         <div onClick={() => !isDisabled && handleNotOkClick(item)} className={`w-6 h-6 mx-auto rounded border flex items-center justify-center transition-all ${isDisabled ? 'cursor-not-allowed border-white/10 bg-black/20' : 'cursor-pointer hover:border-red-500'} ${hasReport && !isDisabled ? 'bg-red-600 border-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.5)]' : 'border-white/20 bg-[#333]'}`}>
                                             {hasReport && !isDisabled && "✕"}
                                         </div>
                                     </td>
-                                    
+
                                     <td className="p-3 text-center border-l border-white/5 bg-black/10">
                                         <input type="checkbox" checked={item.IsHoliday || false} readOnly disabled className="w-5 h-5 accent-[#ff9100] cursor-not-allowed opacity-70" />
                                     </td>
@@ -448,12 +448,12 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
                                 <span className="text-[10px] bg-[#ff9100]/20 text-[#ff9100] border border-[#ff9100]/50 px-2 py-1 rounded font-black uppercase tracking-wider">{ncForm.status}</span>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="col-span-2"><Field label="NC Details" value={ncForm.ncDetails} onChange={v => setNcForm({...ncForm, ncDetails: v})} multiline /></div>
-                                <Field label="Correction" value={ncForm.correction} onChange={v => setNcForm({...ncForm, correction: v})} />
-                                <Field label="Root Cause" value={ncForm.rootCause} onChange={v => setNcForm({...ncForm, rootCause: v})} />
-                                <div className="col-span-2"><Field label="Corrective Action" value={ncForm.correctiveAction} onChange={v => setNcForm({...ncForm, correctiveAction: v})} multiline /></div>
-                                <Field label="Responsibility" value={ncForm.responsibility} onChange={v => setNcForm({...ncForm, responsibility: v})} options={['Maintenance', 'Production', 'Quality']} />
-                                <Field label="Target Date" type="date" value={ncForm.targetDate} onChange={v => setNcForm({...ncForm, targetDate: v})} />
+                                <div className="col-span-2"><Field label="NC Details" value={ncForm.ncDetails} onChange={v => setNcForm({ ...ncForm, ncDetails: v })} multiline /></div>
+                                <Field label="Correction" value={ncForm.correction} onChange={v => setNcForm({ ...ncForm, correction: v })} />
+                                <Field label="Root Cause" value={ncForm.rootCause} onChange={v => setNcForm({ ...ncForm, rootCause: v })} />
+                                <div className="col-span-2"><Field label="Corrective Action" value={ncForm.correctiveAction} onChange={v => setNcForm({ ...ncForm, correctiveAction: v })} multiline /></div>
+                                <Field label="Responsibility" value={ncForm.responsibility} onChange={v => setNcForm({ ...ncForm, responsibility: v })} options={['Maintenance', 'Production', 'Quality']} />
+                                <Field label="Target Date" type="date" value={ncForm.targetDate} onChange={v => setNcForm({ ...ncForm, targetDate: v })} />
                             </div>
                             <div className="pt-4 border-t border-white/10">
                                 <button onClick={submitReport} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-lg uppercase tracking-widest shadow-lg transition-colors">Save NC Report</button>
@@ -658,7 +658,7 @@ const FourMEditor = ({ date, toast, setToast }) => {
 
     const FIELDS_4M = [
         { key: 'line', label: 'Line' }, { key: 'partName', label: 'Part Name' },
-        { key: 'shift', label: 'Shift', options: ['Shift 1', 'Shift 2', 'Shift 3'] },
+        { key: 'shift', label: 'Shift', options: ['I', 'II', 'III'] },
         { key: 'mcNo', label: 'M/C No' }, { key: 'type4M', label: 'Type of 4M' },
         { key: 'description', label: 'Description' }, { key: 'firstPart', label: 'First Part' },
         { key: 'lastPart', label: 'Last Part' }, { key: 'inspFreq', label: 'Insp Freq' },
@@ -756,11 +756,11 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
         setModalItem(item);
         const existingReport = reportsMap[item.MasterId];
         if (existingReport) {
-            setNcForm({ 
-                ncDetails: existingReport.NonConformityDetails, correction: existingReport.Correction, 
-                rootCause: existingReport.RootCause, correctiveAction: existingReport.CorrectiveAction, 
-                targetDate: existingReport.TargetDate.split('T')[0], responsibility: existingReport.Responsibility, 
-                sign: existingReport.Sign, status: existingReport.Status 
+            setNcForm({
+                ncDetails: existingReport.NonConformityDetails, correction: existingReport.Correction,
+                rootCause: existingReport.RootCause, correctiveAction: existingReport.CorrectiveAction,
+                targetDate: existingReport.TargetDate.split('T')[0], responsibility: existingReport.Responsibility,
+                sign: existingReport.Sign, status: existingReport.Status
             });
         } else {
             setNcForm({ ncDetails: '', correction: '', rootCause: '', correctiveAction: '', targetDate: date, responsibility: '', sign: '', status: 'Pending' });
@@ -771,13 +771,13 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
     const submitReport = async () => {
         if (!ncForm.ncDetails || !ncForm.responsibility) return setToast({ msg: 'Details and Responsibility are mandatory.', type: 'error' });
         try {
-            await axios.post(`${API}/api/bottom-level-audit/report-nc`, { 
-                checklistId: modalItem.MasterId, slNo: modalItem.SlNo, reportDate: date, disaMachine: disa, ...ncForm 
+            await axios.post(`${API}/api/bottom-level-audit/report-nc`, {
+                checklistId: modalItem.MasterId, slNo: modalItem.SlNo, reportDate: date, disaMachine: disa, ...ncForm
             });
             setToast({ msg: 'NC Report Logged Successfully.', type: 'success' });
             setIsModalOpen(false);
             setReportsMap(prev => ({ ...prev, [modalItem.MasterId]: { ...ncForm, MasterId: modalItem.MasterId, Status: 'Pending', Name: ncForm.sign } }));
-            
+
             const idx = data.checklist.findIndex(c => c.MasterId === modalItem.MasterId);
             if (idx !== -1) {
                 setItem(idx, 'IsDone', false);
@@ -801,7 +801,7 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
     const handleSave = async () => {
         setToast({ msg: 'Saving…', type: 'loading' });
         try {
-            const itemsToSave = data.checklist.map(item => ({ 
+            const itemsToSave = data.checklist.map(item => ({
                 MasterId: item.MasterId, IsDone: item.IsDone, IsHoliday: item.IsHoliday, IsVatCleaning: item.IsVatCleaning, ReadingValue: item.ReadingValue || ''
             }));
             await axios.post(`${API}/api/bottom-level-audit/submit-batch`, {
@@ -830,11 +830,11 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
                             <th className="p-3 text-center text-[10px] uppercase tracking-widest text-white/50 w-24">OK / Value</th>
                             <th className="p-3 text-center text-[10px] uppercase tracking-widest text-white/50 w-20">Not OK</th>
                             <th className="p-3 text-center text-[10px] uppercase tracking-widest text-white/50 w-20">
-                                Holiday<br/>
+                                Holiday<br />
                                 <input type="checkbox" checked={isGlobalHoliday} onChange={e => handleMasterHolidayToggle(e.target.checked)} className="w-4 h-4 mt-2 accent-[#ff9100] cursor-pointer" />
                             </th>
                             <th className="p-3 text-center text-[10px] uppercase tracking-widest text-white/50 w-24 border-l border-white/5">
-                                VAT Cleaning<br/>
+                                VAT Cleaning<br />
                                 <input type="checkbox" checked={isGlobalVatCleaning} onChange={e => handleMasterVatToggle(e.target.checked)} className="w-4 h-4 mt-2 accent-blue-600 cursor-pointer" />
                             </th>
                         </tr>
@@ -843,17 +843,17 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
                         {data.checklist.map((item, i) => {
                             const hasReport = !!reportsMap[item.MasterId];
                             const isDisabled = item.IsHoliday || item.IsVatCleaning;
-                            const isDecimalRow = item.SlNo === 1 || item.SlNo === 2 || item.SlNo === 17; 
+                            const isDecimalRow = item.SlNo === 1 || item.SlNo === 2 || item.SlNo === 17;
 
                             return (
                                 <tr key={item.MasterId} className={`border-b border-white/5 transition-colors ${hasReport ? 'bg-red-900/20' : isDisabled ? 'bg-black/20 opacity-60' : 'hover:bg-white/5'}`}>
                                     <td className="p-3 text-white/40 font-bold">{item.SlNo}</td>
                                     <td className={`p-3 font-bold ${isDisabled ? 'text-white/40 line-through' : 'text-white/90'}`}>{item.CheckPointDesc}</td>
                                     <td className="p-3"><span className={`border border-white/10 text-[10px] font-bold px-2 py-1 rounded uppercase ${isDisabled ? 'text-white/30' : 'text-white/60 bg-black/20'}`}>{item.CheckMethod}</span></td>
-                                    
+
                                     <td className="p-3 text-center">
                                         {isDecimalRow ? (
-                                            <input type="number" step="0.01" value={item.ReadingValue || ''} onChange={e => handleReadingChange(i, e.target.value)} disabled={isDisabled || hasReport} placeholder="0.00" 
+                                            <input type="number" step="0.01" value={item.ReadingValue || ''} onChange={e => handleReadingChange(i, e.target.value)} disabled={isDisabled || hasReport} placeholder="0.00"
                                                 className={`w-16 mx-auto text-center border border-white/10 rounded text-xs font-bold py-1 outline-none transition-colors ${isDisabled || hasReport ? 'bg-black/20 text-white/30 cursor-not-allowed' : 'bg-[#333] text-white focus:border-[#ff9100]'}`} />
                                         ) : (
                                             <div onClick={() => !isDisabled && !hasReport && handleOkClick(item, i)} className={`w-6 h-6 mx-auto rounded border flex items-center justify-center transition-all ${isDisabled ? 'cursor-not-allowed border-white/10 bg-black/20' : 'cursor-pointer'} ${item.IsDone && !hasReport && !isDisabled ? 'bg-green-500 border-green-500 text-white' : 'border-white/20 bg-[#333]'} ${hasReport ? 'opacity-20 cursor-not-allowed' : ''}`}>
@@ -861,13 +861,13 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
                                             </div>
                                         )}
                                     </td>
-                                    
+
                                     <td className="p-3 text-center">
                                         <div onClick={() => !isDisabled && handleNotOkClick(item)} className={`w-6 h-6 mx-auto rounded border flex items-center justify-center transition-all ${isDisabled ? 'cursor-not-allowed border-white/10 bg-black/20' : 'cursor-pointer hover:border-red-500'} ${hasReport && !isDisabled ? 'bg-red-600 border-red-600 text-white shadow-[0_0_10px_rgba(220,38,38,0.5)]' : 'border-white/20 bg-[#333]'}`}>
                                             {hasReport && !isDisabled && "✕"}
                                         </div>
                                     </td>
-                                    
+
                                     <td className="p-3 text-center border-l border-white/5 bg-black/10">
                                         <input type="checkbox" checked={item.IsHoliday || false} readOnly disabled className="w-5 h-5 accent-[#ff9100] cursor-not-allowed opacity-70" />
                                     </td>
@@ -895,12 +895,12 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
                                 <span className="text-[10px] bg-[#ff9100]/20 text-[#ff9100] border border-[#ff9100]/50 px-2 py-1 rounded font-black uppercase tracking-wider">{ncForm.status}</span>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="col-span-2"><Field label="NC Details" value={ncForm.ncDetails} onChange={v => setNcForm({...ncForm, ncDetails: v})} multiline /></div>
-                                <Field label="Correction" value={ncForm.correction} onChange={v => setNcForm({...ncForm, correction: v})} />
-                                <Field label="Root Cause" value={ncForm.rootCause} onChange={v => setNcForm({...ncForm, rootCause: v})} />
-                                <div className="col-span-2"><Field label="Corrective Action" value={ncForm.correctiveAction} onChange={v => setNcForm({...ncForm, correctiveAction: v})} multiline /></div>
-                                <Field label="Responsibility" value={ncForm.responsibility} onChange={v => setNcForm({...ncForm, responsibility: v})} options={['Maintenance', 'Production', 'Quality']} />
-                                <Field label="Target Date" type="date" value={ncForm.targetDate} onChange={v => setNcForm({...ncForm, targetDate: v})} />
+                                <div className="col-span-2"><Field label="NC Details" value={ncForm.ncDetails} onChange={v => setNcForm({ ...ncForm, ncDetails: v })} multiline /></div>
+                                <Field label="Correction" value={ncForm.correction} onChange={v => setNcForm({ ...ncForm, correction: v })} />
+                                <Field label="Root Cause" value={ncForm.rootCause} onChange={v => setNcForm({ ...ncForm, rootCause: v })} />
+                                <div className="col-span-2"><Field label="Corrective Action" value={ncForm.correctiveAction} onChange={v => setNcForm({ ...ncForm, correctiveAction: v })} multiline /></div>
+                                <Field label="Responsibility" value={ncForm.responsibility} onChange={v => setNcForm({ ...ncForm, responsibility: v })} options={['Maintenance', 'Production', 'Quality']} />
+                                <Field label="Target Date" type="date" value={ncForm.targetDate} onChange={v => setNcForm({ ...ncForm, targetDate: v })} />
                             </div>
                             <div className="pt-4 border-t border-white/10">
                                 <button onClick={submitReport} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-lg uppercase tracking-widest shadow-lg transition-colors">Save NC Report</button>
@@ -978,8 +978,8 @@ const AdminFormEditor = ({ form, date, onBack }) => {
                                 <button key={m}
                                     onClick={() => setSelectedMachine(m)}
                                     className={`px-6 py-3 rounded-xl font-black text-sm uppercase tracking-wider border-2 transition-all ${selectedMachine === m
-                                            ? 'bg-[#ff9100] border-[#ff9100] text-white'
-                                            : 'bg-[#2a2a2a] border-white/10 text-white/60 hover:border-[#ff9100]/50'
+                                        ? 'bg-[#ff9100] border-[#ff9100] text-white'
+                                        : 'bg-[#2a2a2a] border-white/10 text-white/60 hover:border-[#ff9100]/50'
                                         }`}>
                                     {m}
                                 </button>

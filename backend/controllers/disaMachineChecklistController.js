@@ -6,7 +6,7 @@ const sql = require('../db');
 exports.getChecklistDetails = async (req, res) => {
   try {
     const { date, disaMachine } = req.query;
-    
+
     // 🔥 FIX: Safely filters out deleted items so they disappear from the Operator UI
     const checklistResult = await sql.query`
       SELECT 
@@ -29,9 +29,9 @@ exports.getChecklistDetails = async (req, res) => {
       WHERE M.IsDeleted = 0 OR M.IsDeleted IS NULL
       ORDER BY M.SlNo ASC
     `;
-    
+
     const hodsResult = await sql.query`SELECT username as OperatorName FROM dbo.Users WHERE role = 'hod' ORDER BY username`;
-    
+
     const reportsResult = await sql.query`
       SELECT * FROM dbo.DisaNonConformanceReport 
       WHERE ReportDate = ${date} AND DisaMachine = ${disaMachine}
@@ -39,8 +39,8 @@ exports.getChecklistDetails = async (req, res) => {
 
     res.json({
       checklist: checklistResult.recordset,
-      operators: hodsResult.recordset, 
-      reports: reportsResult.recordset 
+      operators: hodsResult.recordset,
+      reports: reportsResult.recordset
     });
 
   } catch (err) {
@@ -55,7 +55,7 @@ exports.getChecklistDetails = async (req, res) => {
 exports.saveBatchChecklist = async (req, res) => {
   try {
     // 'sign' is now the assigned HOD name
-    const { items, sign, date, disaMachine, operatorSignature } = req.body; 
+    const { items, sign, date, disaMachine, operatorSignature } = req.body;
     if (!items || !date || !disaMachine) return res.status(400).send("Data missing");
 
     const transaction = new sql.Transaction();
@@ -63,18 +63,18 @@ exports.saveBatchChecklist = async (req, res) => {
 
     try {
       for (const item of items) {
-        const request = new sql.Request(transaction); 
+        const request = new sql.Request(transaction);
 
         const checkRes = await request.query`
             SELECT COUNT(*) as count FROM MachineChecklist_Trans 
             WHERE MasterId = ${item.MasterId} AND LogDate = ${date} AND DisaMachine = ${disaMachine}
         `;
-        
+
         const isDoneVal = item.IsDone ? 1 : 0;
         const isHolidayVal = item.IsHoliday ? 1 : 0;
-        const isVatVal = item.IsVatCleaning ? 1 : 0; 
-        const isPrevMaintVal = item.IsPreventiveMaintenance ? 1 : 0; 
-        const readingVal = item.ReadingValue || ''; 
+        const isVatVal = item.IsVatCleaning ? 1 : 0;
+        const isPrevMaintVal = item.IsPreventiveMaintenance ? 1 : 0;
+        const readingVal = item.ReadingValue || '';
 
         const writeRequest = new sql.Request(transaction);
 
@@ -92,7 +92,7 @@ exports.saveBatchChecklist = async (req, res) => {
           `;
         }
       }
-      
+
       await transaction.commit();
       res.json({ success: true });
 
@@ -111,9 +111,9 @@ exports.saveBatchChecklist = async (req, res) => {
 // ==========================================
 exports.saveNCReport = async (req, res) => {
   try {
-    const { 
-        checklistId, slNo, reportDate, ncDetails, correction, 
-        rootCause, correctiveAction, targetDate, responsibility, sign, disaMachine 
+    const {
+      checklistId, slNo, reportDate, ncDetails, correction,
+      rootCause, correctiveAction, targetDate, responsibility, sign, disaMachine
     } = req.body;
 
     await sql.query`
@@ -133,14 +133,14 @@ exports.saveNCReport = async (req, res) => {
         SELECT COUNT(*) as count FROM MachineChecklist_Trans 
         WHERE MasterId = ${checklistId} AND LogDate = ${reportDate} AND DisaMachine = ${disaMachine}
     `;
-    
+
     if (checkRow.recordset[0].count > 0) {
-       await sql.query`
+      await sql.query`
            UPDATE MachineChecklist_Trans SET IsDone = 0, IsHoliday = 0, IsVatCleaning = 0, IsPreventiveMaintenance = 0, Sign = ${sign} 
            WHERE MasterId = ${checklistId} AND LogDate = ${reportDate} AND DisaMachine = ${disaMachine}
        `;
     } else {
-       await sql.query`
+      await sql.query`
            INSERT INTO MachineChecklist_Trans (MasterId, LogDate, IsDone, IsHoliday, IsVatCleaning, IsPreventiveMaintenance, Sign, DisaMachine) 
            VALUES (${checklistId}, ${reportDate}, 0, 0, 0, 0, ${sign}, ${disaMachine})
        `;
@@ -158,7 +158,7 @@ exports.saveNCReport = async (req, res) => {
 exports.getMonthlyReport = async (req, res) => {
   try {
     const { month, year, disaMachine } = req.query;
-    
+
     const checklistResult = await sql.query`
       SELECT MasterId, DAY(LogDate) as DayVal, IsDone, IsHoliday, IsVatCleaning, IsPreventiveMaintenance, ReadingValue, OperatorSignature, AssignedHOD, HODSignature
       FROM MachineChecklist_Trans
@@ -179,7 +179,7 @@ exports.getMonthlyReport = async (req, res) => {
       ORDER BY ReportDate ASC
     `;
 
-    res.json({ 
+    res.json({
       monthlyLogs: checklistResult.recordset,
       ncReports: ncResult.recordset
     });
@@ -196,7 +196,7 @@ exports.getMonthlyReport = async (req, res) => {
 exports.getReportsByHOD = async (req, res) => {
   try {
     const { name } = req.params;
-    
+
     const result = await sql.query`
       SELECT DISTINCT LogDate as reportDate, DisaMachine as disa, AssignedHOD as hodName, MAX(HODSignature) as hodSignature
       FROM MachineChecklist_Trans 
@@ -214,7 +214,7 @@ exports.getReportsByHOD = async (req, res) => {
 exports.signReportByHOD = async (req, res) => {
   try {
     const { date, disaMachine, signature } = req.body;
-    
+
     await sql.query`
       UPDATE MachineChecklist_Trans 
       SET HODSignature = ${signature} 
@@ -231,33 +231,33 @@ exports.signReportByHOD = async (req, res) => {
 //   6. ADMIN BULK DATA EXPORT
 // ==========================================
 exports.getBulkData = async (req, res) => {
-    try {
-        const { fromDate, toDate } = req.query;
-        const request = new sql.Request();
-        
-        // 🔥 FIX: Hides soft-deleted master columns from the bulk export too
-        const masterRes = await request.query(`SELECT * FROM MachineChecklist_Master WHERE IsDeleted = 0 OR IsDeleted IS NULL ORDER BY SlNo ASC`);
-        
-        let transQuery = `
+  try {
+    const { fromDate, toDate } = req.query;
+    const request = new sql.Request();
+
+    // 🔥 FIX: Hides soft-deleted master columns from the bulk export too
+    const masterRes = await request.query(`SELECT * FROM MachineChecklist_Master WHERE IsDeleted = 0 OR IsDeleted IS NULL ORDER BY SlNo ASC`);
+
+    let transQuery = `
             SELECT T.*, M.CheckPointDesc, M.CheckMethod, M.SlNo 
             FROM MachineChecklist_Trans T
             INNER JOIN MachineChecklist_Master M ON T.MasterId = M.MasterId
         `;
-        let ncrQuery = `SELECT * FROM DisaNonConformanceReport`;
+    let ncrQuery = `SELECT * FROM DisaNonConformanceReport`;
 
-        if (fromDate && toDate) {
-            transQuery += ` WHERE T.LogDate BETWEEN @fromDate AND @toDate`;
-            ncrQuery += ` WHERE ReportDate BETWEEN @fromDate AND @toDate`;
-            request.input('fromDate', sql.Date, fromDate);
-            request.input('toDate', sql.Date, toDate);
-        }
-
-        const transRes = await request.query(transQuery);
-        const ncrRes = await request.query(ncrQuery);
-
-        res.json({ master: masterRes.recordset, trans: transRes.recordset, ncr: ncrRes.recordset });
-    } catch (error) { 
-        console.error("Error fetching bulk data:", error);
-        res.status(500).json({ error: error.message }); 
+    if (fromDate && toDate) {
+      request.input('fromDate', sql.Date, fromDate);
+      request.input('toDate', sql.Date, toDate);
+      transQuery += ` WHERE CAST(T.LogDate AS DATE) BETWEEN @fromDate AND @toDate`;
+      ncrQuery += ` WHERE CAST(ReportDate AS DATE) BETWEEN @fromDate AND @toDate`;
     }
+
+    const transRes = await request.query(transQuery);
+    const ncrRes = await request.query(ncrQuery);
+
+    res.json({ master: masterRes.recordset, trans: transRes.recordset, ncr: ncrRes.recordset });
+  } catch (error) {
+    console.error("Error fetching bulk data:", error);
+    res.status(500).json({ error: error.message });
+  }
 };

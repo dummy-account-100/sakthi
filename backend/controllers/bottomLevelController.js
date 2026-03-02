@@ -1,9 +1,9 @@
-const sql = require('../db'); 
+const sql = require('../db');
 
 exports.getChecklistDetails = async (req, res) => {
   try {
     const { date, disaMachine } = req.query;
-    
+
     // 🔥 FIX: Added "OR M.IsDeleted IS NULL" for safety
     const checklistResult = await sql.query`
       SELECT 
@@ -18,7 +18,7 @@ exports.getChecklistDetails = async (req, res) => {
       WHERE M.IsDeleted = 0 OR M.IsDeleted IS NULL
       ORDER BY M.SlNo ASC
     `;
-    
+
     const supervisorsResult = await sql.query`SELECT username as OperatorName FROM dbo.Users WHERE role = 'supervisor' ORDER BY username`;
     const hofResult = await sql.query`SELECT username as OperatorName FROM dbo.Users WHERE role = 'hof' ORDER BY username`;
 
@@ -28,15 +28,15 @@ exports.getChecklistDetails = async (req, res) => {
     `;
 
     res.json({ checklist: checklistResult.recordset, supervisors: supervisorsResult.recordset, hofs: hofResult.recordset, reports: reportsResult.recordset });
-  } catch (err) { 
-      console.error("Error in getChecklistDetails:", err);
-      res.status(500).send(err.message); 
+  } catch (err) {
+    console.error("Error in getChecklistDetails:", err);
+    res.status(500).send(err.message);
   }
 };
 
 exports.saveBatchChecklist = async (req, res) => {
   try {
-    const { items, sign, assignedHOF, date, disaMachine } = req.body; 
+    const { items, sign, assignedHOF, date, disaMachine } = req.body;
     if (!items || !date || !disaMachine) return res.status(400).send("Data missing");
 
     const transaction = new sql.Transaction();
@@ -44,12 +44,12 @@ exports.saveBatchChecklist = async (req, res) => {
 
     try {
       for (const item of items) {
-        const request = new sql.Request(transaction); 
+        const request = new sql.Request(transaction);
         const checkRes = await request.query`SELECT COUNT(*) as count FROM BottomLevelAudit_Trans WHERE MasterId = ${item.MasterId} AND LogDate = ${date} AND DisaMachine = ${disaMachine}`;
-        
+
         const isDoneVal = item.IsDone ? 1 : 0; const isNaVal = item.IsNA ? 1 : 0;
         const isHolidayVal = item.IsHoliday ? 1 : 0; const isVatVal = item.IsVatCleaning ? 1 : 0;
-        const isPrevMaintVal = item.IsPreventiveMaintenance ? 1 : 0; 
+        const isPrevMaintVal = item.IsPreventiveMaintenance ? 1 : 0;
 
         const writeRequest = new sql.Request(transaction);
 
@@ -70,9 +70,9 @@ exports.saveBatchChecklist = async (req, res) => {
       await transaction.commit();
       res.json({ success: true });
     } catch (err) { await transaction.rollback(); throw err; }
-  } catch (err) { 
-      console.error("Error in saveBatchChecklist:", err);
-      res.status(500).send(err.message); 
+  } catch (err) {
+    console.error("Error in saveBatchChecklist:", err);
+    res.status(500).send(err.message);
   }
 };
 
@@ -92,29 +92,29 @@ exports.saveNCReport = async (req, res) => {
     `;
 
     const checkRow = await sql.query`SELECT COUNT(*) as count FROM BottomLevelAudit_Trans WHERE MasterId = ${checklistId} AND LogDate = ${reportDate} AND DisaMachine = ${disaMachine}`;
-    
+
     if (checkRow.recordset[0].count > 0) {
-       await sql.query`UPDATE BottomLevelAudit_Trans SET IsDone = 0, IsNA = 0, IsHoliday = 0, IsVatCleaning = 0, IsPreventiveMaintenance = 0, [Sign] = ${sign} WHERE MasterId = ${checklistId} AND LogDate = ${reportDate} AND DisaMachine = ${disaMachine}`;
+      await sql.query`UPDATE BottomLevelAudit_Trans SET IsDone = 0, IsNA = 0, IsHoliday = 0, IsVatCleaning = 0, IsPreventiveMaintenance = 0, [Sign] = ${sign} WHERE MasterId = ${checklistId} AND LogDate = ${reportDate} AND DisaMachine = ${disaMachine}`;
     } else {
-       await sql.query`INSERT INTO BottomLevelAudit_Trans (MasterId, LogDate, DisaMachine, IsDone, IsNA, IsHoliday, IsVatCleaning, IsPreventiveMaintenance, [Sign]) VALUES (${checklistId}, ${reportDate}, ${disaMachine}, 0, 0, 0, 0, 0, ${sign})`;
+      await sql.query`INSERT INTO BottomLevelAudit_Trans (MasterId, LogDate, DisaMachine, IsDone, IsNA, IsHoliday, IsVatCleaning, IsPreventiveMaintenance, [Sign]) VALUES (${checklistId}, ${reportDate}, ${disaMachine}, 0, 0, 0, 0, 0, ${sign})`;
     }
     res.json({ success: true });
-  } catch (err) { 
-      console.error("Error in saveNCReport:", err);
-      res.status(500).send(err.message); 
+  } catch (err) {
+    console.error("Error in saveNCReport:", err);
+    res.status(500).send(err.message);
   }
 };
 
 exports.getMonthlyReport = async (req, res) => {
   try {
     const { month, year, disaMachine } = req.query;
-    
+
     const checklistResult = await sql.query`
       SELECT MasterId, DAY(LogDate) as DayVal, IsDone, IsNA, IsHoliday, IsVatCleaning, IsPreventiveMaintenance, [Sign] as SupervisorName, SupervisorSignature, AssignedHOF, HOFSignature
       FROM BottomLevelAudit_Trans
       WHERE MONTH(LogDate) = ${month} AND YEAR(LogDate) = ${year} AND DisaMachine = ${disaMachine}
     `;
-    
+
     const ncResult = await sql.query`
       SELECT ReportId, ReportDate, NonConformityDetails, Correction, RootCause, CorrectiveAction, TargetDate, Responsibility, [Sign], Status, SupervisorSignature
       FROM BottomLevelAudit_NCR
@@ -122,9 +122,9 @@ exports.getMonthlyReport = async (req, res) => {
       ORDER BY ReportDate ASC
     `;
     res.json({ monthlyLogs: checklistResult.recordset, ncReports: ncResult.recordset });
-  } catch (err) { 
-      console.error("Error in getMonthlyReport:", err);
-      res.status(500).send(err.message); 
+  } catch (err) {
+    console.error("Error in getMonthlyReport:", err);
+    res.status(500).send(err.message);
   }
 };
 
@@ -132,35 +132,35 @@ exports.getMonthlyReport = async (req, res) => {
 //   ADMIN BULK DATA EXPORT
 // ==========================================
 exports.getBulkData = async (req, res) => {
-    try {
-        const { fromDate, toDate } = req.query;
-        const request = new sql.Request();
-        
-        // 🔥 FIX: Ensure bulk data export ignores deleted configs
-        const masterRes = await request.query(`SELECT * FROM BottomLevelAudit_Master WHERE IsDeleted = 0 OR IsDeleted IS NULL ORDER BY SlNo ASC`);
-        
-        let transQuery = `
+  try {
+    const { fromDate, toDate } = req.query;
+    const request = new sql.Request();
+
+    // 🔥 FIX: Ensure bulk data export ignores deleted configs
+    const masterRes = await request.query(`SELECT * FROM BottomLevelAudit_Master WHERE IsDeleted = 0 OR IsDeleted IS NULL ORDER BY SlNo ASC`);
+
+    let transQuery = `
             SELECT T.*, M.CheckPointDesc, M.SlNo 
             FROM BottomLevelAudit_Trans T
             INNER JOIN BottomLevelAudit_Master M ON T.MasterId = M.MasterId
         `;
-        let ncrQuery = `SELECT * FROM BottomLevelAudit_NCR`;
+    let ncrQuery = `SELECT * FROM BottomLevelAudit_NCR`;
 
-        if (fromDate && toDate) {
-            transQuery += ` WHERE T.LogDate BETWEEN @fromDate AND @toDate`;
-            ncrQuery += ` WHERE ReportDate BETWEEN @fromDate AND @toDate`;
-            request.input('fromDate', sql.Date, fromDate);
-            request.input('toDate', sql.Date, toDate);
-        }
-
-        const transRes = await request.query(transQuery);
-        const ncrRes = await request.query(ncrQuery);
-
-        res.json({ master: masterRes.recordset, trans: transRes.recordset, ncr: ncrRes.recordset });
-    } catch (error) { 
-        console.error("Error fetching bulk data:", error);
-        res.status(500).json({ error: error.message }); 
+    if (fromDate && toDate) {
+      transQuery += ` WHERE CAST(T.LogDate AS DATE) BETWEEN @fromDate AND @toDate`;
+      ncrQuery += ` WHERE CAST(ReportDate AS DATE) BETWEEN @fromDate AND @toDate`;
+      request.input('fromDate', sql.Date, fromDate);
+      request.input('toDate', sql.Date, toDate);
     }
+
+    const transRes = await request.query(transQuery);
+    const ncrRes = await request.query(ncrQuery);
+
+    res.json({ master: masterRes.recordset, trans: transRes.recordset, ncr: ncrRes.recordset });
+  } catch (error) {
+    console.error("Error fetching bulk data:", error);
+    res.status(500).json({ error: error.message });
+  }
 };
 
 // ==========================================
@@ -178,9 +178,9 @@ exports.getReportsBySupervisor = async (req, res) => {
       ORDER BY t1.LogDate DESC
     `;
     res.json(result.recordset);
-  } catch (error) { 
-      console.error("Error in getReportsBySupervisor:", error);
-      res.status(500).json({ error: "Failed to fetch supervisor reports" }); 
+  } catch (error) {
+    console.error("Error in getReportsBySupervisor:", error);
+    res.status(500).json({ error: "Failed to fetch supervisor reports" });
   }
 };
 
@@ -189,9 +189,9 @@ exports.signReportBySupervisor = async (req, res) => {
     const { date, disaMachine, signature } = req.body;
     await sql.query`UPDATE BottomLevelAudit_Trans SET SupervisorSignature = ${signature} WHERE LogDate = ${date} AND DisaMachine = ${disaMachine}`;
     res.json({ message: "Signature saved successfully" });
-  } catch (error) { 
-      console.error("Error in signReportBySupervisor:", error);
-      res.status(500).json({ error: "Failed to save supervisor signature" }); 
+  } catch (error) {
+    console.error("Error in signReportBySupervisor:", error);
+    res.status(500).json({ error: "Failed to save supervisor signature" });
   }
 };
 
@@ -205,9 +205,9 @@ exports.getNcrReportsBySupervisor = async (req, res) => {
       ORDER BY Status DESC, ReportDate DESC
     `;
     res.json(result.recordset);
-  } catch (error) { 
-      console.error("Error in getNcrReportsBySupervisor:", error);
-      res.status(500).json({ error: "Failed to fetch NCRs" }); 
+  } catch (error) {
+    console.error("Error in getNcrReportsBySupervisor:", error);
+    res.status(500).json({ error: "Failed to fetch NCRs" });
   }
 };
 
@@ -216,13 +216,13 @@ exports.signNcrBySupervisor = async (req, res) => {
     const { reportId, signature } = req.body;
     await sql.query`UPDATE BottomLevelAudit_NCR SET SupervisorSignature = ${signature}, Status = 'Completed' WHERE ReportId = ${reportId}`;
     res.json({ message: "NCR Signature saved successfully" });
-  } catch (error) { 
-      console.error("Error in signNcrBySupervisor:", error);
-      res.status(500).json({ error: "Failed to save NCR signature" }); 
+  } catch (error) {
+    console.error("Error in signNcrBySupervisor:", error);
+    res.status(500).json({ error: "Failed to save NCR signature" });
   }
 };
 
-// ==========================================
+// ========================================== 
 //   HOF DASHBOARD APIS
 // ==========================================
 exports.getReportsByHOF = async (req, res) => {
@@ -237,9 +237,9 @@ exports.getReportsByHOF = async (req, res) => {
       ORDER BY year DESC, month DESC
     `;
     res.json(result.recordset);
-  } catch (error) { 
-      console.error("Error in getReportsByHOF:", error);
-      res.status(500).json({ error: "Failed to fetch HOF reports" }); 
+  } catch (error) {
+    console.error("Error in getReportsByHOF:", error);
+    res.status(500).json({ error: "Failed to fetch HOF reports" });
   }
 };
 
@@ -248,8 +248,8 @@ exports.signReportByHOF = async (req, res) => {
     const { month, year, disaMachine, signature } = req.body;
     await sql.query`UPDATE BottomLevelAudit_Trans SET HOFSignature = ${signature} WHERE MONTH(LogDate) = ${month} AND YEAR(LogDate) = ${year} AND DisaMachine = ${disaMachine}`;
     res.json({ message: "Monthly Signature saved successfully" });
-  } catch (error) { 
-      console.error("Error in signReportByHOF:", error);
-      res.status(500).json({ error: "Failed to save HOF signature" }); 
+  } catch (error) {
+    console.error("Error in signReportByHOF:", error);
+    res.status(500).json({ error: "Failed to save HOF signature" });
   }
 };
