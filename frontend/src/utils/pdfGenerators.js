@@ -1,7 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// --- Utility for Formatting ---
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
     return new Date(dateStr).toLocaleDateString('en-GB');
@@ -13,7 +12,7 @@ const getReportMonthYear = (fromDate) => {
 };
 
 // ============================================================================
-// 1. UNPOURED MOULD DETAILS (DYNAMIC COLUMNS)
+// 1. UNPOURED MOULD DETAILS
 // ============================================================================
 export const generateUnPouredMouldPDF = async (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
@@ -28,7 +27,7 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
 
     let customCols = [];
     try {
-        const configRes = await fetch(`${process.env.REACT_APP_API_URL}/api/config/unpoured-mould-details/master`);
+        const configRes = await fetch('http://localhost:5000/api/config/unpoured-mould-details/master');
         const configData = await configRes.json();
         customCols = (configData.config || []).map(c => ({
             key: `custom_${c.id}`, id: c.id, label: c.reasonName.toUpperCase().replace(' ', '\n'), group: c.department.toUpperCase(), isCustom: true
@@ -84,6 +83,9 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
         });
         if (currentGroup) headRow1.push({ content: currentGroup, colSpan: groupSpan, styles: { halign: 'center' } });
         headRow1.push({ content: 'TOTAL', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: [220, 220, 220] } });
+        
+        // 🔥 Add signature column header to PDF
+        headRow1.push({ content: 'SIGNATURE', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } });
 
         const headRow2 = allColumns.map(col => ({ content: col.label, styles: { halign: 'center', valign: 'middle', fontSize: 5.5 } }));
 
@@ -96,6 +98,7 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
                 rowTotal += parseInt(val) || 0;
             });
             row.push(rowTotal === 0 ? '-' : rowTotal.toString());
+            row.push(''); // Empty cell for image
             return row;
         });
 
@@ -110,13 +113,29 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
             grandTotal += colTotal;
         });
         totalRow.push(grandTotal === 0 ? '-' : grandTotal.toString());
+        totalRow.push('-');
         bodyRows.push(totalRow);
 
         autoTable(doc, {
             startY: 32, margin: { left: 5, right: 5 }, head: [headRow1, headRow2], body: bodyRows, theme: 'grid',
             styles: { fontSize: 8, cellPadding: { top: 3.5, right: 1, bottom: 3.5, left: 1 }, lineColor: [0, 0, 0], lineWidth: 0.15, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
             headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', minCellHeight: 12 }, bodyStyles: { minCellHeight: 10 },
-            didParseCell: function (data) { if (data.section === 'body' && data.row.index === bodyRows.length - 1) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240]; } }
+            columnStyles: { [allColumns.length + 2]: { cellWidth: 25 } },
+            didDrawCell: function(data) {
+                // 🔥 Draw the signature image in the last column
+                if (data.section === 'body' && data.column.index === allColumns.length + 2 && data.row.index < 3) {
+                    const shift = data.row.index + 1;
+                    const sigData = shiftsData[shift]?.OperatorSignature;
+                    if (sigData && sigData.startsWith('data:image')) {
+                        try { doc.addImage(sigData, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) {}
+                    }
+                }
+            },
+            didParseCell: function (data) { 
+                if (data.section === 'body' && data.row.index === bodyRows.length - 1) { 
+                    data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240]; 
+                } 
+            }
         });
     });
 
@@ -124,7 +143,7 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
 };
 
 // ============================================================================
-// 2. DMM SETTING PARAMETERS (DYNAMIC EAV COLUMNS)
+// 2. DMM SETTING PARAMETERS
 // ============================================================================
 export const generateDmmSettingPDF = async (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
@@ -140,7 +159,7 @@ export const generateDmmSettingPDF = async (data, dateRange) => {
 
     let customCols = [];
     try {
-        const configRes = await fetch(`${process.env.REACT_APP_API_URL}/api/config/dmm-setting-parameters/master`);
+        const configRes = await fetch('http://localhost:5000/api/config/dmm-setting-parameters/master');
         const configData = await configRes.json();
         customCols = (configData.config || []).map(c => ({
             key: `custom_${c.id}`, id: c.id, label: c.columnLabel.replace('\\n', '\n'), isCustom: true
@@ -279,7 +298,7 @@ export const generateDmmSettingPDF = async (data, dateRange) => {
 };
 
 // ============================================================================
-// 3 & 4. DISA OPERATOR & LPA CHECKLIST (DYNAMIC CONFIG VERSION)
+// 3 & 4. DISA OPERATOR & LPA CHECKLIST (FIXED "SIG 1" BUG)
 // ============================================================================
 export const generateChecklistPDF = (data, dateRange, title1, title2) => {
     const doc = new jsPDF('l', 'mm', 'a4');
@@ -306,7 +325,6 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
         const historyMap = {};
         const holidayDays = new Set();
         const vatDays = new Set();
-        const naDays = new Set(); 
         const sig1Map = {}; 
         const sig2Map = {};
 
@@ -368,8 +386,9 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
         const sig2Row = ["", sig2Label, ""];
         
         for (let i = 1; i <= 31; i++) {
-           sig1Row.push(sig1Map[i] ? "SIG1" : "");
-           sig2Row.push(sig2Map[i] ? "SIG2" : "");
+           // We push empty strings because we will draw the image based on the maps in didDrawCell
+           sig1Row.push("");
+           sig2Row.push("");
         }
 
         const footerRows = [sig1Row, sig2Row];
@@ -384,35 +403,31 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
             headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0] },
             columnStyles: { 0: { cellWidth: 8 }, 1: { cellWidth: 60 }, 2: { cellWidth: 25 }, ...dynamicColumnStyles },
             didDrawCell: function(data) {
-                // 🛑 FIX: Use data.cell.raw to reliably check the text without autoTable's wrapping breaking it
+                // Draw Signature Images if they exist
                 if (data.row.index >= tableBody.length && data.column.index > 2) {
                     const dayIndex = data.column.index - 2; 
-                    const rawVal = data.cell.raw; 
+                    const isSig1Row = data.row.index === tableBody.length;
                     
-                    if (rawVal === 'SIG1' || rawVal === 'SIG2') {
-                        const sigData = rawVal === 'SIG1' ? sig1Map[dayIndex] : sig2Map[dayIndex];
-                        if (sigData && sigData.startsWith('data:image')) {
-                            doc.setFillColor(255, 255, 255);
-                            doc.rect(data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1, 'F');
-                            try { doc.addImage(sigData, 'PNG', data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1); } catch(e){}
-                        }
+                    const sigData = isSig1Row ? sig1Map[dayIndex] : sig2Map[dayIndex];
+                    if (sigData && sigData.startsWith('data:image')) {
+                        doc.setFillColor(255, 255, 255);
+                        doc.rect(data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1, 'F');
+                        try { doc.addImage(sigData, 'PNG', data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1); } catch(e){}
                     }
                 }
             },
             didParseCell: function (data) {
                 if (data.row.index >= tableBody.length && data.column.index === 1) data.cell.styles.fontStyle = 'bold';
                 
-                // 🛑 FIX: Clear out the dummy text (SIG1 / SIG2) so it doesn't print on the PDF
+                // 🔥 CRITICAL FIX: Erase EVERYTHING inside the signature cells so "SIG 1" never prints
                 if (data.row.index >= tableBody.length && data.column.index > 2) {
-                    if (data.cell.raw === 'SIG1' || data.cell.raw === 'SIG2') {
-                        data.cell.text = '';
-                    }
+                    data.cell.text = [];
                 }
 
                 if (data.column.index > 2 && data.row.index < tableBody.length) {
                     const text = data.cell.text?.[0] || '';
-                    if (text === 'Y') { data.cell.styles.font = 'ZapfDingbats'; data.cell.text = '3'; data.cell.styles.textColor = [0, 100, 0]; }
-                    else if (text === 'N') { data.cell.styles.textColor = [255, 0, 0]; data.cell.text = 'X'; data.cell.styles.fontStyle = 'bold'; }
+                    if (text === 'Y') { data.cell.styles.font = 'ZapfDingbats'; data.cell.text = ['3']; data.cell.styles.textColor = [0, 100, 0]; }
+                    else if (text === 'N') { data.cell.styles.textColor = [255, 0, 0]; data.cell.text = ['X']; data.cell.styles.fontStyle = 'bold'; }
                     else if (text === 'NA') { data.cell.styles.fontSize = 5; data.cell.styles.textColor = [100, 100, 100]; data.cell.styles.fontStyle = 'bold'; }
                 }
             }
@@ -438,7 +453,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
             const ncRows = machineNc.map((report, index) => [
                 index + 1, formatDate(report.ReportDate), report.NonConformityDetails || '', report.Correction || '',
                 report.RootCause || '', report.CorrectiveAction || '', report.TargetDate ? formatDate(report.TargetDate) : '',
-                report.Responsibility || '', report.SupervisorSignature ? 'SIG' : (report.Sign || ''), report.Status || ''
+                report.Responsibility || '', '', report.Status || '' // Leave 8 empty for image
             ]);
 
             autoTable(doc, {
@@ -456,7 +471,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
                 },
                 didParseCell: function(data) {
                     if (isLPA && data.section === 'body' && data.column.index === 8) {
-                        if (data.cell.raw === 'SIG') data.cell.text = ''; // 🛑 FIX: Erase the text safely using raw
+                        data.cell.text = []; // Force empty string
                     }
                     if (data.section === 'body' && data.column.index === 9) {
                         const statusText = (data.cell.text || [])[0] || '';
@@ -474,7 +489,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
 };
 
 // ============================================================================
-// 5. ERROR PROOF VERIFICATION (DYNAMIC CONFIG)
+// 5. ERROR PROOF VERIFICATION
 // ============================================================================
 export const generateErrorProofPDF = (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');

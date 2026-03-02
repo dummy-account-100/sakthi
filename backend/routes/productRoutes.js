@@ -16,7 +16,16 @@ router.get("/forms/last-personnel", formController.getLastPersonnel);
 router.post("/forms", formController.createReport);
 router.get("/forms/download-pdf", formController.downloadAllReports);
 
-// ⬇️ NEW SUPERVISOR ROUTES ADDED HERE ⬇️
+// ── Admin: Bulk data for date-range PDF export ─────────────────────────────
+router.get("/forms/bulk-data", formController.getBulkData);
+
+// ── Admin: Fetch report by exact date (for edit) ──────────────────────────
+router.get("/forms/by-date", formController.getByDate);
+
+// ── Admin: Update a report by ID ─────────────────────────────────────────
+router.put("/forms/:id", formController.updateDisamaticReport);
+
+// SUPERVISOR ROUTES
 router.get("/forms/supervisor/:name", formController.getReportsBySupervisor);
 router.post("/forms/sign", formController.signReport);
 

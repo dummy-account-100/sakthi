@@ -7,66 +7,66 @@ const path = require("path");
 //   SUBMIT DAILY PRODUCTION PERFORMANCE
 // ==========================================
 exports.createDailyPerformance = async (req, res) => {
-    // 🔥 NEW: Destructure operatorSignature from the body
-    const { productionDate, disa, summary, details, unplannedReasons, signatures, delays, operatorSignature } = req.body;
+  // 🔥 NEW: Destructure operatorSignature from the body
+  const { productionDate, disa, summary, details, unplannedReasons, signatures, delays, operatorSignature } = req.body;
 
-    try {
-        // 1. Insert Main Report (Now includes operatorSignature)
-        const reportResult = await sql.query`
+  try {
+    // 1. Insert Main Report (Now includes operatorSignature)
+    const reportResult = await sql.query`
             INSERT INTO DailyPerformanceReport (productionDate, disa, unplannedReasons, incharge, hof, hod, operatorSignature)
             OUTPUT INSERTED.id
             VALUES (${productionDate}, ${disa}, ${unplannedReasons || null}, 
                     ${signatures.incharge || null}, ${signatures.hof || null}, ${signatures.hod || null}, ${operatorSignature || null})`;
 
-        const reportId = reportResult.recordset[0].id;
+    const reportId = reportResult.recordset[0].id;
 
-        // 2. Insert Summary Data
-        const shifts = ["I", "II", "III"];
-        for (let shift of shifts) {
-            const sData = summary[shift];
-            await sql.query`
+    // 2. Insert Summary Data
+    const shifts = ["I", "II", "III"];
+    for (let shift of shifts) {
+      const sData = summary[shift];
+      await sql.query`
                 INSERT INTO DailyPerformanceSummary (reportId, shiftName, pouredMoulds, tonnage, casted, shiftValue)
                 VALUES (${reportId}, ${shift}, ${Number(sData.pouredMoulds) || 0},
                         ${Number(sData.tonnage) || 0}, ${Number(sData.casted) || 0}, ${Number(sData.value) || 0})`;
-        }
+    }
 
-        // 3. Insert Details Data
-        if (details && details.length > 0) {
-            for (let d of details) {
-                if (d.patternCode) { 
-                    await sql.query`
+    // 3. Insert Details Data
+    if (details && details.length > 0) {
+      for (let d of details) {
+        if (d.patternCode) {
+          await sql.query`
                         INSERT INTO DailyPerformanceDetails (reportId, patternCode, itemDescription, planned, unplanned,
                                                              mouldsProd, mouldsPour, cavity, unitWeight, totalWeight)
                         VALUES (${reportId}, ${d.patternCode}, ${d.itemDescription}, 
                                 ${Number(d.planned) || 0}, ${Number(d.unplanned) || 0},
                                 ${Number(d.mouldsProd) || 0}, ${Number(d.mouldsPour) || 0}, 
                                 ${Number(d.cavity) || 0}, ${Number(d.unitWeight) || 0}, ${Number(d.totalWeight) || 0})`;
-                }
-            }
         }
+      }
+    }
 
-        // 4. Insert Delays Data into the Productiondelays table
-        if (delays && delays.length > 0) {
-            for (let delay of delays) {
-                await sql.query`
+    // 4. Insert Delays Data into the Productiondelays table
+    if (delays && delays.length > 0) {
+      for (let delay of delays) {
+        await sql.query`
                     INSERT INTO Productiondelays (reportId, shift, duration, reason)
                     VALUES (${reportId}, ${delay.shift}, ${Number(delay.duration) || 0}, ${delay.reason})`;
-            }
-        }
-
-        res.status(201).json({ message: "Daily Performance Report saved successfully" });
-    } catch (error) {
-        console.error("Error saving daily performance:", error);
-        res.status(500).json({ error: "Failed to save daily performance" });
+      }
     }
+
+    res.status(201).json({ message: "Daily Performance Report saved successfully" });
+  } catch (error) {
+    console.error("Error saving daily performance:", error);
+    res.status(500).json({ error: "Failed to save daily performance" });
+  }
 };
 
 // ==========================================
 //   FETCH AGGREGATED SUMMARY BY DATE & DISA
 // ==========================================
 exports.getSummaryByDate = async (req, res) => {
-  const { date, disa } = req.query; 
-  
+  const { date, disa } = req.query;
+
   try {
     const result = await sql.query`
       SELECT 
@@ -93,7 +93,7 @@ exports.getSummaryByDate = async (req, res) => {
 // ==========================================
 exports.getDelaysByDateAndDisa = async (req, res) => {
   const { date, disa } = req.query;
-  
+
   try {
     const result = await sql.query`
       SELECT 
@@ -246,14 +246,14 @@ exports.downloadPDF = async (req, res) => {
 
     const startX = 30;
     const tableWidth = 535;
-    const pageBottom = 780; 
+    const pageBottom = 780;
     let currentY = 30;
 
     const checkPageBreak = (neededHeight) => {
       if (currentY + neededHeight > pageBottom) {
         doc.addPage();
         currentY = 30;
-        return true; 
+        return true;
       }
       return false;
     };
@@ -279,7 +279,7 @@ exports.downloadPDF = async (req, res) => {
 
       const textHeight = doc.heightOfString(content, { width: innerWidth });
       const topPad = h > textHeight ? (h - textHeight) / 2 : 2;
-      
+
       doc.fillColor('black').text(content, x + 2, y + topPad, { width: innerWidth, align: align });
     };
 
@@ -306,7 +306,7 @@ exports.downloadPDF = async (req, res) => {
       } else {
         doc.font('Helvetica-Bold').fontSize(12).text("SAKTHI AUTO\nCOMPONENT\nLIMITED", startX + 5, currentY + 5);
       }
-      
+
       doc.moveTo(startX + 120, currentY).lineTo(startX + 120, currentY + 40).stroke();
       doc.font('Helvetica-Bold').fontSize(14).text("DAILY PRODUCTION PERFORMANCE (FOUNDRY - B)", startX + 120, currentY + 15, { width: 415, align: 'center' });
       currentY += 40;
@@ -359,10 +359,10 @@ exports.downloadPDF = async (req, res) => {
         drawCell("Sl.\nNo.", x, currentY, detCols[0].w, 30, 'center', 'Helvetica', 8, true); x += detCols[0].w;
         drawCell("Pattern Code", x, currentY, detCols[1].w, 30, 'center', 'Helvetica', 8, true); x += detCols[1].w;
         drawCell("Item Description", x, currentY, detCols[2].w, 30, 'center', 'Helvetica', 8, true); x += detCols[2].w;
-        
-        drawCell("Item", x, currentY, detCols[3].w + detCols[4].w, 15, 'center', 'Helvetica', 8, true); 
-        drawCell("Planned", x, currentY + 15, detCols[3].w, 15, 'center', 'Helvetica', 6.5); 
-        drawCell("Un\nPlanned", x + detCols[3].w, currentY + 15, detCols[4].w, 15, 'center', 'Helvetica', 6.5); 
+
+        drawCell("Item", x, currentY, detCols[3].w + detCols[4].w, 15, 'center', 'Helvetica', 8, true);
+        drawCell("Planned", x, currentY + 15, detCols[3].w, 15, 'center', 'Helvetica', 6.5);
+        drawCell("Un\nPlanned", x + detCols[3].w, currentY + 15, detCols[4].w, 15, 'center', 'Helvetica', 6.5);
         x += detCols[3].w + detCols[4].w;
 
         drawCell("Number of\nMoulds Prod.", x, currentY, detCols[5].w, 30, 'center', 'Helvetica', 7, true); x += detCols[5].w;
@@ -388,10 +388,10 @@ exports.downloadPDF = async (req, res) => {
 
           let rawPattern = d.patternCode || "-";
           let safeDesc = d.itemDescription || "-";
-          
+
           doc.fontSize(8);
           let innerPatW = detCols[1].w - 4;
-          
+
           let safePattern = rawPattern;
           if (rawPattern.includes('-') && !rawPattern.includes(' ')) {
             let parts = rawPattern.split('-');
@@ -413,12 +413,12 @@ exports.downloadPDF = async (req, res) => {
           let maxH = 20;
           let descH = doc.heightOfString(safeDesc, { width: detCols[2].w - 4 });
           let patH = doc.heightOfString(safePattern, { width: innerPatW });
-          
+
           if (descH + 10 > maxH) maxH = descH + 10;
           if (patH + 10 > maxH) maxH = patH + 10;
 
           if (checkPageBreak(maxH)) {
-            drawDetailsHeader(); 
+            drawDetailsHeader();
           }
 
           let rowX = startX;
@@ -430,7 +430,7 @@ exports.downloadPDF = async (req, res) => {
           drawCell(d.mouldsProd, rowX, currentY, detCols[5].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[5].w;
           drawCell(d.mouldsPour, rowX, currentY, detCols[6].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[6].w;
           drawCell(d.cavity, rowX, currentY, detCols[7].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[7].w;
-          drawCell(d.totalWeight || "", rowX, currentY, detCols[8].w, maxH, 'center', 'Helvetica', 8); 
+          drawCell(d.totalWeight || "", rowX, currentY, detCols[8].w, maxH, 'center', 'Helvetica', 8);
           currentY += maxH;
         });
       }
@@ -438,21 +438,21 @@ exports.downloadPDF = async (req, res) => {
       // Details Total Row
       checkPageBreak(20);
       xPos = startX;
-      const offsetW = detCols[0].w + detCols[1].w + detCols[2].w + detCols[3].w + detCols[4].w; 
+      const offsetW = detCols[0].w + detCols[1].w + detCols[2].w + detCols[3].w + detCols[4].w;
       doc.rect(xPos, currentY, offsetW, 20).stroke();
-      drawCell("TOTAL", xPos, currentY, offsetW, 20, 'center', 'Helvetica', 9, true); 
+      drawCell("TOTAL", xPos, currentY, offsetW, 20, 'center', 'Helvetica', 9, true);
       xPos += offsetW;
-      
+
       drawCell(detMouldsProd || "", xPos, currentY, detCols[5].w, 20, 'center', 'Helvetica', 9, true); xPos += detCols[5].w;
       drawCell(detMouldsPour || "", xPos, currentY, detCols[6].w, 20, 'center', 'Helvetica', 9, true); xPos += detCols[6].w;
       drawCell("", xPos, currentY, detCols[7].w, 20); xPos += detCols[7].w;
       drawCell(detTotalWeight > 0 ? Math.round(detTotalWeight) : "", xPos, currentY, detCols[8].w, 20, 'center', 'Helvetica', 9, true);
-      currentY += 30; 
+      currentY += 30;
 
       // ==========================================
       // 🔥 FOOTER REASONS & SIGNATURES UPDATE
       // ==========================================
-      checkPageBreak(80); 
+      checkPageBreak(80);
       doc.rect(startX, currentY, tableWidth, 40).stroke();
       doc.font('Helvetica-Bold').fontSize(8).text("Reasons for producing un-planned items.", startX + 5, currentY + 5);
       doc.font('Helvetica').text(report.unplannedReasons || "-", startX + 5, currentY + 15, { width: tableWidth - 10 });
@@ -460,29 +460,29 @@ exports.downloadPDF = async (req, res) => {
 
       // Draw the Signature Box (Taller to fit images above text)
       doc.rect(startX, currentY, tableWidth, 50).stroke();
-      
+
       // 1. Draw Operator Signature Image
       if (report.operatorSignature && report.operatorSignature.startsWith('data:image')) {
-          try {
-              const imgBuffer = Buffer.from(report.operatorSignature.split('base64,')[1], 'base64');
-              doc.image(imgBuffer, startX + 20, currentY + 5, { fit: [100, 25] });
-          } catch(e) {}
+        try {
+          const imgBuffer = Buffer.from(report.operatorSignature.split('base64,')[1], 'base64');
+          doc.image(imgBuffer, startX + 20, currentY + 5, { fit: [100, 25] });
+        } catch (e) { }
       }
 
       // 2. Draw HOF Signature Image (We will build the HOF signing step next!)
       if (report.hofSignature && report.hofSignature.startsWith('data:image')) {
-          try {
-              const imgBuffer = Buffer.from(report.hofSignature.split('base64,')[1], 'base64');
-              doc.image(imgBuffer, startX + 220, currentY + 5, { fit: [100, 25] });
-          } catch(e) {}
+        try {
+          const imgBuffer = Buffer.from(report.hofSignature.split('base64,')[1], 'base64');
+          doc.image(imgBuffer, startX + 220, currentY + 5, { fit: [100, 25] });
+        } catch (e) { }
       }
 
       // 3. Draw HOD Signature Image (We will build the HOD signing step next!)
       if (report.hodSignature && report.hodSignature.startsWith('data:image')) {
-          try {
-              const imgBuffer = Buffer.from(report.hodSignature.split('base64,')[1], 'base64');
-              doc.image(imgBuffer, startX + 400, currentY + 5, { fit: [100, 25] });
-          } catch(e) {}
+        try {
+          const imgBuffer = Buffer.from(report.hodSignature.split('base64,')[1], 'base64');
+          doc.image(imgBuffer, startX + 400, currentY + 5, { fit: [100, 25] });
+        } catch (e) { }
       }
 
       // Draw Signature Text Labels
@@ -490,7 +490,7 @@ exports.downloadPDF = async (req, res) => {
       doc.text(`In-charge: ${report.incharge || "-"}`, startX + 20, currentY + 35);
       doc.text(`HOF: ${report.hof || "-"}`, startX + 220, currentY + 35);
       doc.text(`HOD - Production: ${report.hod || "-"}`, startX + 400, currentY + 35);
-      currentY += 50; 
+      currentY += 50;
 
       currentY += 15;
       checkPageBreak(20);
@@ -502,7 +502,7 @@ exports.downloadPDF = async (req, res) => {
       currentY = 30;
 
       const delayCols = [{ w: 35, l: 'S.No.' }, { w: 60, l: 'Shift' }, { w: 100, l: 'Duration' }, { w: 340, l: 'Reasons' }];
-      
+
       const drawDelaysHeader = () => {
         checkPageBreak(40);
         doc.rect(startX, currentY, tableWidth, 20).fillAndStroke('#e5e7eb', 'black');
@@ -549,12 +549,133 @@ exports.downloadPDF = async (req, res) => {
       doc.font('Helvetica').fontSize(8).fillColor('black');
       doc.text("QF/07/FBP-15, Rev.No:01 dt 10.06.2019", startX, currentY);
 
-    } 
+    }
 
     doc.end();
 
   } catch (error) {
     console.error("PDF Generation Error:", error);
     if (!res.headersSent) res.status(500).json({ error: "Failed to generate PDF" });
+  }
+};
+
+// ==========================================
+//   ADMIN: BULK DATA FOR DATE RANGE (EXPORT)
+// ==========================================
+exports.getBulkData = async (req, res) => {
+  const { fromDate, toDate } = req.query;
+  try {
+    const reportsRes = await sql.query`
+      SELECT * FROM DailyPerformanceReport 
+      WHERE CAST(productionDate AS DATE) BETWEEN CAST(${fromDate} AS DATE) AND CAST(${toDate} AS DATE)
+      ORDER BY productionDate ASC, id ASC`;
+    const reports = reportsRes.recordset;
+
+    const result = [];
+    for (const rep of reports) {
+      const summary = (await sql.query`SELECT * FROM DailyPerformanceSummary WHERE reportId = ${rep.id}`).recordset;
+      const details = (await sql.query`SELECT * FROM DailyPerformanceDetails WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const delays = (await sql.query`SELECT * FROM Productiondelays WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      result.push({ ...rep, summary, details, delays });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("getBulkData error:", err);
+    res.status(500).json({ error: "Failed to fetch bulk data", details: err.message });
+  }
+};
+
+// ==========================================
+//   ADMIN: FETCH REPORT BY EXACT DATE & DISA
+// ==========================================
+exports.getByDate = async (req, res) => {
+  const { date, disa } = req.query;
+  if (!date) return res.status(400).json({ error: "date is required" });
+
+  try {
+    let reportsRes;
+    if (disa) {
+      reportsRes = await sql.query`
+                SELECT * FROM DailyPerformanceReport 
+                WHERE CAST(productionDate AS DATE) = CAST(${date} AS DATE) AND disa = ${disa}
+                ORDER BY id ASC`;
+    } else {
+      reportsRes = await sql.query`
+                SELECT * FROM DailyPerformanceReport 
+                WHERE CAST(productionDate AS DATE) = CAST(${date} AS DATE)
+                ORDER BY id ASC`;
+    }
+
+    const reports = reportsRes.recordset;
+    const result = [];
+    for (const rep of reports) {
+      const summary = (await sql.query`SELECT * FROM DailyPerformanceSummary WHERE reportId = ${rep.id}`).recordset;
+      const details = (await sql.query`SELECT * FROM DailyPerformanceDetails WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const delays = (await sql.query`SELECT * FROM Productiondelays WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      result.push({ ...rep, summary, details, delays });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("getByDate error:", err);
+    res.status(500).json({ error: "Failed to fetch report by date", details: err.message });
+  }
+};
+
+// ==========================================
+//   ADMIN: UPDATE PERFORMANCE REPORT
+// ==========================================
+exports.updateReport = async (req, res) => {
+  const { id } = req.params;
+  const { summary, details, unplannedReasons, incharge, hof, hod } = req.body;
+
+  try {
+    // Update main report fields
+    await sql.query`
+            UPDATE DailyPerformanceReport 
+            SET unplannedReasons = ${unplannedReasons || null},
+                incharge = ${incharge || null},
+                hof = ${hof || null},
+                hod = ${hod || null}
+            WHERE id = ${Number(id)}`;
+
+    // Update summary rows
+    if (summary) {
+      for (const shift of Object.keys(summary)) {
+        const s = summary[shift];
+        const existing = await sql.query`SELECT id FROM DailyPerformanceSummary WHERE reportId = ${Number(id)} AND shiftName = ${shift}`;
+        if (existing.recordset.length > 0) {
+          await sql.query`UPDATE DailyPerformanceSummary SET 
+                        pouredMoulds = ${Number(s.pouredMoulds) || 0},
+                        tonnage = ${Number(s.tonnage) || 0},
+                        casted = ${Number(s.casted) || 0},
+                        shiftValue = ${Number(s.value || s.shiftValue) || 0}
+                        WHERE reportId = ${Number(id)} AND shiftName = ${shift}`;
+        }
+      }
+    }
+
+    // Update detail rows
+    if (details && details.length > 0) {
+      for (const d of details) {
+        if (d.id) {
+          await sql.query`UPDATE DailyPerformanceDetails SET
+                        patternCode = ${d.patternCode || ''},
+                        itemDescription = ${d.itemDescription || ''},
+                        planned = ${Number(d.planned) || 0},
+                        unplanned = ${Number(d.unplanned) || 0},
+                        mouldsProd = ${Number(d.mouldsProd) || 0},
+                        mouldsPour = ${Number(d.mouldsPour) || 0},
+                        cavity = ${Number(d.cavity) || 0},
+                        unitWeight = ${Number(d.unitWeight) || 0},
+                        totalWeight = ${Number(d.totalWeight) || 0}
+                        WHERE id = ${Number(d.id)}`;
+        }
+      }
+    }
+
+    res.json({ message: "Report updated successfully" });
+  } catch (err) {
+    console.error("updateReport error:", err);
+    res.status(500).json({ error: "Failed to update report", details: err.message });
   }
 };
