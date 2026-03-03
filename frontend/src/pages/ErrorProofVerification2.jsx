@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import  { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import { CheckCircle, AlertTriangle, Save, Loader, FileDown, UserCheck, ShieldCheck } from 'lucide-react';
+import {  AlertTriangle, Save, FileDown, UserCheck, ShieldCheck } from 'lucide-react';
 import SignatureCanvas from "react-signature-canvas";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -54,96 +54,112 @@ const ErrorProofVerification2 = () => {
   const [recordDate, setRecordDate] = useState(new Date().toISOString().split('T')[0]);
   const currentDate = new Date(recordDate).toLocaleDateString('en-GB').replace(/\//g, '-');
 
-  useEffect(() => { fetchData(); }, [headerData.disaMachine, recordDate]);
 
-  const fetchData = async () => {
-    try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/error-proof2/details`, { params: { machine: headerData.disaMachine, date: recordDate } });
+  const fetchData = useCallback(async () => {
+  if (!headerData?.disaMachine || !recordDate) return;
 
-      setHofList(res.data.hofs || []);
-      setOperatorList(res.data.operators || []);
-      setSupervisorList(res.data.supervisors || []);
+  try {
+    const res = await axios.get(
+      `${process.env.REACT_APP_API_URL}/api/error-proof2/details`,
+      { params: { machine: headerData.disaMachine, date: recordDate } }
+    );
 
-      const masterData = res.data.masterConfig || [];
-      const transData = res.data.verifications || [];
+    setHofList(res.data.hofs || []);
+    setOperatorList(res.data.operators || []);
+    setSupervisorList(res.data.supervisors || []);
 
-      // 🔥 THE FIX: Index-Based Merge to perfectly retain all previous data clicks
-      const mergedVerifications = [];
-      
-      if (transData.length > 0) {
-        // Step 1: Map existing data to the Master Config line-by-line
-        transData.forEach((transItem, index) => {
-          const masterItem = masterData[index];
-          
-          if (masterItem) {
-            mergedVerifications.push({
-              ...transItem,
-              Line: masterItem.Line,
-              ErrorProofName: masterItem.ErrorProofName,
-              NatureOfErrorProof: masterItem.NatureOfErrorProof,
-              Frequency: masterItem.Frequency,
-              isLegacy: false
-            });
-          } else {
-            // Admin deleted a row, but we still have data for it. Append it to bottom.
-            mergedVerifications.push({
-              ...transItem,
-              isLegacy: true
-            });
-          }
-        });
+    const masterData = res.data.masterConfig || [];
+    const transData = res.data.verifications || [];
 
-        // Step 2: If Admin added NEW rows, create blanks for them at the bottom
-        if (masterData.length > transData.length) {
-          for (let i = transData.length; i < masterData.length; i++) {
-            const mItem = masterData[i];
-            mergedVerifications.push({
-               Id: `temp-${Date.now()}-${i}`,
-               Line: mItem.Line,
-               ErrorProofName: mItem.ErrorProofName,
-               NatureOfErrorProof: mItem.NatureOfErrorProof,
-               Frequency: mItem.Frequency,
-               Date1_Shift1_Res: null,
-               Date1_Shift2_Res: null,
-               Date1_Shift3_Res: null,
-               isLegacy: false
-            });
-          }
-        }
-      } else {
-        // No data exists for today yet. Load fresh from Master Config.
-        masterData.forEach((mItem, index) => {
+    const mergedVerifications = [];
+
+    if (transData.length > 0) {
+      transData.forEach((transItem, index) => {
+        const masterItem = masterData[index];
+
+        if (masterItem) {
           mergedVerifications.push({
-             Id: `temp-${Date.now()}-${index}`,
-             Line: mItem.Line,
-             ErrorProofName: mItem.ErrorProofName,
-             NatureOfErrorProof: mItem.NatureOfErrorProof,
-             Frequency: mItem.Frequency,
-             Date1_Shift1_Res: null,
-             Date1_Shift2_Res: null,
-             Date1_Shift3_Res: null,
-             isLegacy: false
+            ...transItem,
+            Line: masterItem.Line,
+            ErrorProofName: masterItem.ErrorProofName,
+            NatureOfErrorProof: masterItem.NatureOfErrorProof,
+            Frequency: masterItem.Frequency,
+            isLegacy: false
           });
-        });
-      }
+        } else {
+          mergedVerifications.push({
+            ...transItem,
+            isLegacy: true
+          });
+        }
+      });
 
-      setVerifications(mergedVerifications);
-      setReactionPlans(res.data.reactionPlans || []);
-      
-      if (transData.length > 0) {
-        setHeaderData(prev => ({
-          ...prev,
-          reviewedBy: transData[0].ReviewedByHOF || '',
-          approvedBy: transData[0].ApprovedBy || '',
-          assignedHOF: transData[0].AssignedHOF || '',
-          operatorSignature: transData[0].OperatorSignature || '',
-          hofSignature: transData[0].HOFSignature || ''
-        }));
-      } else {
-        setHeaderData(prev => ({ ...prev, reviewedBy: '', approvedBy: '', assignedHOF: '', operatorSignature: '', hofSignature: '' }));
+      if (masterData.length > transData.length) {
+        for (let i = transData.length; i < masterData.length; i++) {
+          const mItem = masterData[i];
+          mergedVerifications.push({
+            Id: `temp-${Date.now()}-${i}`,
+            Line: mItem.Line,
+            ErrorProofName: mItem.ErrorProofName,
+            NatureOfErrorProof: mItem.NatureOfErrorProof,
+            Frequency: mItem.Frequency,
+            Date1_Shift1_Res: null,
+            Date1_Shift2_Res: null,
+            Date1_Shift3_Res: null,
+            isLegacy: false
+          });
+        }
       }
-    } catch (error) { toast.error("Failed to load data from server."); }
-  };
+    } else {
+      masterData.forEach((mItem, index) => {
+        mergedVerifications.push({
+          Id: `temp-${Date.now()}-${index}`,
+          Line: mItem.Line,
+          ErrorProofName: mItem.ErrorProofName,
+          NatureOfErrorProof: mItem.NatureOfErrorProof,
+          Frequency: mItem.Frequency,
+          Date1_Shift1_Res: null,
+          Date1_Shift2_Res: null,
+          Date1_Shift3_Res: null,
+          isLegacy: false
+        });
+      });
+    }
+
+    setVerifications(mergedVerifications);
+    setReactionPlans(res.data.reactionPlans || []);
+
+    if (transData.length > 0) {
+      setHeaderData(prev => ({
+        ...prev,
+        reviewedBy: transData[0].ReviewedByHOF || '',
+        approvedBy: transData[0].ApprovedBy || '',
+        assignedHOF: transData[0].AssignedHOF || '',
+        operatorSignature: transData[0].OperatorSignature || '',
+        hofSignature: transData[0].HOFSignature || ''
+      }));
+    } else {
+      setHeaderData(prev => ({
+        ...prev,
+        reviewedBy: '',
+        approvedBy: '',
+        assignedHOF: '',
+        operatorSignature: '',
+        hofSignature: ''
+      }));
+    }
+
+  } catch (error) {
+    toast.error("Failed to load data from server.");
+  }
+
+}, [headerData.disaMachine, recordDate]);
+
+  useEffect(() => {
+  fetchData();
+}, [fetchData]);
+
+
 
   const handleInputChange = (id, field, value) => {
     setVerifications(prev => prev.map(row => row.Id === id ? { ...row, [field]: value } : row));
