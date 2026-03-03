@@ -4,48 +4,67 @@ const fs = require("fs");
 const path = require("path");
 
 // ==========================================
+//           BULLETPROOF HELPERS
+// ==========================================
+// Prevents SQL crashes by ensuring numbers are numbers and strings are strings
+const safeNum = (val) => {
+  if (val === null || val === undefined || String(val).trim() === "" || String(val).trim() === "-") return 0;
+  const n = Number(val);
+  return isNaN(n) ? 0 : n;
+};
+
+const safeStr = (val) => {
+  if (val === null || val === undefined || String(val).trim() === "" || String(val).trim() === "-") return null;
+  return String(val).trim();
+};
+
+// ==========================================
 //   SUBMIT DAILY PRODUCTION PERFORMANCE
 // ==========================================
 exports.createDailyPerformance = async (req, res) => {
   const { productionDate, disa, summary, details, unplannedReasons, signatures, delays, operatorSignature } = req.body;
 
   try {
+    // 1. Insert Main Report
     const reportResult = await sql.query`
             INSERT INTO DailyPerformanceReport (productionDate, disa, unplannedReasons, incharge, hof, hod, operatorSignature)
             OUTPUT INSERTED.id
-            VALUES (${productionDate}, ${disa}, ${unplannedReasons || null}, 
-                    ${signatures.incharge || null}, ${signatures.hof || null}, ${signatures.hod || null}, ${operatorSignature || null})`;
+            VALUES (${safeStr(productionDate)}, ${safeStr(disa)}, ${safeStr(unplannedReasons)}, 
+                    ${safeStr(signatures?.incharge)}, ${safeStr(signatures?.hof)}, ${safeStr(signatures?.hod)}, ${safeStr(operatorSignature)})`;
 
     const reportId = reportResult.recordset[0].id;
 
+    // 2. Insert Summary Data
     const shifts = ["I", "II", "III"];
     for (let shift of shifts) {
-      const sData = summary[shift];
+      const sData = summary[shift] || {};
       await sql.query`
                 INSERT INTO DailyPerformanceSummary (reportId, shiftName, pouredMoulds, tonnage, casted, shiftValue)
-                VALUES (${reportId}, ${shift}, ${Number(sData.pouredMoulds) || 0},
-                        ${Number(sData.tonnage) || 0}, ${Number(sData.casted) || 0}, ${Number(sData.value) || 0})`;
+                VALUES (${reportId}, ${shift}, ${safeNum(sData.pouredMoulds)},
+                        ${safeNum(sData.tonnage)}, ${safeNum(sData.casted)}, ${safeNum(sData.value)})`;
     }
 
+    // 3. Insert Details Data
     if (details && details.length > 0) {
       for (let d of details) {
         if (d.patternCode) {
           await sql.query`
                         INSERT INTO DailyPerformanceDetails (reportId, patternCode, itemDescription, planned, unplanned,
                                                              mouldsProd, mouldsPour, cavity, unitWeight, totalWeight)
-                        VALUES (${reportId}, ${d.patternCode}, ${d.itemDescription}, 
-                                ${Number(d.planned) || 0}, ${Number(d.unplanned) || 0},
-                                ${Number(d.mouldsProd) || 0}, ${Number(d.mouldsPour) || 0}, 
-                                ${Number(d.cavity) || 0}, ${Number(d.unitWeight) || 0}, ${Number(d.totalWeight) || 0})`;
+                        VALUES (${reportId}, ${safeStr(d.patternCode)}, ${safeStr(d.itemDescription)}, 
+                                ${safeNum(d.planned)}, ${safeNum(d.unplanned)},
+                                ${safeNum(d.mouldsProd)}, ${safeNum(d.mouldsPour)}, 
+                                ${safeNum(d.cavity)}, ${safeNum(d.unitWeight)}, ${safeNum(d.totalWeight)})`;
         }
       }
     }
 
+    // 4. Insert Delays Data
     if (delays && delays.length > 0) {
       for (let delay of delays) {
         await sql.query`
                     INSERT INTO Productiondelays (reportId, shift, duration, reason)
-                    VALUES (${reportId}, ${delay.shift}, ${Number(delay.duration) || 0}, ${delay.reason})`;
+                    VALUES (${reportId}, ${safeStr(delay.shift)}, ${safeNum(delay.duration)}, ${safeStr(delay.reason)})`;
       }
     }
 
@@ -63,11 +82,14 @@ exports.getSummaryByDate = async (req, res) => {
   const { date, disa } = req.query;
 
   try {
+    // Uses logic from Code 2 (Calculated from Production Report) but tailored for Performance view
+    // Note: This assumes we are fetching data *from* the DisamaticProductReport tables to calculate the Performance Summary
     const result = await sql.query`
       SELECT 
         r.shift,
-        SUM(TRY_CAST(p.poured AS INT)) AS totalPouredMoulds,
-        SUM(TRY_CAST(p.poured AS INT) * TRY_CAST(c.pouredWeight AS DECIMAL(10,3))) AS totalTonnageKg
+        SUM(ISNULL(TRY_CAST(p.poured AS INT), 0)) AS totalPouredMoulds,
+        SUM(ISNULL(TRY_CAST(p.poured AS INT), 0) * ISNULL(TRY_CAST(c.pouredWeight AS DECIMAL(10,3)), 0)) AS totalTonnageKg,
+        SUM(ISNULL(TRY_CAST(p.poured AS INT), 0) * ISNULL(TRY_CAST(c.castedWeight AS DECIMAL(10,3)), 0) * ISNULL(TRY_CAST(c.cavity AS INT), 0)) AS totalCastedKg
       FROM DisamaticProductReport r
       JOIN DisamaticProduction p ON r.id = p.reportId
       LEFT JOIN Component c ON p.componentName = c.description
@@ -130,7 +152,7 @@ exports.getFormUsers = async (req, res) => {
 };
 
 // ==========================================
-//   HOF DASHBOARD - DAILY PERFORMANCE
+//   HOF/HOD DASHBOARD - DAILY PERFORMANCE
 // ==========================================
 exports.getHofReports = async (req, res) => {
   try {
@@ -151,11 +173,7 @@ exports.getHofReports = async (req, res) => {
 exports.signHof = async (req, res) => {
   try {
     const { reportId, signature } = req.body;
-    await sql.query`
-      UPDATE DailyPerformanceReport 
-      SET hofSignature = ${signature} 
-      WHERE id = ${reportId}
-    `;
+    await sql.query`UPDATE DailyPerformanceReport SET hofSignature = ${signature} WHERE id = ${reportId}`;
     res.json({ message: "HOF signature saved successfully" });
   } catch (err) {
     console.error("HOF Sign Error:", err);
@@ -163,9 +181,6 @@ exports.signHof = async (req, res) => {
   }
 };
 
-// ==========================================
-//   HOD DASHBOARD - DAILY PERFORMANCE
-// ==========================================
 exports.getHodReports = async (req, res) => {
   try {
     const { name } = req.params;
@@ -185,11 +200,7 @@ exports.getHodReports = async (req, res) => {
 exports.signHod = async (req, res) => {
   try {
     const { reportId, signature } = req.body;
-    await sql.query`
-      UPDATE DailyPerformanceReport 
-      SET hodSignature = ${signature} 
-      WHERE id = ${reportId}
-    `;
+    await sql.query`UPDATE DailyPerformanceReport SET hodSignature = ${signature} WHERE id = ${reportId}`;
     res.json({ message: "HOD signature saved successfully" });
   } catch (err) {
     console.error("HOD Sign Error:", err);
@@ -198,7 +209,30 @@ exports.signHod = async (req, res) => {
 };
 
 // ==========================================
-// 🔥 BULK MULTI-PAGE PDF GENERATOR
+//   FETCH COMPONENT TOTALS
+// ==========================================
+exports.getComponentTotals = async (req, res) => {
+  const { date, disa, componentName } = req.query;
+  try {
+    const result = await sql.query`
+      SELECT 
+        ISNULL(SUM(TRY_CAST(p.produced AS INT)), 0) AS totalProduced,
+        ISNULL(SUM(TRY_CAST(p.poured AS INT)), 0) AS totalPoured
+      FROM DisamaticProductReport r
+      JOIN DisamaticProduction p ON r.id = p.reportId
+      WHERE CAST(r.reportDate AS DATE) = CAST(${date} AS DATE) 
+        AND r.disa = ${disa}
+        AND p.componentName = ${componentName}
+    `;
+    res.status(200).json(result.recordset[0]);
+  } catch (error) {
+    console.error("Error fetching component totals:", error);
+    res.status(500).json({ error: "Failed to fetch component totals", details: error.message });
+  }
+};
+
+// ==========================================
+//   🔥 BULK MULTI-PAGE PDF GENERATOR
 // ==========================================
 exports.downloadPDF = async (req, res) => {
   const { date, disa, fromDate, toDate } = req.query;
@@ -210,17 +244,17 @@ exports.downloadPDF = async (req, res) => {
   try {
     let reports = [];
 
-    // If Date Range is provided (Admin Bulk Export)
+    // 1. Determine Report Source (Single Date vs Date Range)
     if (fromDate && toDate) {
+      // Bulk Export
       const reportQuery = await sql.query`
         SELECT * FROM DailyPerformanceReport 
         WHERE CAST(productionDate AS DATE) BETWEEN CAST(${fromDate} AS DATE) AND CAST(${toDate} AS DATE)
         ORDER BY productionDate ASC, disa ASC, id ASC
       `;
       reports = reportQuery.recordset;
-    } 
-    // If exact date & disa is provided (Single Export)
-    else if (date && disa) {
+    } else if (date && disa) {
+      // Single Export
       const safeDisa = disa.replace('DISA - ', '').trim();
       const reportQuery = await sql.query`
         SELECT * FROM DailyPerformanceReport 
@@ -232,7 +266,6 @@ exports.downloadPDF = async (req, res) => {
     }
 
     if (!reports || reports.length === 0) {
-      // Send 200 with exists:false flag to gracefully tell the frontend to stop without a 404 error
       return res.status(200).json({ exists: false, message: "No reports found for this range." });
     }
 
@@ -263,7 +296,7 @@ exports.downloadPDF = async (req, res) => {
     const drawCell = (text, x, y, w, h, align = 'center', font = 'Helvetica', size = 9, isBold = false) => {
       doc.rect(x, y, w, h).stroke();
       if (text === null || text === undefined) text = "";
-      let content = text.toString().trim();
+      let content = (text === 0) ? "0" : text.toString().trim();
       if (content === "") content = "-";
 
       let finalFont = (content === "-") ? 'Helvetica-Bold' : (isBold ? 'Helvetica-Bold' : font);
@@ -284,36 +317,23 @@ exports.downloadPDF = async (req, res) => {
       doc.fillColor('black').text(content, x + 2, y + topPad, { width: innerWidth, align: align });
     };
 
-    // ==========================================
-    //       LOOP THROUGH ALL REPORTS
-    // ==========================================
+    // --- LOOP THROUGH REPORTS TO GENERATE PDF PAGES ---
     for (let rIndex = 0; rIndex < reports.length; rIndex++) {
       const report = reports[rIndex];
       const reportId = report.id;
       
-      // Extract specific date and disa for this exact report to fetch accurate delays
       const reportDateStr = new Date(report.productionDate).toISOString().split('T')[0];
-      const safeDisa = report.disa.replace('DISA - ', '').trim();
 
       const summaryData = (await sql.query`SELECT * FROM DailyPerformanceSummary WHERE reportId = ${reportId}`).recordset;
       const detailsData = (await sql.query`SELECT * FROM DailyPerformanceDetails WHERE reportId = ${reportId} ORDER BY id ASC`).recordset;
-      
-      const delaysQuery = await sql.query`
-        SELECT r.shift, d.durationMinutes as duration, d.delay as reason
-        FROM DisamaticProductReport r
-        JOIN DisamaticDelays d ON r.id = d.reportId
-        WHERE CAST(r.reportDate AS DATE) = CAST(${reportDateStr} AS DATE) 
-        AND (r.disa = ${safeDisa} OR r.disa = 'DISA - ' + ${safeDisa})
-        ORDER BY r.shift, d.id
-      `;
-      const delaysData = delaysQuery.recordset;
+      const delaysData = (await sql.query`SELECT * FROM Productiondelays WHERE reportId = ${reportId} ORDER BY id ASC`).recordset;
 
       if (rIndex > 0) {
         doc.addPage();
         currentY = 30;
       }
 
-      // 1. HEADER
+      // --- HEADER ---
       doc.rect(startX, currentY, tableWidth, 40).stroke();
       const logoPath = path.join(__dirname, 'logo.jpg');
       if (fs.existsSync(logoPath)) {
@@ -326,12 +346,12 @@ exports.downloadPDF = async (req, res) => {
       doc.font('Helvetica-Bold').fontSize(14).text("DAILY PRODUCTION PERFORMANCE (FOUNDRY - B)", startX + 120, currentY + 15, { width: 415, align: 'center' });
       currentY += 40;
 
-      // DATE Row
+      // DATE ROW
       doc.rect(startX, currentY, tableWidth, 20).stroke();
       doc.font('Helvetica-Bold').fontSize(10).text(`DATE OF PRODUCTION : ${reportDateStr.split('-').reverse().join('-')}           DISA: ${report.disa}`, startX + 5, currentY + 6);
       currentY += 20;
 
-      // 2. SUMMARY TABLE
+      // --- SUMMARY TABLE ---
       const sumCols = [{ w: 60, l: 'SHIFT' }, { w: 115, l: 'POURED MOULDS' }, { w: 120, l: 'TONNAGE' }, { w: 120, l: 'CASTED' }, { w: 120, l: 'VALUE' }];
       let xHeaderPos = startX;
       sumCols.forEach(col => {
@@ -350,22 +370,22 @@ exports.downloadPDF = async (req, res) => {
 
         let xPos = startX;
         drawCell(shiftName, xPos, currentY, sumCols[0].w, 20, 'center', 'Helvetica', 9, true); xPos += sumCols[0].w;
-        drawCell(row.pouredMoulds, xPos, currentY, sumCols[1].w, 20); xPos += sumCols[1].w;
-        drawCell(row.tonnage ? Number(row.tonnage).toFixed(3) : "", xPos, currentY, sumCols[2].w, 20); xPos += sumCols[2].w;
-        drawCell(row.casted ? Number(row.casted).toFixed(2) : "", xPos, currentY, sumCols[3].w, 20); xPos += sumCols[3].w;
-        drawCell(row.shiftValue ? Number(row.shiftValue).toFixed(2) : "", xPos, currentY, sumCols[4].w, 20);
+        drawCell(row.pouredMoulds > 0 ? row.pouredMoulds : "-", xPos, currentY, sumCols[1].w, 20); xPos += sumCols[1].w;
+        drawCell(row.tonnage > 0 ? Number(row.tonnage).toFixed(3) : "-", xPos, currentY, sumCols[2].w, 20); xPos += sumCols[2].w;
+        drawCell(row.casted > 0 ? Number(row.casted).toFixed(0) : "-", xPos, currentY, sumCols[3].w, 20); xPos += sumCols[3].w;
+        drawCell(row.shiftValue > 0 ? Number(row.shiftValue).toFixed(2) : "-", xPos, currentY, sumCols[4].w, 20);
         currentY += 20;
       });
 
       let xPos = startX;
       drawCell("TOTAL", xPos, currentY, sumCols[0].w, 20, 'center', 'Helvetica', 9, true); xPos += sumCols[0].w;
-      drawCell(tMoulds || "", xPos, currentY, sumCols[1].w, 20, 'center', 'Helvetica', 9, true); xPos += sumCols[1].w;
-      drawCell(tTonnage > 0 ? tTonnage.toFixed(3) : "", xPos, currentY, sumCols[2].w, 20, 'center', 'Helvetica', 9, true); xPos += sumCols[2].w;
-      drawCell(tCasted > 0 ? tCasted.toFixed(2) : "", xPos, currentY, sumCols[3].w, 20, 'center', 'Helvetica', 9, true); xPos += sumCols[3].w;
-      drawCell(tValue > 0 ? tValue.toFixed(2) : "", xPos, currentY, sumCols[4].w, 20, 'center', 'Helvetica', 9, true);
+      drawCell(tMoulds > 0 ? tMoulds : "-", xPos, currentY, sumCols[1].w, 20, 'center', 'Helvetica', 9, true); xPos += sumCols[1].w;
+      drawCell(tTonnage > 0 ? tTonnage.toFixed(3) : "-", xPos, currentY, sumCols[2].w, 20, 'center', 'Helvetica', 9, true); xPos += sumCols[2].w;
+      drawCell(tCasted > 0 ? tCasted.toFixed(0) : "-", xPos, currentY, sumCols[3].w, 20, 'center', 'Helvetica', 9, true); xPos += sumCols[3].w;
+      drawCell(tValue > 0 ? tValue.toFixed(2) : "-", xPos, currentY, sumCols[4].w, 20, 'center', 'Helvetica', 9, true);
       currentY += 30;
 
-      // 3. DETAILS TABLE
+      // --- DETAILS TABLE ---
       const detCols = [{ w: 25 }, { w: 90 }, { w: 100 }, { w: 35 }, { w: 35 }, { w: 45 }, { w: 45 }, { w: 25 }, { w: 135 }];
 
       const drawDetailsHeader = () => {
@@ -389,7 +409,7 @@ exports.downloadPDF = async (req, res) => {
 
       drawDetailsHeader();
 
-      let detMouldsProd = 0, detMouldsPour = 0, detTotalWeight = 0;
+      let detMouldsProdSum = 0, detMouldsPourSum = 0, detTotalWeightSum = 0;
 
       if (detailsData.length === 0) {
         doc.rect(startX, currentY, tableWidth, 20).stroke();
@@ -397,9 +417,9 @@ exports.downloadPDF = async (req, res) => {
         currentY += 20;
       } else {
         detailsData.forEach((d, i) => {
-          detMouldsProd += Number(d.mouldsProd) || 0;
-          detMouldsPour += Number(d.mouldsPour) || 0;
-          detTotalWeight += Number(d.totalWeight) || 0;
+          detMouldsProdSum += Number(d.mouldsProd) || 0;
+          detMouldsPourSum += Number(d.mouldsPour) || 0;
+          detTotalWeightSum += Number(d.totalWeight) || 0;
 
           let rawPattern = d.patternCode || "-";
           let safeDesc = d.itemDescription || "-";
@@ -440,12 +460,12 @@ exports.downloadPDF = async (req, res) => {
           drawCell(i + 1, rowX, currentY, detCols[0].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[0].w;
           drawCell(safePattern, rowX, currentY, detCols[1].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[1].w;
           drawCell(safeDesc, rowX, currentY, detCols[2].w, maxH, 'left', 'Helvetica', 8); rowX += detCols[2].w;
-          drawCell(d.planned, rowX, currentY, detCols[3].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[3].w;
-          drawCell(d.unplanned, rowX, currentY, detCols[4].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[4].w;
-          drawCell(d.mouldsProd, rowX, currentY, detCols[5].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[5].w;
-          drawCell(d.mouldsPour, rowX, currentY, detCols[6].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[6].w;
-          drawCell(d.cavity, rowX, currentY, detCols[7].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[7].w;
-          drawCell(d.totalWeight || "", rowX, currentY, detCols[8].w, maxH, 'center', 'Helvetica', 8);
+          drawCell(d.planned === 0 ? "-" : d.planned, rowX, currentY, detCols[3].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[3].w;
+          drawCell(d.unplanned === 0 ? "-" : d.unplanned, rowX, currentY, detCols[4].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[4].w;
+          drawCell(d.mouldsProd === 0 ? "-" : d.mouldsProd, rowX, currentY, detCols[5].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[5].w;
+          drawCell(d.mouldsPour === 0 ? "-" : d.mouldsPour, rowX, currentY, detCols[6].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[6].w;
+          drawCell(d.cavity === 0 ? "-" : d.cavity, rowX, currentY, detCols[7].w, maxH, 'center', 'Helvetica', 8); rowX += detCols[7].w;
+          drawCell(d.totalWeight === 0 ? "-" : d.totalWeight, rowX, currentY, detCols[8].w, maxH, 'center', 'Helvetica', 8); 
           currentY += maxH;
         });
       }
@@ -457,10 +477,10 @@ exports.downloadPDF = async (req, res) => {
       drawCell("TOTAL", xPos, currentY, offsetW, 20, 'center', 'Helvetica', 9, true);
       xPos += offsetW;
 
-      drawCell(detMouldsProd || "", xPos, currentY, detCols[5].w, 20, 'center', 'Helvetica', 9, true); xPos += detCols[5].w;
-      drawCell(detMouldsPour || "", xPos, currentY, detCols[6].w, 20, 'center', 'Helvetica', 9, true); xPos += detCols[6].w;
-      drawCell("", xPos, currentY, detCols[7].w, 20); xPos += detCols[7].w;
-      drawCell(detTotalWeight > 0 ? Math.round(detTotalWeight) : "", xPos, currentY, detCols[8].w, 20, 'center', 'Helvetica', 9, true);
+      drawCell(detMouldsProdSum || "-", xPos, currentY, detCols[5].w, 20, 'center', 'Helvetica', 9, true); xPos += detCols[5].w;
+      drawCell(detMouldsPourSum || "-", xPos, currentY, detCols[6].w, 20, 'center', 'Helvetica', 9, true); xPos += detCols[6].w;
+      drawCell("-", xPos, currentY, detCols[7].w, 20); xPos += detCols[7].w;
+      drawCell(detTotalWeightSum > 0 ? Math.round(detTotalWeightSum) : "-", xPos, currentY, detCols[8].w, 20, 'center', 'Helvetica', 9, true);
       currentY += 30;
 
       checkPageBreak(80);
@@ -501,11 +521,42 @@ exports.downloadPDF = async (req, res) => {
       doc.font('Helvetica').fontSize(8).fillColor('black');
       doc.text("QF/07/FBP-15, Rev.No:01 dt 10.06.2019", startX, currentY);
 
-      // --- PAGE 2: DELAYS SECTION ---
+      // --- PAGE 2: GROUPED DELAYS (Using Input 2 Logic) ---
       doc.addPage();
       currentY = 30;
 
-      const delayCols = [{ w: 35, l: 'S.No.' }, { w: 60, l: 'Shift' }, { w: 100, l: 'Duration' }, { w: 340, l: 'Reasons' }];
+      const groupedDelaysMap = {};
+      let totalI = 0, totalII = 0, totalIII = 0, totalDuration = 0;
+
+      delaysData.forEach(d => {
+        const reason = d.reason || "-";
+        const shift = d.shift;
+        const dur = Number(d.duration) || 0;
+
+        if (!groupedDelaysMap[reason]) {
+          groupedDelaysMap[reason] = { I: 0, II: 0, III: 0, total: 0 };
+        }
+        if (shift === "I") { groupedDelaysMap[reason].I += dur; totalI += dur; }
+        else if (shift === "II") { groupedDelaysMap[reason].II += dur; totalII += dur; }
+        else if (shift === "III") { groupedDelaysMap[reason].III += dur; totalIII += dur; }
+        
+        groupedDelaysMap[reason].total += dur;
+        totalDuration += dur;
+      });
+
+      const groupedDelaysArray = Object.keys(groupedDelaysMap).map(reason => ({
+        reason,
+        ...groupedDelaysMap[reason]
+      }));
+
+      const delayCols = [
+        { w: 35, l: 'S.No.' }, 
+        { w: 230, l: 'Reasons' }, 
+        { w: 60, l: 'Shift I' }, 
+        { w: 60, l: 'Shift II' }, 
+        { w: 60, l: 'Shift III' }, 
+        { w: 90, l: 'Total (Mins)' }
+      ];
 
       const drawDelaysHeader = () => {
         checkPageBreak(40);
@@ -524,15 +575,15 @@ exports.downloadPDF = async (req, res) => {
 
       drawDelaysHeader();
 
-      if (delaysData.length === 0) {
+      if (groupedDelaysArray.length === 0) {
         doc.rect(startX, currentY, tableWidth, 20).stroke();
         drawCell("-", startX, currentY, tableWidth, 20);
         currentY += 20;
       } else {
-        delaysData.forEach((d, i) => {
+        groupedDelaysArray.forEach((d, i) => {
           let maxH = 20;
           doc.fontSize(9);
-          let rsnH = doc.heightOfString(d.reason || "-", { width: delayCols[3].w - 4 });
+          let rsnH = doc.heightOfString(d.reason || "-", { width: delayCols[1].w - 4 });
           if (rsnH + 10 > maxH) maxH = rsnH + 10;
 
           if (checkPageBreak(maxH)) {
@@ -541,11 +592,25 @@ exports.downloadPDF = async (req, res) => {
 
           let rX = startX;
           drawCell(i + 1, rX, currentY, delayCols[0].w, maxH); rX += delayCols[0].w;
-          drawCell(d.shift || "", rX, currentY, delayCols[1].w, maxH); rX += delayCols[1].w;
-          drawCell(d.duration || "", rX, currentY, delayCols[2].w, maxH); rX += delayCols[2].w;
-          drawCell(d.reason || "", rX, currentY, delayCols[3].w, maxH, 'left');
+          drawCell(d.reason || "-", rX, currentY, delayCols[1].w, maxH, 'left'); rX += delayCols[1].w;
+          drawCell(d.I > 0 ? d.I : "-", rX, currentY, delayCols[2].w, maxH); rX += delayCols[2].w;
+          drawCell(d.II > 0 ? d.II : "-", rX, currentY, delayCols[3].w, maxH); rX += delayCols[3].w;
+          drawCell(d.III > 0 ? d.III : "-", rX, currentY, delayCols[4].w, maxH); rX += delayCols[4].w;
+          drawCell(d.total > 0 ? d.total : "-", rX, currentY, delayCols[5].w, maxH, 'center', 'Helvetica-Bold', 9, true);
           currentY += maxH;
         });
+
+        // Delays Total Row
+        if (checkPageBreak(20)) drawDelaysHeader();
+        let tX = startX;
+        doc.rect(tX, currentY, delayCols[0].w + delayCols[1].w, 20).stroke();
+        drawCell("TOTAL", tX, currentY, delayCols[0].w + delayCols[1].w, 20, 'center', 'Helvetica', 9, true);
+        tX += delayCols[0].w + delayCols[1].w;
+        drawCell(totalI > 0 ? totalI : "-", tX, currentY, delayCols[2].w, 20, 'center', 'Helvetica', 9, true); tX += delayCols[2].w;
+        drawCell(totalII > 0 ? totalII : "-", tX, currentY, delayCols[3].w, 20, 'center', 'Helvetica', 9, true); tX += delayCols[3].w;
+        drawCell(totalIII > 0 ? totalIII : "-", tX, currentY, delayCols[4].w, 20, 'center', 'Helvetica', 9, true); tX += delayCols[4].w;
+        drawCell(totalDuration > 0 ? totalDuration : "-", tX, currentY, delayCols[5].w, 20, 'center', 'Helvetica', 9, true);
+        currentY += 20;
       }
 
       currentY += 15;
@@ -555,6 +620,7 @@ exports.downloadPDF = async (req, res) => {
     }
 
     doc.end();
+
   } catch (error) {
     console.error("PDF Generation Error:", error);
     if (!res.headersSent) res.status(500).json({ error: "Failed to generate PDF" });
@@ -562,7 +628,7 @@ exports.downloadPDF = async (req, res) => {
 };
 
 // ==========================================
-//   ADMIN: BULK DATA FOR DATE RANGE (EXPORT)
+//   ADMIN: BULK DATA FOR DATE RANGE (API)
 // ==========================================
 exports.getBulkData = async (req, res) => {
   const { fromDate, toDate } = req.query;
@@ -633,10 +699,10 @@ exports.updateReport = async (req, res) => {
   try {
     await sql.query`
             UPDATE DailyPerformanceReport 
-            SET unplannedReasons = ${unplannedReasons || null},
-                incharge = ${incharge || null},
-                hof = ${hof || null},
-                hod = ${hod || null}
+            SET unplannedReasons = ${safeStr(unplannedReasons)},
+                incharge = ${safeStr(incharge)},
+                hof = ${safeStr(hof)},
+                hod = ${safeStr(hod)}
             WHERE id = ${Number(id)}`;
 
     if (summary) {
@@ -645,10 +711,10 @@ exports.updateReport = async (req, res) => {
         const existing = await sql.query`SELECT id FROM DailyPerformanceSummary WHERE reportId = ${Number(id)} AND shiftName = ${shift}`;
         if (existing.recordset.length > 0) {
           await sql.query`UPDATE DailyPerformanceSummary SET 
-                        pouredMoulds = ${Number(s.pouredMoulds) || 0},
-                        tonnage = ${Number(s.tonnage) || 0},
-                        casted = ${Number(s.casted) || 0},
-                        shiftValue = ${Number(s.value || s.shiftValue) || 0}
+                        pouredMoulds = ${safeNum(s.pouredMoulds)},
+                        tonnage = ${safeNum(s.tonnage)},
+                        casted = ${safeNum(s.casted)},
+                        shiftValue = ${safeNum(s.value || s.shiftValue)}
                         WHERE reportId = ${Number(id)} AND shiftName = ${shift}`;
         }
       }
@@ -658,15 +724,15 @@ exports.updateReport = async (req, res) => {
       for (const d of details) {
         if (d.id) {
           await sql.query`UPDATE DailyPerformanceDetails SET
-                        patternCode = ${d.patternCode || ''},
-                        itemDescription = ${d.itemDescription || ''},
-                        planned = ${Number(d.planned) || 0},
-                        unplanned = ${Number(d.unplanned) || 0},
-                        mouldsProd = ${Number(d.mouldsProd) || 0},
-                        mouldsPour = ${Number(d.mouldsPour) || 0},
-                        cavity = ${Number(d.cavity) || 0},
-                        unitWeight = ${Number(d.unitWeight) || 0},
-                        totalWeight = ${Number(d.totalWeight) || 0}
+                        patternCode = ${safeStr(d.patternCode)},
+                        itemDescription = ${safeStr(d.itemDescription)},
+                        planned = ${safeNum(d.planned)},
+                        unplanned = ${safeNum(d.unplanned)},
+                        mouldsProd = ${safeNum(d.mouldsProd)},
+                        mouldsPour = ${safeNum(d.mouldsPour)},
+                        cavity = ${safeNum(d.cavity)},
+                        unitWeight = ${safeNum(d.unitWeight)},
+                        totalWeight = ${safeNum(d.totalWeight)}
                         WHERE id = ${Number(d.id)}`;
         }
       }

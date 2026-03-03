@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -46,7 +46,7 @@ const validateMultipleNumbers = (valString, minLimit) => {
 // ==========================================
 // COMPONENT: SearchableSelect
 // ==========================================
-const SearchableSelect = ({ label, options, displayKey, onSelect, value }) => {
+const SearchableSelect = ({ label, options, displayKey, onSelect, value, placeholder }) => {
   const [search, setSearch] = useState(value || "");
   const [open, setOpen] = useState(false);
 
@@ -60,7 +60,7 @@ const SearchableSelect = ({ label, options, displayKey, onSelect, value }) => {
 
   return (
     <div className="relative w-full">
-      {label && <label className="font-medium text-gray-700 block mb-1">{label}</label>}
+      {label && <label className="font-bold text-gray-700 block mb-1 text-left">{label}</label>}
       <input
         type="text"
         value={search}
@@ -71,11 +71,11 @@ const SearchableSelect = ({ label, options, displayKey, onSelect, value }) => {
         }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 200)}
-        className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 text-sm"
-        placeholder={`Search or type '-' for ${label || ''}`}
+        className="w-full border border-gray-400 p-2 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 text-sm bg-white"
+        placeholder={placeholder || `Search or type '-' for ${label || ''}`}
       />
       {open && (
-        <ul className="absolute z-50 bg-white border border-gray-300 w-full max-h-40 overflow-y-auto rounded shadow-2xl mt-1">
+        <ul className="absolute z-50 bg-white border border-gray-300 w-full max-h-40 overflow-y-auto rounded shadow-xl mt-1 text-left">
           {filtered.length > 0 ? (
             filtered.map((item, index) => (
               <li
@@ -86,7 +86,7 @@ const SearchableSelect = ({ label, options, displayKey, onSelect, value }) => {
                   setOpen(false);
                   onSelect(item);
                 }}
-                className="p-2 hover:bg-orange-50 cursor-pointer text-sm border-b border-gray-100 last:border-0"
+                className="p-2 hover:bg-orange-100 cursor-pointer text-sm border-b border-gray-100 last:border-0"
               >
                 {item[displayKey]}
               </li>
@@ -200,37 +200,91 @@ const DisamaticProductReport = () => {
   const [patternTemps, setPatternTemps] = useState([{ componentName: "", pp: "", sp: "", remarks: "" }]);
   const [supervisors, setSupervisors] = useState([]);
 
+  // Use a ref to prevent double-toasting on the very first mount
+  const isFirstRender = useRef(true);
+
   useEffect(() => {
     localStorage.setItem("disaFormDraft", JSON.stringify(formData));
   }, [formData]);
 
+  // 🔥 CENTRALIZED FETCH LOGIC 🔥
+  // Listens to Date, Shift, and DISA specifically. Fetches data when any of the three changes.
   useEffect(() => {
-    const checkOnLoad = async () => {
-      if (formData.disa && formData.date && formData.shift) {
+    const fetchPersonnelAndCounter = async () => {
+      if (formData.disa && formData.disa !== "-" && formData.date && formData.shift) {
         try {
+          // 1. Fetch Personnel
           const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/forms/last-personnel`, {
             params: { disa: formData.disa, date: formData.date, shift: formData.shift }
           });
+          
           if (res.data) {
             setFormData((prev) => ({
               ...prev,
-              incharge: res.data.incharge || prev.incharge,
-              member: res.data.member || prev.member,
-              ppOperator: res.data.ppOperator || prev.ppOperator,
-              supervisorName: res.data.supervisorName || prev.supervisorName,
+              incharge: res.data.incharge || "",
+              member: res.data.member || "",
+              ppOperator: res.data.ppOperator || "",
+              supervisorName: res.data.supervisorName || "",
             }));
+            if (!isFirstRender.current) toast.success(`Personnel auto-filled for DISA-${formData.disa}`);
+          } else {
+            // Reset personnel fields if no previous data found
+            setFormData((prev) => ({
+              ...prev,
+              incharge: "", member: "", ppOperator: "", supervisorName: ""
+            }));
+            if (!isFirstRender.current) toast.info(`First entry for DISA-${formData.disa} in this shift.`);
           }
 
+          // 2. Fetch Last Mould Counter
           const counterRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/forms/last-mould-counter`, {
             params: { disa: formData.disa }
           });
-          setPreviousMouldCounter(Number(counterRes.data.lastMouldCounter) || 0);
+          const fetchedCounter = Number(counterRes.data.lastMouldCounter) || 0;
+          setPreviousMouldCounter(fetchedCounter);
+          
+          // 3. Recalculate production based on new fetched counter
+          setProductions(prevList => {
+            let prev = fetchedCounter || 0; 
+            return prevList.map((item) => {
+              if (item.mouldCounterNo === "-" || String(item.mouldCounterNo).trim() === "") return { ...item, produced: "-" };
+              
+              let currentInput = Number(item.mouldCounterNo) || 0;
+              let produced = 0;
+              let displayCounter = String(item.mouldCounterNo);
+
+              // Wrap-around logic (> 600000)
+              if (currentInput > 600000) {
+                const remainder = currentInput % 600000;
+                produced = (600000 - prev) + remainder;
+                displayCounter = String(remainder);
+                prev = remainder;
+              } else if (currentInput > 0 && currentInput < prev) {
+                // Manual wrap case
+                produced = (600000 - prev) + currentInput;
+                prev = currentInput;
+              } else {
+                // Normal case
+                produced = currentInput ? Math.max(0, currentInput - prev) : 0;
+                prev = currentInput;
+              }
+
+              return { 
+                ...item, 
+                mouldCounterNo: displayCounter, 
+                produced: isNaN(produced) ? "-" : produced 
+              };
+            });
+          });
+
         } catch (err) {
-          console.error(err);
+          console.error("Failed to fetch dynamic personnel/counter data", err);
         }
       }
     };
-    checkOnLoad();
+
+    fetchPersonnelAndCounter();
+    isFirstRender.current = false;
   }, [formData.disa, formData.date, formData.shift]);
 
   useEffect(() => {
@@ -243,51 +297,29 @@ const DisamaticProductReport = () => {
     axios.get(`${process.env.REACT_APP_API_URL}/api/mould-hardness-remarks`).then((res) => setMouldRemarksList(res.data));
   }, []);
 
+  // Updated handleChange: Clears personnel on Date/Shift change to force fresh fetch via useEffect
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      const updated = { ...prev, [name]: value };
+      if (name === "date" || name === "shift") {
+        updated.incharge = "";
+        updated.member = "";
+        updated.ppOperator = "";
+        updated.supervisorName = "";
+      }
+      return updated;
+    });
   };
 
-  const handleDisaChange = async (e) => {
+  // 🔥 FIX: Removed async/await logic. Now only updates state. The useEffect handles the fetch.
+  const handleDisaChange = (e) => {
     const selectedDisa = e.target.value;
-    
     setFormData((prev) => ({ 
       ...prev, 
       disa: selectedDisa,
       incharge: "", member: "", ppOperator: "", supervisorName: ""
     }));
-
-    if (selectedDisa) {
-      try {
-        const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/forms/last-personnel`, {
-          params: { disa: selectedDisa, date: formData.date, shift: formData.shift }
-        });
-        
-        if (res.data) {
-          setFormData((prev) => ({
-            ...prev,
-            incharge: res.data.incharge || "",
-            member: res.data.member || "",
-            ppOperator: res.data.ppOperator || "",
-            supervisorName: res.data.supervisorName || "",
-          }));
-          toast.success(`Personnel auto-filled for DISA-${selectedDisa}`);
-        } else {
-          toast.info(`First entry for DISA-${selectedDisa} in this shift.`);
-        }
-
-        const counterRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/forms/last-mould-counter`, {
-          params: { disa: selectedDisa }
-        });
-        const fetchedCounter = Number(counterRes.data.lastMouldCounter) || 0;
-        setPreviousMouldCounter(fetchedCounter);
-        
-        recalculateChain(productions, fetchedCounter);
-
-      } catch (err) {
-        console.error("Failed to fetch data", err);
-      }
-    }
   };
 
   const addNextShiftPlan = () => setNextShiftPlans([...nextShiftPlans, { componentName: "", plannedMoulds: "", remarks: "" }]);
@@ -388,7 +420,7 @@ const DisamaticProductReport = () => {
     }
   };
 
-  // ⬇️ RECTIFIED: Handling the > 600000 wrap-around logic ⬇️
+  // 🔥 Integrated Recalculate Logic with Wrap-Around support
   const recalculateChain = (list, baseCounter = previousMouldCounter) => {
     let prev = Number(baseCounter) || 0; 
     const newList = list.map((item) => {
@@ -398,19 +430,16 @@ const DisamaticProductReport = () => {
       let produced = 0;
       let displayCounter = String(item.mouldCounterNo);
 
-      // If user inputs a number greater than 600,000, trigger wrap logic
       if (currentInput > 600000) {
         const remainder = currentInput % 600000;
         produced = (600000 - prev) + remainder;
-        displayCounter = String(remainder); // Reset input field to show the remainder
+        displayCounter = String(remainder); 
         prev = remainder;
       } 
-      // Fallback: If user manually typed the post-wrap number (e.g. typed '1' while prev was '599990')
       else if (currentInput > 0 && currentInput < prev) {
         produced = (600000 - prev) + currentInput;
         prev = currentInput;
       } 
-      // Standard operation
       else {
         produced = currentInput ? Math.max(0, currentInput - prev) : 0;
         prev = currentInput;
@@ -570,9 +599,9 @@ const DisamaticProductReport = () => {
           </div>
 
           <div className="grid grid-cols-3 gap-6">
-            <SearchableSelect key={`incharge-${resetKey}`} label="Incharge" options={incharges} displayKey="name" value={formData.incharge} onSelect={(item) => setFormData({ ...formData, incharge: item.name })} />
-            <SearchableSelect key={`ppOperator-${resetKey}`} label="P/P Operator" options={operators} displayKey="operatorName" value={formData.ppOperator} onSelect={(item) => setFormData({ ...formData, ppOperator: item.operatorName })} />
-            <SearchableSelect key={`member-${resetKey}`} label="Member" options={employees} displayKey="name" value={formData.member} onSelect={(item) => setFormData({ ...formData, member: item.name })} />
+            <SearchableSelect key={`incharge-${resetKey}`} label="Incharge" options={incharges} displayKey="name" value={formData.incharge} onSelect={(item) => setFormData({ ...formData, incharge: item.name || item.name })} />
+            <SearchableSelect key={`ppOperator-${resetKey}`} label="P/P Operator" options={operators} displayKey="operatorName" value={formData.ppOperator} onSelect={(item) => setFormData({ ...formData, ppOperator: item.operatorName || item.operatorName })} />
+            <SearchableSelect key={`member-${resetKey}`} label="Member" options={employees} displayKey="name" value={formData.member} onSelect={(item) => setFormData({ ...formData, member: item.name || item.name })} />
           </div>
 
           {/* PRODUCTION SECTION */}
@@ -852,7 +881,7 @@ const DisamaticProductReport = () => {
           </div>
 
           <div className="w-1/3 mt-4">
-            <SearchableSelect key={`supervisor-${resetKey}`} label="Supervisor Name" options={supervisors} displayKey="supervisorName" value={formData.supervisorName} onSelect={(item) => setFormData({ ...formData, supervisorName: item.supervisorName })} />
+            <SearchableSelect key={`supervisor-${resetKey}`} label="Supervisor Name" options={supervisors} displayKey="supervisorName" value={formData.supervisorName} onSelect={(item) => setFormData({ ...formData, supervisorName: item.supervisorName || item.supervisorName })} />
           </div>
 
           {/* BUTTONS */}
