@@ -6,7 +6,6 @@ const PDFDocument = require("pdfkit");
 // GET next S.No
 router.get("/next-sno", async (req, res) => {
   try {
-    // 🔥 FIXED: Reverted back to sNo (Matches your actual DB schema)
     const result = await sql.query`SELECT ISNULL(MAX(sNo), 0) + 1 AS nextSNo FROM ReactionPlan`;
     res.json({ nextSNo: result.recordset[0].nextSNo });
   } catch (err) {
@@ -46,7 +45,6 @@ router.post("/add-verification", async (req, res) => {
 router.post("/add-reaction", async (req, res) => {
   const { sNo, errorProofNo, errorProofName, recordDate, shift, problem, rootCause, correctiveAction, status, reviewedBy, approvedBy, remarks } = req.body;
   try {
-    // 🔥 FIXED: Restored sNo
     await sql.query`
       INSERT INTO ReactionPlan (sNo, errorProofNo, errorProofName, recordDate, shift, problem, rootCause, correctiveAction, status, reviewedBy, approvedBy, remarks)
       VALUES (${sNo}, ${errorProofNo}, ${errorProofName}, ${recordDate}, ${shift}, ${problem}, ${rootCause}, ${correctiveAction}, ${status}, ${reviewedBy}, ${approvedBy}, ${remarks})
@@ -64,7 +62,6 @@ router.post("/add-reaction", async (req, res) => {
 router.get("/supervisor/:name", async (req, res) => {
     try {
       const { name } = req.params;
-      // 🔥 FIXED: Restored sNo alias
       const result = await sql.query`
         SELECT 
           r.sNo as VerificationId, 
@@ -86,14 +83,20 @@ router.get("/supervisor/:name", async (req, res) => {
     }
 });
 
+// 🔥 FIXED: Accepts reactionPlanId from the React frontend so it properly saves to the DB!
 router.post("/sign-supervisor", async (req, res) => {
     try {
-      const { verificationId, signature } = req.body;
-      // 🔥 FIXED: Targeting sNo column
+      // The frontend sends 'reactionPlanId', not 'verificationId'
+      const { reactionPlanId, signature } = req.body;
+      
+      if (!reactionPlanId) {
+          return res.status(400).json({ message: "Missing ID for signature update" });
+      }
+
       await sql.query`
         UPDATE ReactionPlan 
         SET SupervisorSignature = ${signature}, status = 'Completed' 
-        WHERE sNo = ${verificationId}
+        WHERE sNo = ${reactionPlanId}
       `;
       res.json({ message: "Signature saved successfully" });
     } catch (err) { 
@@ -132,27 +135,32 @@ router.post('/sign-hof', async (req, res) => {
   } catch (error) { res.status(500).json({ error: "Failed to save HOF signature" }); }
 });
 
-
 // ==========================================
 //        PDF GENERATOR LOGIC
 // ==========================================
 router.get("/report", async (req, res) => {
   try {
-    const { line } = req.query; 
+    const { line, date } = req.query; 
     
+    const request = new sql.Request();
     let verificationQuery = `SELECT * FROM ErrorProofVerification`;
     let reactionQuery = `SELECT * FROM ReactionPlan`;
     
-    if (line) {
-        verificationQuery += ` WHERE line = '${line}'`;
+    // 🔥 FILTER SPECIFIC TO THE MODAL CLICKED
+    if (line && date) {
+        verificationQuery += ` WHERE line = @line AND recordDate = @date`;
+        request.input('line', sql.VarChar, line);
+        request.input('date', sql.Date, date);
+    } else if (line) {
+        verificationQuery += ` WHERE line = @line`;
+        request.input('line', sql.VarChar, line);
     }
     
-    // 🔥 FIXED: Ensure reactionQuery uses sNo
     verificationQuery += ` ORDER BY recordDate ASC, id ASC`;
     reactionQuery += ` ORDER BY sNo ASC`;
 
-    const verificationResult = await sql.query(verificationQuery);
-    const reactionResult = await sql.query(reactionQuery);
+    const verificationResult = await request.query(verificationQuery);
+    const reactionResult = await request.query(reactionQuery);
 
     const doc = new PDFDocument({ margin: 30, size: "A4", layout: "landscape", bufferPages: true, autoPageBreak: false });
     const PAGE_HEIGHT = 595.28;
@@ -396,9 +404,6 @@ router.get("/report", async (req, res) => {
       });
     }
 
-    // =========================================================
-    // 🔥 GLOBAL FOOTER LOOP (Locks to bottom of every page)
-    // =========================================================
     const range = doc.bufferedPageRange();
     for (let i = range.start; i < (range.start + range.count); i++) {
         doc.switchToPage(i);

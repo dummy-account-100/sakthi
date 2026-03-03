@@ -46,6 +46,8 @@ const Supervisor = () => {
   // --- States for Error Proof Reaction Plans ---
   const [errorReports, setErrorReports] = useState([]);
   const [selectedErrorReport, setSelectedErrorReport] = useState(null);
+  const [errorPdfUrl, setErrorPdfUrl] = useState(null);
+  const [isErrorPdfLoading, setIsErrorPdfLoading] = useState(false);
   const errorSigCanvas = useRef({});
 
   useEffect(() => {
@@ -62,13 +64,43 @@ const Supervisor = () => {
       return new Date(dateString).toLocaleDateString("en-GB"); 
   };
 
+  const formatTime = (dateString) => {
+      if (!dateString) return "";
+      return new Date(dateString).toLocaleTimeString("en-GB", { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // 🔥 NEW HELPER: Filters duplicates based on Date, Shift, and Disa Machine
+  // Keeps only the report with the highest ID (latest submission)
+  const filterUniqueReports = (data) => {
+    const uniqueMap = {};
+
+    data.forEach((item) => {
+      // Create a unique key: YYYY-MM-DD | Shift | Disa
+      const dateStr = new Date(item.reportDate).toISOString().split('T')[0];
+      const key = `${dateStr}|${item.shift}|${item.disa}`;
+
+      // If key doesn't exist OR current item is newer (higher ID), store it
+      if (!uniqueMap[key] || item.id > uniqueMap[key].id) {
+        uniqueMap[key] = item;
+      }
+    });
+
+    // Convert back to array and sort by Date Descending, then ID Descending
+    return Object.values(uniqueMap).sort((a, b) => {
+      const dateA = new Date(a.reportDate);
+      const dateB = new Date(b.reportDate);
+      return dateB - dateA || b.id - a.id;
+    });
+  };
+
   // ==========================================
   // 1. DISAMATIC LOGIC
   // ==========================================
   const fetchDisaReports = async () => {
     try {
       const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/forms/supervisor/${currentSupervisor}`);
-      setDisaReports(res.data);
+      // 🔥 Apply filter here to remove duplicates
+      setDisaReports(filterUniqueReports(res.data));
     } catch (err) { toast.error("Failed to load Disamatic reports."); }
   };
 
@@ -88,6 +120,8 @@ const Supervisor = () => {
   const fetchBottomReports = async () => {
     try {
       const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/bottom-level-audit/supervisor/${currentSupervisor}`);
+      // Bottom level audits are usually one per shift/day, but we can filter by ID just in case
+      // For now, we leave as is unless duplicates occur there too.
       setBottomReports(res.data);
     } catch (err) { toast.error("Failed to load Bottom Level Audits."); }
   };
@@ -107,7 +141,9 @@ const Supervisor = () => {
         axios.get(`${process.env.REACT_APP_API_URL}/api/bottom-level-audit/monthly-report`, { params: { month, year, disaMachine } })
       ]);
 
-      const checklist = detailsRes.data.checklist; const monthlyLogs = monthlyRes.data.monthlyLogs || []; const ncReports = monthlyRes.data.ncReports || [];
+      const checklist = detailsRes.data.checklist; const monthlyLogs = monthlyRes.data.monthlyLogs || []; 
+      // eslint-disable-next-line
+      const ncReports = monthlyRes.data.ncReports || [];
       const historyMap = {}; const holidayDays = new Set(); const vatDays = new Set();
       const supSigMap = {}; const hofSig = monthlyLogs.find(l => l.HOFSignature)?.HOFSignature;
 
@@ -117,7 +153,7 @@ const Supervisor = () => {
         if (Number(log.IsVatCleaning) === 1) vatDays.add(logDay);
         if (log.SupervisorSignature) supSigMap[logDay] = log.SupervisorSignature;
         if (!historyMap[key]) historyMap[key] = {};
-        if (log.IsNA == 1) { historyMap[key][logDay] = 'NA'; } else if (log.IsDone == 1) { historyMap[key][logDay] = 'Y'; } else { historyMap[key][logDay] = 'N'; }
+        if (log.IsNA === 1) { historyMap[key][logDay] = 'NA'; } else if (log.IsDone === 1) { historyMap[key][logDay] = 'Y'; } else { historyMap[key][logDay] = 'N'; }
       });
 
       const doc = new jsPDF('l', 'mm', 'a4');
@@ -218,7 +254,8 @@ const Supervisor = () => {
   const fetchDmmReports = async () => {
     try {
       const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/dmm-settings/supervisor/${currentSupervisor}`);
-      setDmmReports(res.data);
+      // 🔥 Apply filter here too, as DMM is also shift-based
+      setDmmReports(filterUniqueReports(res.data));
     } catch (err) { toast.error("Failed to load DMM Settings."); }
   };
 
@@ -348,13 +385,37 @@ const Supervisor = () => {
     } catch (err) { toast.error("Failed to load Error Proof plans."); }
   };
 
+  const handleOpenErrorModal = async (report) => {
+    setSelectedErrorReport(report);
+    setErrorPdfUrl(null);
+    setIsErrorPdfLoading(true);
+    try {
+      const line = report.DisaMachine || report.disaMachine || report.line;
+      // Get exact date safely to filter the PDF
+      const localDate = new Date(report.recordDate || report.RecordDate);
+      const offset = localDate.getTimezoneOffset();
+      const dateStr = new Date(localDate.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
+
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/error-proof/report`, { 
+          params: { line, date: dateStr }, 
+          responseType: 'blob' 
+      });
+      const pdfBlobUrl = URL.createObjectURL(response.data);
+      setErrorPdfUrl(pdfBlobUrl);
+    } catch (error) {
+      toast.error("Failed to generate Error Proof PDF.");
+    }
+    setIsErrorPdfLoading(false);
+  };
+
   const submitErrorSignature = async () => {
     if (errorSigCanvas.current.isEmpty()) { toast.warning("Please provide your signature."); return; }
     const signatureData = errorSigCanvas.current.getCanvas().toDataURL("image/png");
     try {
-      const id = selectedErrorReport.VerificationId || selectedErrorReport.Id || selectedErrorReport.sNo;
+      const id = selectedErrorReport.reportId || selectedErrorReport.VerificationId || selectedErrorReport.Id || selectedErrorReport.sNo;
       await axios.post(`${process.env.REACT_APP_API_URL}/api/error-proof/sign-supervisor`, { 
-        verificationId: id, signature: signatureData 
+        reactionPlanId: id, 
+        signature: signatureData 
       });
       toast.success("Reaction Plan Approved!");
       setSelectedErrorReport(null); fetchErrorReports();
@@ -377,10 +438,11 @@ const Supervisor = () => {
           {disaReports.length === 0 ? <p className="text-gray-500 italic">No Disamatic reports pending.</p> : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse border border-gray-300">
-                <thead className="bg-gray-800 text-white"><tr><th className="p-3 border border-gray-300">Date</th><th className="p-3 border border-gray-300">Shift</th><th className="p-3 border border-gray-300">DISA Line</th><th className="p-3 border border-gray-300">Operator</th><th className="p-3 border border-gray-300">Status</th><th className="p-3 border border-gray-300 text-center">Action</th></tr></thead>
+                <thead className="bg-gray-800 text-white"><tr><th className="p-3 border border-gray-300 w-20 text-center">ID</th><th className="p-3 border border-gray-300">Date</th><th className="p-3 border border-gray-300">Shift</th><th className="p-3 border border-gray-300">DISA Line</th><th className="p-3 border border-gray-300">Operator</th><th className="p-3 border border-gray-300">Status</th><th className="p-3 border border-gray-300 text-center">Action</th></tr></thead>
                 <tbody>
                   {disaReports.map((report) => (
                     <tr key={report.id} className="hover:bg-gray-50">
+                      <td className="p-3 border border-gray-300 text-center font-bold text-gray-400">#{report.id}</td>
                       <td className="p-3 border border-gray-300 font-medium">{formatDate(report.reportDate)}</td><td className="p-3 border border-gray-300">{report.shift}</td><td className="p-3 border border-gray-300 font-bold">DISA - {report.disa}</td><td className="p-3 border border-gray-300">{report.ppOperator || "N/A"}</td>
                       <td className="p-3 border border-gray-300">{report.supervisorSignature ? <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">✓ Signed</span> : <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">Pending Review</span>}</td>
                       <td className="p-3 border border-gray-300 text-center">{!report.supervisorSignature && <button onClick={() => setSelectedDisaReport(report)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow transition-colors">Review & Sign</button>}</td>
@@ -398,11 +460,13 @@ const Supervisor = () => {
           {bottomReports.length === 0 ? <p className="text-gray-500 italic">No bottom level audits pending your signature.</p> : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse border border-gray-300">
-                <thead className="bg-gray-800 text-white"><tr><th className="p-3 border border-gray-300">Date</th><th className="p-3 border border-gray-300">Machine</th><th className="p-3 border border-gray-300">Status</th><th className="p-3 border border-gray-300 text-center">Action</th></tr></thead>
+                <thead className="bg-gray-800 text-white"><tr><th className="p-3 border border-gray-300">Date</th><th className="p-3 border border-gray-300">Time Submitted</th><th className="p-3 border border-gray-300">Machine</th><th className="p-3 border border-gray-300">Status</th><th className="p-3 border border-gray-300 text-center">Action</th></tr></thead>
                 <tbody>
                   {bottomReports.map((report, idx) => (
                     <tr key={idx} className="hover:bg-gray-50">
-                      <td className="p-3 border border-gray-300 font-medium">{formatDate(report.reportDate)}</td><td className="p-3 border border-gray-300 font-bold">{report.disa}</td>
+                      <td className="p-3 border border-gray-300 font-medium">{formatDate(report.reportDate)}</td>
+                      <td className="p-3 border border-gray-300 text-gray-500 font-bold">{formatTime(report.submittedAt)}</td>
+                      <td className="p-3 border border-gray-300 font-bold">{report.disa}</td>
                       <td className="p-3 border border-gray-300">{report.supervisorSignature ? <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">✓ Signed</span> : <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">Pending Review</span>}</td>
                       <td className="p-3 border border-gray-300 text-center">{!report.supervisorSignature && <button onClick={() => handleOpenBottomModal(report)} className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow transition-colors">Review & Sign</button>}</td>
                     </tr>
@@ -464,10 +528,11 @@ const Supervisor = () => {
           {fourMReports.length === 0 ? <p className="text-gray-500 italic">No 4M Change forms pending your signature.</p> : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse border border-gray-300">
-                <thead className="bg-gray-800 text-white"><tr><th className="p-3 border border-gray-300">Date</th><th className="p-3 border border-gray-300">Machine</th><th className="p-3 border border-gray-300">Part Name</th><th className="p-3 border border-gray-300">4M Type</th><th className="p-3 border border-gray-300">Status</th><th className="p-3 border border-gray-300 text-center">Action</th></tr></thead>
+                <thead className="bg-gray-800 text-white"><tr><th className="p-3 border border-gray-300 w-20 text-center">ID</th><th className="p-3 border border-gray-300">Date</th><th className="p-3 border border-gray-300">Machine</th><th className="p-3 border border-gray-300">Part Name</th><th className="p-3 border border-gray-300">4M Type</th><th className="p-3 border border-gray-300">Status</th><th className="p-3 border border-gray-300 text-center">Action</th></tr></thead>
                 <tbody>
                   {fourMReports.map((report, idx) => (
                     <tr key={idx} className="hover:bg-green-50">
+                      <td className="p-3 border border-gray-300 text-center font-bold text-gray-400">#{report.id}</td>
                       <td className="p-3 border border-gray-300 font-medium">{formatDate(report.recordDate)}</td>
                       <td className="p-3 border border-gray-300 font-bold">{report.disa}</td>
                       <td className="p-3 border border-gray-300">{report.partName || "N/A"}</td>
@@ -493,20 +558,21 @@ const Supervisor = () => {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse border border-gray-300">
                 <thead className="bg-gray-800 text-white">
-                  <tr><th className="p-3 border border-gray-300">Date/Shift</th><th className="p-3 border border-gray-300">Machine</th><th className="p-3 border border-gray-300">Error Proof</th><th className="p-3 border border-gray-300">Status</th><th className="p-3 border border-gray-300 text-center">Action</th></tr>
+                  <tr><th className="p-3 border border-gray-300 w-20 text-center">ID</th><th className="p-3 border border-gray-300">Date/Shift</th><th className="p-3 border border-gray-300">Machine</th><th className="p-3 border border-gray-300">Error Proof</th><th className="p-3 border border-gray-300">Status</th><th className="p-3 border border-gray-300 text-center">Action</th></tr>
                 </thead>
                 <tbody>
                   {errorReports.map((report, idx) => {
                     const status = report.Status || report.status;
                     return (
                       <tr key={idx} className="hover:bg-yellow-50">
+                        <td className="p-3 border border-gray-300 text-center font-bold text-gray-400">#{report.reportId || report.Id}</td>
                         <td className="p-3 border border-gray-300 font-bold">{report.shift}</td>
                         <td className="p-3 border border-gray-300 font-bold">{report.DisaMachine || report.disaMachine || report.line}</td>
                         <td className="p-3 border border-gray-300">{report.ErrorProofName || report.errorProofName}</td>
                         <td className="p-3 border border-gray-300">{status === 'Completed' ? <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">✓ Completed</span> : <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">Pending</span>}</td>
                         <td className="p-3 border border-gray-300 text-center">
                           {status !== 'Completed' && (
-                            <button onClick={() => setSelectedErrorReport(report)} className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow transition-colors">
+                            <button onClick={() => handleOpenErrorModal(report)} className="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow transition-colors">
                               Review & Sign
                             </button>
                           )}
@@ -542,6 +608,7 @@ const Supervisor = () => {
             <div className="w-full lg:w-[400px] bg-gray-50 border-l border-gray-300 flex flex-col shrink-0 shadow-2xl z-10 overflow-y-auto">
               <div className="p-6 flex-1 flex flex-col">
                   <div className="bg-orange-100 p-4 rounded-xl border border-orange-200 mb-6 text-sm flex flex-col gap-2 shadow-sm text-orange-900">
+                    <p><span className="font-bold">Report ID:</span> #{selectedDisaReport.id}</p>
                     <p><span className="font-bold">Date:</span> {formatDate(selectedDisaReport.reportDate)}</p>
                     <p><span className="font-bold">Shift:</span> {selectedDisaReport.shift}</p>
                     <p><span className="font-bold">DISA:</span> {selectedDisaReport.disa}</p>
@@ -579,6 +646,7 @@ const Supervisor = () => {
             <div className="w-full lg:w-[400px] bg-gray-50 border-l border-gray-300 flex flex-col shrink-0 shadow-2xl z-10 overflow-y-auto">
               <div className="p-6 flex-1 flex flex-col">
                   <div className="bg-blue-100 p-4 rounded-xl border border-blue-200 mb-6 text-sm flex flex-col gap-2 shadow-sm text-blue-900">
+                    <p><span className="font-bold">Time Submitted:</span> {formatTime(selectedBottomReport.submittedAt)}</p>
                     <p><span className="font-bold">Date:</span> {formatDate(selectedBottomReport.reportDate)}</p>
                     <p><span className="font-bold">Machine:</span> {selectedBottomReport.disa}</p>
                   </div>
@@ -652,6 +720,7 @@ const Supervisor = () => {
             <div className="w-full lg:w-[400px] bg-gray-50 border-l border-gray-300 flex flex-col shrink-0 shadow-2xl z-10 overflow-y-auto">
               <div className="p-6 flex-1 flex flex-col">
                   <div className="bg-green-100 p-4 rounded-xl border border-green-200 mb-6 text-sm flex flex-col gap-2 shadow-sm text-green-900">
+                    <p><span className="font-bold">Report ID:</span> #{selectedFourMReport.id}</p>
                     <p><span className="font-bold">Date:</span> {formatDate(selectedFourMReport.recordDate)}</p>
                     <p><span className="font-bold">Machine:</span> {selectedFourMReport.disa}</p>
                     <p><span className="font-bold">Type:</span> {selectedFourMReport.type4M}</p>
@@ -672,9 +741,47 @@ const Supervisor = () => {
         </div>
       )}
 
-      {/* 3 & 6. NCR and Error Proof Modals remain standard popups */}
+      {/* 6. ERROR PROOF MODAL */}
+      {selectedErrorReport && (
+        <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
+          <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
+            <h3 className="font-bold text-xl uppercase tracking-wider">Review & Approve Reaction Plan</h3>
+            <button onClick={() => { setSelectedErrorReport(null); setErrorPdfUrl(null); }} className="text-gray-400 hover:text-red-400 transition-colors">
+              <X size={28} />
+            </button>
+          </div>
+          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+            <div className="flex-1 h-full bg-[#525659] relative flex items-center justify-center">
+              {isErrorPdfLoading && <Loader className="animate-spin text-white w-12 h-12 absolute" />}
+              {errorPdfUrl && <iframe src={`${errorPdfUrl}#toolbar=0&view=FitH`} className="w-full h-full border-none relative z-10" title="PDF" />}
+            </div>
+            <div className="w-full lg:w-[400px] bg-gray-50 border-l border-gray-300 flex flex-col shrink-0 shadow-2xl z-10 overflow-y-auto">
+              <div className="p-6 flex-1 flex flex-col">
+                  <div className="bg-yellow-100 p-4 rounded-xl border border-yellow-200 mb-6 text-sm flex flex-col gap-2 shadow-sm text-yellow-900">
+                    <p><span className="font-bold">Report ID:</span> #{selectedErrorReport.reportId || selectedErrorReport.Id}</p>
+                    <p><span className="font-bold">Machine:</span> {selectedErrorReport.DisaMachine || selectedErrorReport.disaMachine || selectedErrorReport.line}</p>
+                    <p><span className="font-bold">Problem:</span> {selectedErrorReport.Problem || selectedErrorReport.problem}</p>
+                    <p><span className="font-bold">Action Taken:</span> {selectedErrorReport.CorrectiveAction || selectedErrorReport.correctiveAction}</p>
+                  </div>
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">Supervisor Signature</label>
+                  <div className="border-2 border-dashed border-gray-300 bg-white rounded-xl overflow-hidden mb-2 shadow-inner">
+                    <SignatureCanvas ref={errorSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-64 cursor-crosshair' }} />
+                  </div>
+                  <button onClick={() => errorSigCanvas.current.clear()} className="text-xs text-gray-500 hover:text-red-600 font-bold uppercase tracking-wider underline self-end mb-8">Clear Signature</button>
+                  <div className="mt-auto">
+                      <button onClick={submitErrorSignature} className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
+                        Approve & Sign
+                      </button>
+                  </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NCR Modal Remains a standard popup because it doesn't have an underlying PDF */}
       {selectedNcrReport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden flex flex-col">
             <div className="bg-red-600 text-white px-6 py-4 flex justify-between items-center shrink-0"><h3 className="font-bold text-lg">Verify Non-Conformance Report</h3><button onClick={() => setSelectedNcrReport(null)} className="text-red-200 hover:text-white font-bold text-2xl leading-none">&times;</button></div>
             <div className="p-6 overflow-y-auto">
@@ -684,32 +791,6 @@ const Supervisor = () => {
                </div>
                <label className="block text-gray-800 font-bold mb-2 text-sm">Sign below to confirm resolution:</label><div className="border-2 border-dashed border-gray-300 bg-gray-50 rounded-lg overflow-hidden mb-2"><SignatureCanvas ref={ncrSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-40 cursor-crosshair' }} /></div><div className="flex justify-end mb-6"><button onClick={() => ncrSigCanvas.current.clear()} className="text-sm text-red-500 hover:text-red-700 font-bold underline">Clear Pad</button></div>
                <div className="flex flex-col gap-3"><button onClick={submitNcrSignature} className="w-full bg-red-600 hover:bg-red-700 text-white py-3 rounded font-bold shadow-md text-lg">Verify & Complete NCR</button></div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedErrorReport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden flex flex-col">
-            <div className="bg-yellow-600 text-white px-6 py-4 flex justify-between items-center shrink-0">
-              <h3 className="font-bold text-lg">Approve Reaction Plan (Daily)</h3>
-              <button onClick={() => setSelectedErrorReport(null)} className="text-yellow-200 hover:text-white font-bold text-2xl leading-none">&times;</button>
-            </div>
-            <div className="p-6 overflow-y-auto">
-                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 mb-6 flex flex-col gap-3 text-sm text-gray-800">
-                  <p><span className="font-bold">Machine:</span> {selectedErrorReport.DisaMachine || selectedErrorReport.disaMachine || selectedErrorReport.line}</p>
-                  <p><span className="font-bold">Problem:</span> {selectedErrorReport.Problem || selectedErrorReport.problem}</p>
-                  <p><span className="font-bold">Action Taken:</span> {selectedErrorReport.CorrectiveAction || selectedErrorReport.correctiveAction}</p>
-                </div>
-                <label className="block text-gray-800 font-bold mb-2 text-sm">Supervisor Signature:</label>
-                <div className="border-2 border-dashed border-gray-300 bg-gray-50 rounded-lg overflow-hidden mb-2">
-                  <SignatureCanvas ref={errorSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-40 cursor-crosshair' }} />
-                </div>
-                <button onClick={() => errorSigCanvas.current.clear()} className="text-sm text-yellow-600 hover:text-yellow-800 font-bold underline mb-auto self-end float-right">Clear Pad</button>
-                <div className="flex flex-col gap-3 mt-8">
-                  <button onClick={submitErrorSignature} className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-3 rounded font-bold shadow-md text-lg">Approve Plan</button>
-                </div>
             </div>
           </div>
         </div>

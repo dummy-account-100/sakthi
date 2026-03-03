@@ -4,6 +4,21 @@ const fs = require("fs");
 const path = require("path");
 
 // ==========================================
+//           BULLETPROOF HELPERS
+// ==========================================
+// Prevents SQL crashes by ensuring numbers are numbers and strings are strings
+const safeNum = (val) => {
+  if (val === null || val === undefined || String(val).trim() === "" || String(val).trim() === "-") return 0;
+  const n = Number(val);
+  return isNaN(n) ? 0 : n;
+};
+
+const safeStr = (val) => {
+  if (val === null || val === undefined || String(val).trim() === "" || String(val).trim() === "-") return null;
+  return String(val).trim();
+};
+
+// ==========================================
 //              DROPDOWN DATA
 // ==========================================
 exports.getComponents = async (req, res) => {
@@ -60,6 +75,15 @@ exports.getSupervisors = async (req, res) => {
   }
 };
 
+exports.getMouldHardnessRemarks = async (req, res) => {
+  try {
+    const result = await sql.query`SELECT id, remarkName FROM mouldHardnessRemarks ORDER BY remarkName`;
+    res.status(200).json(result.recordset);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch mould hardness remarks" });
+  }
+};
+
 // ==========================================
 //        FETCH LAST PERSONNEL FOR SHIFT
 // ==========================================
@@ -92,7 +116,6 @@ exports.getLastMouldCounter = async (req, res) => {
       WHERE r.disa = ${disa}
       ORDER BY r.reportDate DESC, r.id DESC, p.mouldCounterNo DESC
     `;
-
     const lastMouldCounter = result.recordset[0]?.mouldCounterNo || 0;
     res.status(200).json({ lastMouldCounter });
   } catch (error) {
@@ -136,35 +159,33 @@ exports.signReport = async (req, res) => {
 };
 
 // ==========================================
-//            FORM SUBMISSION
+//             FORM SUBMISSION
 // ==========================================
 exports.createReport = async (req, res) => {
   const {
-    disa, date, shift, incharge, member,
+    disa, date, shift, incharge, member, 
     ppOperator, supervisorName, maintenance, significantEvent,
-    productions = [],
-    nextShiftPlans = [], mouldHardness = [], patternTemps = [], delays = []
+    productions = [], nextShiftPlans = [], mouldHardness = [], patternTemps = [], delays = []
   } = req.body;
 
   try {
     const reportResult = await sql.query`
       INSERT INTO DisamaticProductReport (
-        disa, reportDate, shift, incharge,
-        member, ppOperator, supervisorName, maintenance, significantEvent
+        disa, reportDate, shift, incharge, member, ppOperator, supervisorName, maintenance, significantEvent
       )
       OUTPUT INSERTED.id
       VALUES (
-        ${disa}, ${date}, ${shift}, ${incharge},
-        ${member}, ${ppOperator || null}, ${supervisorName || null},
-        ${maintenance || null}, ${significantEvent || null}
+        ${safeStr(disa)}, ${safeStr(date)}, ${safeStr(shift)}, ${safeStr(incharge)},
+        ${safeStr(member)}, ${safeStr(ppOperator)}, ${safeStr(supervisorName)},
+        ${safeStr(maintenance)}, ${safeStr(significantEvent)}
       )
     `;
 
     const reportId = reportResult.recordset[0].id;
 
     if (productions.length > 0) {
-      const firstProduced = Number(productions[0].produced);
-
+      const firstProduced = safeNum(productions[0].produced);
+      
       await sql.query`
         WITH CTE AS (
           SELECT TOP 1 p.produced
@@ -178,34 +199,34 @@ exports.createReport = async (req, res) => {
 
       for (let i = 0; i < productions.length; i++) {
         const p = productions[i];
-        const producedValue = (i === productions.length - 1) ? null : Number(productions[i + 1].produced);
+        if (safeStr(p.componentName)) {
+          const producedValue = (i === productions.length - 1) ? null : safeNum(productions[i + 1].produced);
 
-        await sql.query`
-          INSERT INTO DisamaticProduction (
-            reportId, componentName, mouldCounterNo, produced, poured,
-            cycleTime, mouldsPerHour, remarks
-          )
-          VALUES (
-            ${reportId}, ${p.componentName}, ${Number(p.mouldCounterNo)},
-            ${producedValue}, ${Number(p.poured)},
-            ${Number(p.cycleTime)}, ${Number(p.mouldsPerHour)},
-            ${p.remarks || null}
-          )
-        `;
+          await sql.query`
+            INSERT INTO DisamaticProduction (
+              reportId, componentName, mouldCounterNo, produced, poured,
+              cycleTime, mouldsPerHour, remarks
+            )
+            VALUES (
+              ${reportId}, ${safeStr(p.componentName)}, ${safeNum(p.mouldCounterNo)},
+              ${producedValue}, ${safeNum(p.poured)},
+              ${safeNum(p.cycleTime)}, ${safeNum(p.mouldsPerHour)},
+              ${safeStr(p.remarks)}
+            )
+          `;
+        }
       }
     }
 
     if (delays.length > 0) {
       for (let d of delays) {
-        const durationTime = `${d.startTime} - ${d.endTime}`;
-        await sql.query`
-          INSERT INTO DisamaticDelays (
-            reportId, delay, durationMinutes, durationTime
-          )
-          VALUES (
-            ${reportId}, ${d.delayType}, ${Number(d.duration)}, ${durationTime}
-          )
-        `;
+        if (safeStr(d.delayType)) {
+          const durationTime = (safeStr(d.startTime) && safeStr(d.endTime)) ? `${d.startTime} - ${d.endTime}` : null;
+          await sql.query`
+            INSERT INTO DisamaticDelays (reportId, delay, durationMinutes, durationTime)
+            VALUES (${reportId}, ${safeStr(d.delayType)}, ${safeNum(d.duration)}, ${durationTime})
+          `;
+        }
       }
     }
 
@@ -214,53 +235,53 @@ exports.createReport = async (req, res) => {
     let planDate = new Date(date);
 
     for (let i = 0; i < nextShiftPlans.length; i++) {
-      currentShiftIndex++;
-      if (currentShiftIndex >= shiftOrder.length) {
-        currentShiftIndex = 0;
-        planDate.setDate(planDate.getDate() + 1);
-      }
-      const planShift = shiftOrder[currentShiftIndex];
-      const formattedPlanDate = planDate.toISOString().split("T")[0];
       const plan = nextShiftPlans[i];
+      if (safeStr(plan.componentName)) {
+        currentShiftIndex++;
+        if (currentShiftIndex >= shiftOrder.length) {
+          currentShiftIndex = 0;
+          planDate.setDate(planDate.getDate() + 1);
+        }
+        const planShift = shiftOrder[currentShiftIndex];
+        const formattedPlanDate = planDate.toISOString().split("T")[0];
 
-      await sql.query`
-        INSERT INTO DisamaticNextShiftPlan (
-          reportId, planDate, planShift, componentName, plannedMoulds, remarks
-        )
-        VALUES (
-          ${reportId}, ${formattedPlanDate}, ${planShift}, 
-          ${plan.componentName}, ${Number(plan.plannedMoulds)}, ${plan.remarks || null}
-        )
-      `;
+        await sql.query`
+          INSERT INTO DisamaticNextShiftPlan (
+            reportId, planDate, planShift, componentName, plannedMoulds, remarks
+          )
+          VALUES (
+            ${reportId}, ${formattedPlanDate}, ${planShift}, 
+            ${safeStr(plan.componentName)}, ${safeNum(plan.plannedMoulds)}, ${safeStr(plan.remarks)}
+          )
+        `;
+      }
     }
 
     for (let i = 0; i < mouldHardness.length; i++) {
       const h = mouldHardness[i];
-      await sql.query`
-        INSERT INTO DisamaticMouldHardness (
-          reportId, componentName, penetrationPP, penetrationSP, bScalePP, bScaleSP, remarks
-        )
-        VALUES (
-          ${reportId}, ${h.componentName}, 
-          ${Number(h.penetrationPP)}, ${Number(h.penetrationSP)}, 
-          ${Number(h.bScalePP)}, ${Number(h.bScaleSP)}, 
-          ${h.remarks || null}
-        )
-      `;
+      if (safeStr(h.componentName)) {
+        await sql.query`
+          INSERT INTO DisamaticMouldHardness (
+            reportId, componentName, penetrationPP, penetrationSP, bScalePP, bScaleSP, remarks
+          )
+          VALUES (
+            ${reportId}, ${safeStr(h.componentName)}, 
+            ${safeStr(h.penetrationPP)}, ${safeStr(h.penetrationSP)}, 
+            ${safeStr(h.bScalePP)}, ${safeStr(h.bScaleSP)}, 
+            ${safeStr(h.remarks)}
+          )
+        `;
+      }
     }
 
     for (let i = 0; i < patternTemps.length; i++) {
       const pt = patternTemps[i];
-      await sql.query`
-        INSERT INTO DisamaticPatternTemp (
-          reportId, componentName, pp, sp, remarks
-        )
-        VALUES (
-          ${reportId}, ${pt.componentName}, 
-          ${Number(pt.pp)}, ${Number(pt.sp)}, 
-          ${pt.remarks || null}
-        )
-      `;
+      if (safeStr(pt.componentName)) {
+        await sql.query`
+          INSERT INTO DisamaticPatternTemp (reportId, componentName, pp, sp, remarks)
+          VALUES (${reportId}, ${safeStr(pt.componentName)}, ${safeNum(pt.pp)}, ${safeNum(pt.sp)}, ${safeStr(pt.remarks)})
+        `;
+      }
     }
 
     res.status(201).json({ message: "Report saved successfully" });
@@ -276,115 +297,145 @@ exports.createReport = async (req, res) => {
 // ==========================================
 exports.downloadAllReports = async (req, res) => {
   try {
-    const { reportId } = req.query; // Check if a specific ID was requested
+    const { reportId, date, disa } = req.query;
 
     let reportResult;
-    if (reportId) {
-      // Fetch only the specific report for the supervisor modal
+    
+    // ⬇️ UPDATED LOGIC to fetch based on Date and Disa strictly, in Descending Shift Order ⬇️
+    if (date && disa) {
       reportResult = await sql.query`
         SELECT * FROM DisamaticProductReport 
-        WHERE id = ${reportId}
+        WHERE reportDate = ${date} AND disa = ${disa} 
+        ORDER BY shift DESC, id ASC
       `;
+    } else if (reportId) {
+      reportResult = await sql.query`SELECT * FROM DisamaticProductReport WHERE id = ${reportId}`;
     } else {
-      // Default: Fetch all reports
-      reportResult = await sql.query`
-        SELECT * FROM DisamaticProductReport 
-        ORDER BY reportDate DESC, shift ASC, disa ASC, id ASC
-      `;
+      // Fallback
+      reportResult = await sql.query`SELECT * FROM DisamaticProductReport ORDER BY reportDate DESC, shift DESC, disa ASC, id ASC`;
     }
 
     const reports = reportResult.recordset;
 
     if (reports.length === 0) {
-      return res.status(404).json({ message: "No reports found" });
+      return res.status(404).json({ message: "No reports found for this selection." });
     }
 
     const grouped = {};
     reports.forEach(r => {
       const dateStr = new Date(r.reportDate).toISOString().split('T')[0];
       const key = `${dateStr}_${r.shift}_${r.disa}`;
-
+      
       if (!grouped[key]) {
         grouped[key] = {
-          date: r.reportDate,
-          shift: r.shift,
-          disa: r.disa,
-          incharge: r.incharge,
-          member: r.member,
-          ppOperator: r.ppOperator,
-          supervisorName: r.supervisorName,
-          supervisorSignature: r.supervisorSignature, // Captured signature here
-          reportIds: [],
-          sigEvents: new Set(),
-          maintenances: new Set()
+          date: r.reportDate, shift: r.shift, disa: r.disa,
+          incharge: r.incharge, member: r.member, ppOperator: r.ppOperator,
+          supervisorName: r.supervisorName, supervisorSignature: r.supervisorSignature, 
+          reportIds: [], sigEvents: new Set(), maintenances: new Set()
         };
       }
-
+      
       grouped[key].reportIds.push(r.id);
       grouped[key].incharge = r.incharge || grouped[key].incharge;
       grouped[key].member = r.member || grouped[key].member;
       grouped[key].ppOperator = r.ppOperator || grouped[key].ppOperator;
       grouped[key].supervisorName = r.supervisorName || grouped[key].supervisorName;
       grouped[key].supervisorSignature = r.supervisorSignature || grouped[key].supervisorSignature;
-
-      if (r.significantEvent && r.significantEvent.trim()) grouped[key].sigEvents.add(r.significantEvent);
-      if (r.maintenance && r.maintenance.trim()) grouped[key].maintenances.add(r.maintenance);
+      
+      if (r.significantEvent && r.significantEvent.trim() && r.significantEvent !== "-") grouped[key].sigEvents.add(r.significantEvent);
+      if (r.maintenance && r.maintenance.trim() && r.maintenance !== "-") grouped[key].maintenances.add(r.maintenance);
     });
 
     const reportGroups = Object.values(grouped);
 
     const doc = new PDFDocument({ margin: 30, size: 'A4', bufferPages: true });
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="Disamatic_Report.pdf"`);
+    let fName = date && disa ? `Disamatic_Report_${date}_DISA-${disa}.pdf` : `Disamatic_Report.pdf`;
+    res.setHeader("Content-Disposition", `inline; filename="${fName}"`);
     doc.pipe(res);
 
     const startX = 30;
-    const pageBottom = 780;
+    const pageBottom = 780; 
     const tableWidth = 535;
 
     const checkPageBreak = (neededHeight) => {
       if (doc.y + neededHeight > pageBottom) {
         doc.addPage();
-        return true;
+        return true; 
       }
       return false;
     };
 
     const drawCellText = (text, x, y, w, h, align = 'center', font = 'Helvetica', fontSize = 9) => {
       const content = (text !== null && text !== undefined && text !== "") ? text.toString() : "-";
-
+      
       const finalAlign = (content === "-") ? 'center' : align;
       const finalFont = (content === "-") ? 'Helvetica-Bold' : font;
 
-      doc.font(finalFont).fontSize(fontSize).fillColor('black');
+      let currentSize = fontSize;
+      doc.font(finalFont).fontSize(currentSize).fillColor('black');
+      const innerWidth = w - 10; 
 
-      const innerWidth = w - 10;
+      let words = content.split(/[\s\n]+/);
+      let maxWordWidth = Math.max(...words.map(word => doc.widthOfString(word)));
+      while (maxWordWidth > innerWidth && currentSize > 4) {
+        currentSize -= 0.5;
+        doc.fontSize(currentSize);
+        maxWordWidth = Math.max(...words.map(word => doc.widthOfString(word)));
+      }
+
       const textHeight = doc.heightOfString(content, { width: innerWidth });
-      const topPad = h > textHeight ? (h - textHeight) / 2 : 5;
+      const topPad = h > textHeight ? (h - textHeight) / 2 : 5; 
+      
+      doc.text(content, x + 5, y + topPad, { width: innerWidth, align: finalAlign });
+    };
 
-      doc.text(content, x + 5, y + topPad, {
-        width: innerWidth,
-        align: finalAlign,
+    const enforceWrap = (text, maxWidth) => {
+      if (!text || text === "-") return "-";
+      if (text.includes('-') && !text.includes(' ')) {
+        let parts = text.split('-');
+        let lines = [];
+        let currentLine = parts[0];
+        for (let i = 1; i < parts.length; i++) {
+          let testLine = currentLine + '-' + parts[i];
+          if (doc.widthOfString(testLine) > maxWidth) {
+            lines.push(currentLine + '-');
+            currentLine = parts[i];
+          } else {
+            currentLine = testLine;
+          }
+        }
+        lines.push(currentLine);
+        return lines.join('\n');
+      }
+      if (text.includes(',')) {
+        return text.split(',').join(',\n'); 
+      }
+      return text;
+    };
+
+    const getFilteredData = (rawData, checkKey) => {
+      return rawData.filter(row => {
+        const val = row[checkKey];
+        if (val === null || val === undefined) return false;
+        const strVal = String(val).trim();
+        return strVal !== "" && strVal !== "-";
       });
     };
 
     for (let i = 0; i < reportGroups.length; i++) {
       const g = reportGroups[i];
-      if (i > 0) doc.addPage();
+      if (i > 0) doc.addPage(); 
 
-      // --- HEADER WITH LOGO ---
       let currentY = 30;
       doc.rect(startX, currentY, tableWidth, 60).stroke();
-
       const logoPath = path.join(__dirname, 'logo.jpg');
       if (fs.existsSync(logoPath)) {
         doc.image(logoPath, startX + 5, currentY + 10, { fit: [120, 40], align: 'center', valign: 'center' });
       } else {
         doc.font('Helvetica-Bold').fontSize(16).text("SAKTHI AUTO", startX + 10, currentY + 22, { width: 120, align: 'center' });
       }
-
       doc.moveTo(startX + 130, currentY).lineTo(startX + 130, currentY + 60).stroke();
-
       doc.font('Helvetica-Bold').fontSize(11).text(`DISAMATIC PRODUCTION REPORT`, startX + 130, currentY + 18, { width: 270, align: 'center' });
       doc.fontSize(11).text(`DISA - ${g.disa}`, startX + 130, currentY + 35, { width: 270, align: 'center' });
 
@@ -396,7 +447,7 @@ exports.downloadAllReports = async (req, res) => {
       doc.text(`Shift      : ${g.shift}`, metaX + 5, currentY + 28);
       doc.moveTo(metaX, currentY + 40).lineTo(startX + tableWidth, currentY + 40).stroke();
       doc.text(`Incharge: ${g.incharge || "-"}`, metaX + 5, currentY + 48);
-      currentY += 60;
+      currentY += 60; 
 
       doc.rect(startX, currentY, tableWidth, 25).stroke();
       doc.font('Helvetica-Bold').text("Member Present:", startX + 5, currentY + 8);
@@ -407,9 +458,9 @@ exports.downloadAllReports = async (req, res) => {
 
       const idsList = g.reportIds.join(',');
 
-      const drawDynamicTable = async (title, columns, dataQuery, totalConfig = null) => {
+      const drawDynamicTable = async (title, columns, dataQuery, checkKey, totalConfig = null) => {
         const result = await sql.query(dataQuery);
-        const data = result.recordset;
+        const data = getFilteredData(result.recordset, checkKey);
 
         if (checkPageBreak(50)) currentY = 50;
         doc.font('Helvetica-Bold').fontSize(10).fillColor('black').text(title, startX, currentY + 8);
@@ -418,7 +469,7 @@ exports.downloadAllReports = async (req, res) => {
         const headerHeight = 25;
         let xPos = startX;
         doc.rect(startX, currentY, tableWidth, headerHeight).fillColor('#f3f4f6').stroke();
-        doc.fillColor('black');
+        doc.fillColor('black'); 
 
         columns.forEach(col => {
           drawCellText(col.label, xPos, currentY - 2, col.w, headerHeight, 'center', 'Helvetica-Bold', 8);
@@ -434,13 +485,21 @@ exports.downloadAllReports = async (req, res) => {
           currentY += 20;
         } else {
           data.forEach((row, idx) => {
-            const sno = idx + 1;
-            let maxH = 20;
+            const sno = idx + 1; 
+            let maxH = 20; 
+            
+            let processedRow = { ...row, sno: sno.toString() };
 
             doc.font('Helvetica').fontSize(9);
             columns.forEach(col => {
-              const val = col.key === 'sno' ? sno.toString() : (row[col.key] || "-").toString();
-              const textH = doc.heightOfString(val, { width: col.w - 10 });
+              let val = col.key === 'sno' ? sno.toString() : (row[col.key] || "-").toString();
+              
+              if (col.key === 'componentName' || col.key === 'delay' || col.key === 'penetrationPP' || col.key === 'penetrationSP' || col.key === 'bScalePP' || col.key === 'bScaleSP') {
+                 val = enforceWrap(val, col.w - 10);
+                 processedRow[col.key] = val;
+              }
+
+              const textH = doc.heightOfString(val, { width: col.w - 10 }); 
               if (textH + 12 > maxH) maxH = textH + 12;
             });
 
@@ -448,7 +507,7 @@ exports.downloadAllReports = async (req, res) => {
 
             let rX = startX;
             columns.forEach(col => {
-              const val = col.key === 'sno' ? sno : row[col.key];
+              const val = col.key === 'sno' ? sno : processedRow[col.key];
               drawCellText(val, rX, currentY, col.w, maxH, col.align || 'center');
               doc.rect(rX, currentY, col.w, maxH).stroke();
               rX += col.w;
@@ -459,7 +518,6 @@ exports.downloadAllReports = async (req, res) => {
           if (totalConfig) {
             let totals = {};
             totalConfig.sumCols.forEach(k => totals[k] = 0);
-
             let totalTonnage = 0;
 
             data.forEach(r => {
@@ -467,7 +525,6 @@ exports.downloadAllReports = async (req, res) => {
                 let val = Number(r[k]);
                 if (!isNaN(val)) totals[k] += val;
               });
-
               if (totalConfig.calcTonnage) {
                 const poured = Number(r.poured) || 0;
                 const weight = Number(r.pouredWeight) || 0;
@@ -475,33 +532,38 @@ exports.downloadAllReports = async (req, res) => {
               }
             });
 
-            if (checkPageBreak(20)) currentY = 50;
-
+            const rowHeight = totalConfig.calcTonnage ? 35 : 20;
+            if (checkPageBreak(rowHeight)) currentY = 50;
+            
             let rX = startX;
             doc.font('Helvetica-Bold').fontSize(9);
             columns.forEach(col => {
-              let cellText = " ";
+              let cellText = " "; 
               let align = 'center';
-
               if (col.key === totalConfig.labelCol) {
                 cellText = totalConfig.labelText;
                 align = 'right';
               } else if (totalConfig.sumCols.includes(col.key)) {
-                cellText = totals[col.key].toString();
+                cellText = totals[col.key] === 0 ? "-" : totals[col.key].toString();
               } else if (totalConfig.calcTonnage && col.key === 'remarks') {
-                cellText = `Tonnage: ${totalTonnage > 0 ? (totalTonnage / 1000).toFixed(3) + ' t' : '-'}`;
+                let tonnageStr = `Tonnage: ${totalTonnage > 0 ? (totalTonnage / 1000).toFixed(3): '-'}`; 
+                let unpouredPerc = "-";
+                if (totals['produced'] > 0) {
+                  let unp = totals['produced'] - totals['poured'];
+                  unpouredPerc = ((unp / totals['produced']) * 100).toFixed(2);
+                }
+                cellText = `${tonnageStr}\nUnpoured %: ${unpouredPerc}`; 
               }
-
-              drawCellText(cellText, rX, currentY, col.w, 20, align, 'Helvetica-Bold');
-              doc.rect(rX, currentY, col.w, 20).stroke();
+              
+              drawCellText(cellText, rX, currentY, col.w, rowHeight, align, 'Helvetica-Bold');
+              doc.rect(rX, currentY, col.w, rowHeight).stroke();
               rX += col.w;
             });
-            currentY += 20;
+            currentY += rowHeight;
           }
         }
       };
 
-      // 1. Production Table
       await drawDynamicTable("Production :", [
         { label: "Mould Counter", key: "mouldCounterNo", w: 75 },
         { label: "Component Name", key: "componentName", w: 140, align: 'left' },
@@ -510,90 +572,41 @@ exports.downloadAllReports = async (req, res) => {
         { label: "Cycle Time", key: "cycleTime", w: 45 },
         { label: "Moulds/Hr", key: "mouldsPerHour", w: 45 },
         { label: "Remarks", key: "remarks", w: 130, align: 'left' }
-      ], `
-        SELECT p.*, c.pouredWeight 
-        FROM DisamaticProduction p 
-        LEFT JOIN Component c ON p.componentName = c.description
-        WHERE p.reportId IN (${idsList}) 
-        ORDER BY p.id ASC
-      `,
-        { labelCol: 'componentName', labelText: 'Total : ', sumCols: ['produced', 'poured'], calcTonnage: true });
+      ], `SELECT p.*, c.pouredWeight FROM DisamaticProduction p LEFT JOIN Component c ON p.componentName = c.description WHERE p.reportId IN (${idsList}) ORDER BY p.id ASC`, 
+      'componentName', 
+      { labelCol: 'componentName', labelText: 'Total : ', sumCols: ['produced', 'poured'], calcTonnage: true });
 
-      // 2. Next Shift Plan
       await drawDynamicTable("Next Shift Plan :", [
         { label: "S.No", key: "sno", w: 30 },
         { label: "Component Name", key: "componentName", w: 220, align: 'left' },
         { label: "Planned Moulds", key: "plannedMoulds", w: 100 },
         { label: "Remarks", key: "remarks", w: 185, align: 'left' }
-      ], `SELECT * FROM DisamaticNextShiftPlan WHERE reportId IN (${idsList}) ORDER BY id ASC`);
+      ], `SELECT * FROM DisamaticNextShiftPlan WHERE reportId IN (${idsList}) ORDER BY id ASC`, 'componentName');
 
-      // 3. Delays
       await drawDynamicTable("Delays :", [
         { label: "S.No", key: "sno", w: 30 },
         { label: "Delays (Reason)", key: "delay", w: 240, align: 'left' },
         { label: "Minutes", key: "durationMinutes", w: 100 },
         { label: "Time Range", key: "durationTime", w: 165 }
-      ], `SELECT * FROM DisamaticDelays WHERE reportId IN (${idsList}) ORDER BY id ASC`,
-        { labelCol: 'delay', labelText: 'Total Minutes : ', sumCols: ['durationMinutes'] });
+      ], `SELECT * FROM DisamaticDelays WHERE reportId IN (${idsList}) ORDER BY id ASC`, 'delay',
+      { labelCol: 'delay', labelText: 'Total Minutes : ', sumCols: ['durationMinutes'] });
 
-      if (checkPageBreak(80)) currentY = 50;
-      doc.font('Helvetica-Bold').fontSize(10).text("Mould Hardness :", startX, currentY + 8);
-      currentY += 22;
-
-      const hardResult = await sql.query(`SELECT * FROM DisamaticMouldHardness WHERE reportId IN (${idsList}) ORDER BY id ASC`);
-      const hData = hardResult.recordset;
-
-      doc.rect(startX, currentY, tableWidth, 30).fillColor('#f3f4f6').stroke();
-      doc.fillColor('black').font('Helvetica-Bold').fontSize(8);
-
-      drawCellText("S.No", startX, currentY, 30, 30); doc.rect(startX, currentY, 30, 30).stroke();
-      drawCellText("Component Name", startX + 30, currentY, 120, 30); doc.rect(startX + 30, currentY, 120, 30).stroke();
-
-      doc.rect(startX + 150, currentY, 90, 15).stroke();
-      drawCellText("Mould Penetration", startX + 150, currentY, 90, 15, 'center', 'Helvetica-Bold', 7);
-      drawCellText("PP", startX + 150, currentY + 15, 45, 15); doc.rect(startX + 150, currentY + 15, 45, 15).stroke();
-      drawCellText("SP", startX + 195, currentY + 15, 45, 15); doc.rect(startX + 195, currentY + 15, 45, 15).stroke();
-
-      doc.rect(startX + 240, currentY, 90, 15).stroke();
-      drawCellText("B - Scale", startX + 240, currentY, 90, 15);
-      drawCellText("PP", startX + 240, currentY + 15, 45, 15); doc.rect(startX + 240, currentY + 15, 45, 15).stroke();
-      drawCellText("SP", startX + 285, currentY + 15, 45, 15); doc.rect(startX + 285, currentY + 15, 45, 15).stroke();
-
-      drawCellText("Remarks", startX + 330, currentY, 205, 30); doc.rect(startX + 330, currentY, 205, 30).stroke();
-      currentY += 30;
-
-      if (hData.length === 0) {
-        doc.rect(startX, currentY, tableWidth, 20).stroke();
-        drawCellText("-", startX, currentY, tableWidth, 20);
-        currentY += 20;
-      } else {
-        hData.forEach((m, idx) => {
-          let maxH = 20;
-          doc.font('Helvetica').fontSize(9);
-          let cnH = doc.heightOfString(m.componentName || "-", { width: 110 });
-          let remH = doc.heightOfString(m.remarks || "-", { width: 195 });
-          maxH = Math.max(20, cnH + 12, remH + 12);
-
-          if (checkPageBreak(maxH)) currentY = 50;
-
-          let x = startX;
-          drawCellText(idx + 1, x, currentY, 30, maxH); doc.rect(x, currentY, 30, maxH).stroke(); x += 30;
-          drawCellText(m.componentName, x, currentY, 120, maxH, 'left'); doc.rect(x, currentY, 120, maxH).stroke(); x += 120;
-          drawCellText(m.penetrationPP, x, currentY, 45, maxH); doc.rect(x, currentY, 45, maxH).stroke(); x += 45;
-          drawCellText(m.penetrationSP, x, currentY, 45, maxH); doc.rect(x, currentY, 45, maxH).stroke(); x += 45;
-          drawCellText(m.bScalePP, x, currentY, 45, maxH); doc.rect(x, currentY, 45, maxH).stroke(); x += 45;
-          drawCellText(m.bScaleSP, x, currentY, 45, maxH); doc.rect(x, currentY, 45, maxH).stroke(); x += 45;
-          drawCellText(m.remarks, x, currentY, 205, maxH, 'left'); doc.rect(x, currentY, 205, maxH).stroke();
-          currentY += maxH;
-        });
-      }
+      await drawDynamicTable("Mould Hardness :", [
+        { label: "S.No", key: "sno", w: 30 },
+        { label: "Component Name", key: "componentName", w: 140, align: 'left' },
+        { label: "Penetration PP", key: "penetrationPP", w: 55 },
+        { label: "Penetration SP", key: "penetrationSP", w: 55 },
+        { label: "B-Scale PP", key: "bScalePP", w: 55 },
+        { label: "B-Scale SP", key: "bScaleSP", w: 55 },
+        { label: "Remarks", key: "remarks", w: 145, align: 'left' }
+      ], `SELECT * FROM DisamaticMouldHardness WHERE reportId IN (${idsList}) ORDER BY id ASC`, 'componentName');
 
       const ptResult = await sql.query(`SELECT * FROM DisamaticPatternTemp WHERE reportId IN (${idsList}) ORDER BY id ASC`);
-      const ptData = ptResult.recordset;
-
+      const ptData = getFilteredData(ptResult.recordset, 'componentName');
+      
       const sigEventText = Array.from(g.sigEvents).join(' | ') || "-";
       doc.font('Helvetica').fontSize(9);
-      const sigH = doc.heightOfString(sigEventText, { width: 240 }) + 35;
+      const sigH = doc.heightOfString(sigEventText, { width: 240 }) + 35; 
 
       let ptTableHeight = 15;
       let ptRowHeights = [];
@@ -605,7 +618,7 @@ exports.downloadAllReports = async (req, res) => {
         ptData.forEach(pt => {
           let h = 20;
           doc.font('Helvetica').fontSize(9);
-          let cnH = doc.heightOfString(pt.componentName || "-", { width: 140 });
+          let cnH = doc.heightOfString(enforceWrap(pt.componentName, 140), { width: 140 }); 
           if (cnH + 12 > h) h = cnH + 12;
           ptTableHeight += h;
           ptRowHeights.push(h);
@@ -620,9 +633,8 @@ exports.downloadAllReports = async (req, res) => {
       doc.fillColor('black').font('Helvetica-Bold').fontSize(8);
       doc.text("Pattern Temp. in C°", startX + 5, currentY + 4);
       doc.text("Significant Event :", startX + 285, currentY + 4);
-
       doc.moveTo(startX + 280, currentY).lineTo(startX + 280, currentY + splitBlockH + 15).stroke();
-
+      
       currentY += 15;
       const blockStartY = currentY;
 
@@ -633,33 +645,33 @@ exports.downloadAllReports = async (req, res) => {
       currentY += 15;
 
       if (ptData.length === 0) {
-        drawCellText("-", startX, currentY, 30, 20); doc.rect(startX, currentY, 30, 20).stroke();
-        drawCellText("-", startX + 30, currentY, 150, 20); doc.rect(startX + 30, currentY, 150, 20).stroke();
-        drawCellText("-", startX + 180, currentY, 50, 20); doc.rect(startX + 180, currentY, 50, 20).stroke();
-        drawCellText("-", startX + 230, currentY, 50, 20); doc.rect(startX + 230, currentY, 50, 20).stroke();
-        currentY += 20;
+          drawCellText("-", startX, currentY, 30, 20); doc.rect(startX, currentY, 30, 20).stroke();
+          drawCellText("-", startX + 30, currentY, 150, 20); doc.rect(startX + 30, currentY, 150, 20).stroke();
+          drawCellText("-", startX + 180, currentY, 50, 20); doc.rect(startX + 180, currentY, 50, 20).stroke();
+          drawCellText("-", startX + 230, currentY, 50, 20); doc.rect(startX + 230, currentY, 50, 20).stroke();
+          currentY += 20;
       } else {
-        ptData.forEach((pt, j) => {
-          let rH = ptRowHeights[j];
-          drawCellText(j + 1, startX, currentY, 30, rH); doc.rect(startX, currentY, 30, rH).stroke();
-          drawCellText(pt.componentName, startX + 30, currentY, 150, rH, 'left'); doc.rect(startX + 30, currentY, 150, rH).stroke();
-          drawCellText(pt.pp, startX + 180, currentY, 50, rH); doc.rect(startX + 180, currentY, 50, rH).stroke();
-          drawCellText(pt.sp, startX + 230, currentY, 50, rH); doc.rect(startX + 230, currentY, 50, rH).stroke();
-          currentY += rH;
-        });
+          ptData.forEach((pt, j) => {
+            let rH = ptRowHeights[j];
+            drawCellText(j + 1, startX, currentY, 30, rH); doc.rect(startX, currentY, 30, rH).stroke();
+            drawCellText(enforceWrap(pt.componentName, 140), startX + 30, currentY, 150, rH, 'left'); doc.rect(startX + 30, currentY, 150, rH).stroke();
+            drawCellText(pt.pp, startX + 180, currentY, 50, rH); doc.rect(startX + 180, currentY, 50, rH).stroke();
+            drawCellText(pt.sp, startX + 230, currentY, 50, rH); doc.rect(startX + 230, currentY, 50, rH).stroke();
+            currentY += rH;
+          });
       }
 
       if (currentY < blockStartY + splitBlockH) {
-        let diff = (blockStartY + splitBlockH) - currentY;
-        doc.rect(startX, currentY, 30, diff).stroke();
-        doc.rect(startX + 30, currentY, 150, diff).stroke();
-        doc.rect(startX + 180, currentY, 50, diff).stroke();
-        doc.rect(startX + 230, currentY, 50, diff).stroke();
+          let diff = (blockStartY + splitBlockH) - currentY;
+          doc.rect(startX, currentY, 30, diff).stroke();
+          doc.rect(startX + 30, currentY, 150, diff).stroke();
+          doc.rect(startX + 180, currentY, 50, diff).stroke();
+          doc.rect(startX + 230, currentY, 50, diff).stroke();
       }
 
       doc.font('Helvetica').fontSize(9).text(sigEventText, startX + 285, blockStartY + 5, { width: 245 });
       doc.rect(startX + 280, blockStartY, 255, splitBlockH).stroke();
-
+      
       currentY = blockStartY + splitBlockH;
 
       const maintText = Array.from(g.maintenances).join(' | ') || "-";
@@ -668,21 +680,13 @@ exports.downloadAllReports = async (req, res) => {
       doc.font('Helvetica').fontSize(9).text(maintText, startX + 5, currentY + 15, { width: tableWidth - 10 });
       currentY += 40;
 
-      // --- UPDATED FOOTER TO SHOW SUPERVISOR SIGNATURE ---
-      // --- UPDATED FOOTER TO SHOW SUPERVISOR SIGNATURE STACKED ---
-      const footerHeight = 50; // Increased height to fit stacked text
-      doc.rect(startX, currentY, tableWidth, footerHeight).stroke();
-
-      // 1. Draw Supervisor Name on the first line
+      const footerHeight = 50; 
+      doc.rect(startX, currentY, tableWidth, footerHeight).stroke(); 
       doc.font('Helvetica-Bold').fontSize(9).text(`Supervisor Name : ${g.supervisorName || "-"}`, startX + 330, currentY + 10);
-
-      // 2. Draw "Signature :" label directly below the name
       doc.text("Signature :", startX + 330, currentY + 30);
-
-      // 3. Draw Signature Image next to the "Signature :" label
+      
       if (g.supervisorSignature && g.supervisorSignature.startsWith("data:image")) {
         try {
-          // We set Y to currentY + 15 so the image aligns nicely with the text
           doc.image(g.supervisorSignature, startX + 385, currentY + 15, { fit: [100, 30], align: 'left', valign: 'center' });
         } catch (imgErr) {
           doc.text("Signed", startX + 390, currentY + 30);
@@ -691,10 +695,9 @@ exports.downloadAllReports = async (req, res) => {
         doc.text("Pending", startX + 390, currentY + 30);
       }
 
-      // Move the document control text down slightly to fit the taller footer
       doc.fontSize(7).font('Helvetica').text("QF/07/FBP-03, Rev.No: 02 dt 01.10.2024", startX + 5, currentY + 35);
     }
-
+    
     doc.end();
 
   } catch (error) {
@@ -704,7 +707,7 @@ exports.downloadAllReports = async (req, res) => {
 };
 
 // ==========================================
-//   ADMIN: BULK DATA FOR DATE RANGE
+//    ADMIN: BULK DATA FOR DATE RANGE (RETAINED)
 // ==========================================
 exports.getBulkData = async (req, res) => {
   const { fromDate, toDate } = req.query;
@@ -732,7 +735,7 @@ exports.getBulkData = async (req, res) => {
 };
 
 // ==========================================
-//   ADMIN: FETCH REPORT BY EXACT DATE
+//    ADMIN: FETCH REPORT BY EXACT DATE (RETAINED)
 // ==========================================
 exports.getByDate = async (req, res) => {
   const { date, disa, shift } = req.query;
@@ -775,7 +778,7 @@ exports.getByDate = async (req, res) => {
 };
 
 // ==========================================
-//   ADMIN: UPDATE DISAMATIC REPORT
+//    ADMIN: UPDATE DISAMATIC REPORT (RETAINED)
 // ==========================================
 exports.updateDisamaticReport = async (req, res) => {
   const { id } = req.params;

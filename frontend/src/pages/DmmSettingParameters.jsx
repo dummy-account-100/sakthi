@@ -45,13 +45,13 @@ const baseColumns = [
   { key: 'CoreMaskIn', label: 'CORE MASK\nHEIGHT\n(INSIDE) mm', width: 'w-24', inputType: 'number' },
   { key: 'SandShotPressure', label: 'SAND SHOT\nPRESSURE\nBAR', width: 'w-24', inputType: 'number', step: '0.01' },
   { key: 'CorrectionShotTime', label: 'CORRECTION\nOF SHOT TIME\n(SEC)', width: 'w-28', inputType: 'number' },
-  { key: 'SqueezePressure', label: 'SQUEEZE\nPRESSURE\nKg/Cm2 / bar', width: 'w-28', inputType: 'number' },
+  { key: 'SqueezePressure', label: 'SQUEEZE\nPRESSURE\nKp/Cm2 / bar', width: 'w-28', inputType: 'number' },
   { key: 'PpStripAccel', label: 'PP STRIPPING\nACCELERATION', width: 'w-28', inputType: 'number' },
   { key: 'PpStripDist', label: 'PP STRIPPING\nDISTANCE', width: 'w-28', inputType: 'number' },
   { key: 'SpStripAccel', label: 'SP STRIPPING\nACCELERATION', width: 'w-28', inputType: 'number' },
   { key: 'SpStripDist', label: 'SP STRIPPING\nDISTANCE', width: 'w-28', inputType: 'number' },
   { key: 'MouldThickness', label: 'MOULD\nTHICKNESS\n(± 10mm)', width: 'w-28', inputType: 'number' },
-  { key: 'CloseUpForce', label: 'CLOSE UP\nFORCE (Kg)', width: 'w-24', inputType: 'number' },
+  { key: 'CloseUpForce', label: 'CLOSE UP\nFORCE (Kp)', width: 'w-24', inputType: 'number' },
   { key: 'Remarks', label: 'REMARKS', width: 'w-48', inputType: 'text' }
 ];
 
