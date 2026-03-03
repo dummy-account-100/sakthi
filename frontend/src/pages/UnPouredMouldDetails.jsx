@@ -96,7 +96,7 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
     setLoading(true);
     try {
       // 1. Fetch Dynamic Admin Columns
-      const configRes = await axios.get('http://localhost:5000/api/config/unpoured-mould-details/master');
+      const configRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/config/unpoured-mould-details/master`);
       const customCols = (configRes.data.config || []).map(c => ({
         key: `custom_${c.id}`,
         id: c.id,
@@ -119,7 +119,7 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
       setColumns(mergedColumns);
 
       // 2. Fetch Daily Data
-      const res = await axios.get('http://localhost:5000/api/unpoured-moulds/details', {
+      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/unpoured-moulds/details`, {
         params: { date: headerData.date, disa: headerData.disaMachine }
       });
 
@@ -156,7 +156,7 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
 
     // 3. Isolated Fetch for Bottom Summary Table
     try {
-      const summaryRes = await axios.get('http://localhost:5000/api/unpoured-moulds/summary', {
+      const summaryRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/unpoured-moulds/summary`, {
         params: { date: headerData.date }
       });
       setUnpouredSummary(summaryRes.data || []);
@@ -218,7 +218,7 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
     });
 
     try {
-      await axios.post('http://localhost:5000/api/unpoured-moulds/save', {
+      await axios.post(`${process.env.REACT_APP_API_URL}/api/unpoured-moulds/save`, {
         date: headerData.date, disa: headerData.disaMachine, shiftsData: payloadData
       });
       setNotification({ show: true, type: 'success', message: 'Data Saved Successfully!' });
