@@ -8,18 +8,35 @@ import axios from 'axios';
 // Add a request interceptor to attach JWT token to all requests
 axios.interceptors.request.use(
   (config) => {
-    const userData = localStorage.getItem("user");
-    if (userData) {
-      try {
-        const user = JSON.parse(userData);
-        if (user && user.token) {
-          // 🔥 FIXED LINE: Using .set() instead of bracket notation
-          config.headers.set('Authorization', `Bearer ${user.token}`);
+    // 1. Try to get the token if stored directly
+    let token = localStorage.getItem("token");
+
+    // 2. If not found, try to get it from the user object
+    if (!token) {
+      const userData = localStorage.getItem("user");
+      if (userData) {
+        try {
+          const user = JSON.parse(userData);
+          token = user?.token;
+        } catch (e) {
+          console.error("Error parsing user data from localStorage", e);
         }
-      } catch (e) {
-        console.error("Error parsing user data from localStorage", e);
       }
     }
+
+    // 3. Apply the token to the headers
+    if (token) {
+      // Safe fallback for different Axios versions
+      if (config.headers && typeof config.headers.set === 'function') {
+        config.headers.set('Authorization', `Bearer ${token}`);
+      } else {
+        config.headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+
+    // 🔥 CRITICAL FIX FOR PRODUCTION: Allows cross-origin requests to send Authorization
+    config.withCredentials = true;
+
     return config;
   },
   (error) => {
