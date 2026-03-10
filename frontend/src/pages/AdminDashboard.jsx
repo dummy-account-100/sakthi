@@ -107,7 +107,11 @@ const AdminDashboard = () => {
     const fetchUsers = async () => {
         setLoadingUsers(true);
         try {
-            const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users`);
+            const token = localStorage.getItem('token');
+            const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users`, {
+                headers: { Authorization: `Bearer ${token}` },
+                withCredentials: true
+            });
             setUsers(response.data);
         } catch (error) {
             setNotification({ show: true, type: 'error', message: 'Failed to load users' });
@@ -118,7 +122,11 @@ const AdminDashboard = () => {
     const handleAddUser = async (e) => {
         e.preventDefault();
         try {
-            await axios.post(`${process.env.REACT_APP_API_URL}/api/users/add`, newUser);
+            const token = localStorage.getItem('token');
+            await axios.post(`${process.env.REACT_APP_API_URL}/api/users/add`, newUser, {
+                headers: { Authorization: `Bearer ${token}` },
+                withCredentials: true
+            });
             setNotification({ show: true, type: 'success', message: 'User added successfully!' });
             setIsAddModalOpen(false);
             setNewUser({ username: "", password: "", role: "" });
@@ -132,9 +140,13 @@ const AdminDashboard = () => {
     const handleUpdateUser = async (e) => {
         e.preventDefault();
         try {
+            const token = localStorage.getItem('token');
             await axios.put(`${process.env.REACT_APP_API_URL}/api/users/${editUser.id}`, {
                 username: editUser.username,
                 role: editUser.role,
+            }, {
+                headers: { Authorization: `Bearer ${token}` },
+                withCredentials: true
             });
             setNotification({ show: true, type: 'success', message: 'User updated successfully!' });
             setIsEditModalOpen(false);
@@ -148,7 +160,11 @@ const AdminDashboard = () => {
     const handleDeleteUser = async (userId) => {
         if (!window.confirm("Are you sure you want to delete this user? This cannot be undone.")) return;
         try {
-            await axios.delete(`${process.env.REACT_APP_API_URL}/api/users/${userId}`);
+            const token = localStorage.getItem('token');
+            await axios.delete(`${process.env.REACT_APP_API_URL}/api/users/${userId}`, {
+                headers: { Authorization: `Bearer ${token}` },
+                withCredentials: true
+            });
             setNotification({ show: true, type: 'success', message: 'User deleted successfully!' });
             fetchUsers();
         } catch (error) {
@@ -211,7 +227,11 @@ const AdminDashboard = () => {
             // 1. PERFORMANCE REPORT EXPORT (Blob Download)
             if (pdfModal.selectedForm.id === 'performance') {
                 const url = `${process.env.REACT_APP_API_URL}/api/daily-performance/download-pdf?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
-                const response = await axios.get(url, { responseType: 'blob', headers: { Authorization: `Bearer ${token}` } });
+                const response = await axios.get(url, { 
+                    responseType: 'blob', 
+                    headers: { Authorization: `Bearer ${token}` },
+                    withCredentials: true 
+                });
                 
                 if (response.data.type === 'application/json') {
                     setNotification({ show: true, type: 'error', message: 'No records found for the selected date range.' });
@@ -242,7 +262,11 @@ const AdminDashboard = () => {
                 else if (pdfModal.selectedForm.id === 'disamatic-report') url = `${process.env.REACT_APP_API_URL}/api/forms/download-pdf?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
                 
                 if (url) {
-                    const response = await axios.get(url, { responseType: 'blob', headers: { Authorization: `Bearer ${token}` } });
+                    const response = await axios.get(url, { 
+                        responseType: 'blob', 
+                        headers: { Authorization: `Bearer ${token}` },
+                        withCredentials: true
+                    });
                     if (response.data.type === 'application/json') {
                         setNotification({ show: true, type: 'error', message: 'No records found for the selected date range.' });
                         setLoading(false);
@@ -295,7 +319,8 @@ const AdminDashboard = () => {
 
             const res = await axios.get(apiRoute, { 
                 params: { fromDate: fetchFromDate, toDate: fetchToDate },
-                headers: { Authorization: `Bearer ${token}` } 
+                headers: { Authorization: `Bearer ${token}` },
+                withCredentials: true
             });
             
             let data = res.data;
