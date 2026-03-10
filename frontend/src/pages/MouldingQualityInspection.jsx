@@ -13,7 +13,7 @@ const getShiftInfo = () => {
   const m = now.getMinutes();
 
   let shift = "I";
-  
+
   if ((h > 7 && h < 15) || (h === 7) || (h === 15 && m < 30)) {
     shift = "I";
   } else if ((h === 15 && m >= 30) || (h > 15 && h <= 23)) {
@@ -91,25 +91,25 @@ const SearchableSelect = ({ options, displayKey, onSelect, value, placeholder })
 
 const MouldingQualityInspection = () => {
   const initialInfo = getShiftInfo();
-  
+
   const [date, setDate] = useState(initialInfo.dateStr);
   const [currentShift, setCurrentShift] = useState(initialInfo.shift);
   const [disaMachine, setDisaMachine] = useState("DISA - I");
-  
+
   const [operatorList, setOperatorList] = useState([]);
   const [supervisorList, setSupervisorList] = useState([]);
   const [components, setComponents] = useState([]); // State for component parts
   const [verifiedBy, setVerifiedBy] = useState("");
   const [approvedBy, setApprovedBy] = useState("");
-  
+
   const opSigCanvas = useRef({});
-  
-  const getEmptyRow = (index, shiftVal = currentShift) => ({ 
-    sNo: String(index), shift: shiftVal, partName: "", dataCode: "", fmSoftRamming: "", 
-    fmMouldBreakage: "", fmMouldCrack: "", fmLooseSand: "", fmPatternSticking: "", fmCoreSetting: "", 
-    drMouldCrush: "", drLooseSand: "", drPatternSticking: "", drDateHeatCode: "", drFilterSize: "", 
-    drSurfaceHardnessPP: "", drSurfaceHardnessSP: "", drInsideMouldPP: "", drInsideMouldSP: "", 
-    drPatternTempPP: "", drPatternTempSP: "" 
+
+  const getEmptyRow = (index, shiftVal = currentShift) => ({
+    sNo: String(index), shift: shiftVal, partName: "", dataCode: "", fmSoftRamming: "",
+    fmMouldBreakage: "", fmMouldCrack: "", fmLooseSand: "", fmPatternSticking: "", fmCoreSetting: "",
+    drMouldCrush: "", drLooseSand: "", drPatternSticking: "", drDateHeatCode: "", drFilterSize: "",
+    drSurfaceHardnessPP: "", drSurfaceHardnessSP: "", drInsideMouldPP: "", drInsideMouldSP: "",
+    drPatternTempPP: "", drPatternTempSP: ""
   });
 
   const [rows, setRows] = useState([getEmptyRow(1)]);
@@ -154,8 +154,23 @@ const MouldingQualityInspection = () => {
     setRows(rows.map(r => ({ ...r, shift: newShift })));
   };
 
-  const handleDownloadReport = () => {
-    window.open(`${process.env.REACT_APP_API_URL}/api/mould-quality/report?date=${date}&disaMachine=${disaMachine}`, "_blank");
+  const handleDownloadReport = async () => {
+    try {
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/mould-quality/report?date=${date}&disaMachine=${disaMachine}`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Moulding_Quality_${date}_${disaMachine}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      toast.success("PDF Downloaded successfully!");
+    } catch (err) {
+      console.error("Download failed", err);
+      toast.error("Failed to download PDF. Please check your connection or login again.");
+    }
   };
 
   const handleSubmit = async () => {
@@ -185,14 +200,13 @@ const MouldingQualityInspection = () => {
 
   const renderThresholdInput = (index, field, value, minVal) => {
     const isBelow = value !== "" && !isNaN(value) && Number(value) < minVal;
-    
+
     return (
       <div className={`w-full h-16 flex flex-col items-center justify-center ${isBelow ? 'bg-red-50' : ''}`}>
         <input
           type="text"
-          className={`w-full h-full bg-transparent outline-none text-center px-2 focus:bg-orange-100 text-base font-bold transition-colors ${
-            isBelow ? 'text-red-600' : 'text-gray-800'
-          }`}
+          className={`w-full h-full bg-transparent outline-none text-center px-2 focus:bg-orange-100 text-base font-bold transition-colors ${isBelow ? 'text-red-600' : 'text-gray-800'
+            }`}
           value={value}
           onChange={e => updateRow(index, field, e.target.value)}
         />
@@ -211,7 +225,7 @@ const MouldingQualityInspection = () => {
       <ToastContainer />
       <div className="min-h-screen bg-[#2d2d2d] p-6 text-gray-900 font-sans">
         <div className="max-w-[100rem] mx-auto bg-white rounded-xl shadow-2xl overflow-hidden p-8">
-          
+
           <h2 className="text-3xl font-black text-center mb-8 uppercase tracking-widest text-gray-800 border-b pb-4">
             Moulding Quality Inspection Report
           </h2>
@@ -223,9 +237,9 @@ const MouldingQualityInspection = () => {
             </div>
             <div className="flex items-center gap-4">
               <label className="font-bold text-gray-600 uppercase text-xs tracking-wider">Shift:</label>
-              <select 
-                className="p-2 border rounded shadow-inner bg-white font-bold text-gray-700 w-24 text-center cursor-pointer outline-none focus:border-orange-500" 
-                value={currentShift} 
+              <select
+                className="p-2 border rounded shadow-inner bg-white font-bold text-gray-700 w-24 text-center cursor-pointer outline-none focus:border-orange-500"
+                value={currentShift}
                 onChange={handleShiftChange}
               >
                 <option value="I">I</option>
@@ -266,13 +280,13 @@ const MouldingQualityInspection = () => {
                   <th className="border border-gray-300 p-2 bg-orange-50/50" rowSpan={2}>Loose Sand</th>
                   <th className="border border-gray-300 p-2 bg-orange-50/50" rowSpan={2}>Pattern Sticking</th>
                   <th className="border border-gray-300 p-2 bg-orange-50/50" rowSpan={2}>Core Setting</th>
-                  
+
                   <th className="border border-gray-300 p-2 bg-blue-50/50" rowSpan={2}>Mould Crush</th>
                   <th className="border border-gray-300 p-2 bg-blue-50/50" rowSpan={2}>Loose Sand</th>
                   <th className="border border-gray-300 p-2 bg-blue-50/50" rowSpan={2}>Pattern Sticking</th>
                   <th className="border border-gray-300 p-2 bg-blue-50/50 min-w-[120px]" rowSpan={2}>Date/Heat Code</th>
                   <th className="border border-gray-300 p-2 bg-blue-50/50" rowSpan={2}>Filter Size</th>
-                  
+
                   <th className="border border-gray-300 p-2 bg-indigo-50" colSpan={2}>Surface Hardness (Min 85)</th>
                   <th className="border border-gray-300 p-2 bg-teal-50" colSpan={2}>Inside Penetrant (Min 20)</th>
                   <th className="border border-gray-300 p-2 bg-rose-50" colSpan={2}>Pattern Temp (Min 45°C)</th>
@@ -289,16 +303,16 @@ const MouldingQualityInspection = () => {
                     <td className="border border-gray-300 p-0"><input className={`${inputStyle} bg-gray-100 cursor-not-allowed text-gray-500`} value={row.sNo} readOnly /></td>
                     <td className="border border-gray-300 p-0"><input className={`${inputStyle} bg-gray-100 cursor-not-allowed text-gray-600`} value={row.shift} readOnly /></td>
                     <td className="border border-gray-300 p-0 min-w-[220px]">
-                      <SearchableSelect 
-                        options={components} 
-                        displayKey="description" 
-                        value={row.partName} 
-                        onSelect={(item) => updateRow(index, 'partName', item.description)} 
+                      <SearchableSelect
+                        options={components}
+                        displayKey="description"
+                        value={row.partName}
+                        onSelect={(item) => updateRow(index, 'partName', item.description)}
                         placeholder="Search Part..."
                       />
                     </td>
                     <td className="border border-gray-300 p-0 min-w-[120px]"><input className={inputStyle} value={row.dataCode} onChange={e => updateRow(index, 'dataCode', e.target.value)} /></td>
-                    
+
                     {/* First Moulding */}
                     <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.fmSoftRamming} onChange={e => updateRow(index, 'fmSoftRamming', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.fmMouldBreakage} onChange={e => updateRow(index, 'fmMouldBreakage', e.target.value)} /></td>
@@ -306,14 +320,14 @@ const MouldingQualityInspection = () => {
                     <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.fmLooseSand} onChange={e => updateRow(index, 'fmLooseSand', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.fmPatternSticking} onChange={e => updateRow(index, 'fmPatternSticking', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.fmCoreSetting} onChange={e => updateRow(index, 'fmCoreSetting', e.target.value)} /></td>
-                    
+
                     {/* During Running */}
                     <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.drMouldCrush} onChange={e => updateRow(index, 'drMouldCrush', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.drLooseSand} onChange={e => updateRow(index, 'drLooseSand', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.drPatternSticking} onChange={e => updateRow(index, 'drPatternSticking', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0 min-w-[140px]"><input className={inputStyle} value={row.drDateHeatCode} onChange={e => updateRow(index, 'drDateHeatCode', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.drFilterSize} onChange={e => updateRow(index, 'drFilterSize', e.target.value)} /></td>
-                    
+
                     {/* Values with MIN thresholds */}
                     <td className="border border-gray-300 p-0 align-top">{renderThresholdInput(index, 'drSurfaceHardnessPP', row.drSurfaceHardnessPP, 85)}</td>
                     <td className="border border-gray-300 p-0 align-top">{renderThresholdInput(index, 'drSurfaceHardnessSP', row.drSurfaceHardnessSP, 85)}</td>
@@ -321,7 +335,7 @@ const MouldingQualityInspection = () => {
                     <td className="border border-gray-300 p-0 align-top">{renderThresholdInput(index, 'drInsideMouldSP', row.drInsideMouldSP, 20)}</td>
                     <td className="border border-gray-300 p-0 align-top">{renderThresholdInput(index, 'drPatternTempPP', row.drPatternTempPP, 45)}</td>
                     <td className="border border-gray-300 p-0 align-top">{renderThresholdInput(index, 'drPatternTempSP', row.drPatternTempSP, 45)}</td>
-                    
+
                     <td className="border border-gray-300 p-3 min-w-[80px]">
                       <button onClick={() => removeRow(index)} className="text-red-500 hover:text-red-700 font-bold bg-red-100 px-4 py-2 text-base rounded shadow-sm w-full">X</button>
                     </td>

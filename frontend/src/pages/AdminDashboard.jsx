@@ -196,7 +196,7 @@ const AdminDashboard = () => {
         }
     };
 
-    const handleDownloadPDF = async () => {
+  const handleDownloadPDF = async () => {
         if (!dateRange.from || !dateRange.to) {
             setNotification({ show: true, type: 'error', message: 'Please select both From and To dates.' });
             return;
@@ -206,11 +206,12 @@ const AdminDashboard = () => {
         setNotification({ show: true, type: 'loading', message: 'Generating PDF Report...' });
 
         try {
-            // 1. PERFECTED PERFORMANCE REPORT EXPORT
+            const token = localStorage.getItem('token'); 
+
+            // 1. PERFORMANCE REPORT EXPORT (Blob Download)
             if (pdfModal.selectedForm.id === 'performance') {
                 const url = `${process.env.REACT_APP_API_URL}/api/daily-performance/download-pdf?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
-                
-                const response = await axios.get(url, { responseType: 'blob' });
+                const response = await axios.get(url, { responseType: 'blob', headers: { Authorization: `Bearer ${token}` } });
                 
                 if (response.data.type === 'application/json') {
                     setNotification({ show: true, type: 'error', message: 'No records found for the selected date range.' });
@@ -233,26 +234,39 @@ const AdminDashboard = () => {
                 return;
             }
 
-            // 2. Other Server rendered PDFs (Including disamatic-report)
+            // 2. Server Rendered PDFs (4M & Disamatic)
             const serverPdfForms = ['4m-change', 'disamatic-report'];
             if (serverPdfForms.includes(pdfModal.selectedForm.id)) {
                 let url = '';
-                if (pdfModal.selectedForm.id === '4m-change') {
-                    url = `${process.env.REACT_APP_API_URL}/api/4m-change/report?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
-                } else if (pdfModal.selectedForm.id === 'disamatic-report') {
-                    url = `${process.env.REACT_APP_API_URL}/api/forms/download-pdf?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
-                }
+                if (pdfModal.selectedForm.id === '4m-change') url = `${process.env.REACT_APP_API_URL}/api/4m-change/report?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
+                else if (pdfModal.selectedForm.id === 'disamatic-report') url = `${process.env.REACT_APP_API_URL}/api/forms/download-pdf?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
                 
                 if (url) {
-                    window.open(url, '_blank');
-                    setNotification({ show: true, type: 'success', message: 'Report generated in new tab!' });
+                    const response = await axios.get(url, { responseType: 'blob', headers: { Authorization: `Bearer ${token}` } });
+                    if (response.data.type === 'application/json') {
+                        setNotification({ show: true, type: 'error', message: 'No records found for the selected date range.' });
+                        setLoading(false);
+                        return;
+                    }
+
+                    const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    const fileNamePrefix = pdfModal.selectedForm.id === '4m-change' ? '4M_Monitoring' : 'Disamatic_Product_Report';
+                    link.setAttribute('download', `${fileNamePrefix}_${dateRange.from}_to_${dateRange.to}.pdf`);
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    window.URL.revokeObjectURL(blobUrl);
+
+                    setNotification({ show: true, type: 'success', message: 'Report Downloaded Successfully!' });
                     setPdfModal({ show: false, selectedForm: null });
                 }
                 setLoading(false);
                 return;
             }
 
-            // 3. Client rendered PDFs
+            // 3. Client Rendered PDFs (Fetching JSON Data)
             let apiRoute = `${process.env.REACT_APP_API_URL}/api/reports/${pdfModal.selectedForm.id}`;
             if (pdfModal.selectedForm.id === 'disa-setting-adjustment') apiRoute = `${process.env.REACT_APP_API_URL}/api/disa/records`;
             else if (pdfModal.selectedForm.id === 'error-proof') apiRoute = `${process.env.REACT_APP_API_URL}/api/error-proof/bulk-data`;
@@ -263,47 +277,77 @@ const AdminDashboard = () => {
             else if (pdfModal.selectedForm.id === 'lpa') apiRoute = `${process.env.REACT_APP_API_URL}/api/bottom-level-audit/bulk-data`;
             else if (pdfModal.selectedForm.id === 'mould-quality') apiRoute = `${process.env.REACT_APP_API_URL}/api/mould-quality/bulk-data`;
 
-            // 🔥 Expand dates to full months for grid-based checklists
             let fetchFromDate = dateRange.from;
             let fetchToDate = dateRange.to;
 
             if (['disa-operator', 'lpa'].includes(pdfModal.selectedForm.id)) {
                 const fromDateObj = new Date(dateRange.from);
                 const toDateObj = new Date(dateRange.to);
-                
-                // Get 1st day of starting month
                 const fromYear = fromDateObj.getFullYear();
                 const fromMonth = String(fromDateObj.getMonth() + 1).padStart(2, '0');
                 fetchFromDate = `${fromYear}-${fromMonth}-01`;
 
-                // Get Last day of ending month
                 const toYear = toDateObj.getFullYear();
                 const toMonth = String(toDateObj.getMonth() + 1).padStart(2, '0');
                 const lastDay = new Date(toYear, toDateObj.getMonth() + 1, 0).getDate();
                 fetchToDate = `${toYear}-${toMonth}-${String(lastDay).padStart(2, '0')}`;
             }
 
-            const res = await axios.get(apiRoute, { params: { fromDate: fetchFromDate, toDate: fetchToDate } });
+            const res = await axios.get(apiRoute, { 
+                params: { fromDate: fetchFromDate, toDate: fetchToDate },
+                headers: { Authorization: `Bearer ${token}` } 
+            });
+            
             let data = res.data;
 
-            const sanitizeDates = (arr) => arr.map(row => ({
-                ...row,
-                RecordDate: row.RecordDate ? row.RecordDate.split('T')[0] : row.RecordDate,
-                date: row.date ? row.date.split('T')[0] : row.date
-            }));
+            // Date Sanitization logic
+            const sanitizeDates = (arr) => {
+                if (!Array.isArray(arr)) return arr;
+                return arr.map(row => ({
+                    ...row,
+                    RecordDate: row.RecordDate ? row.RecordDate.split('T')[0] : row.RecordDate,
+                    date: row.date ? row.date.split('T')[0] : row.date
+                }));
+            };
 
+            // Deep object sanitization
             if (Array.isArray(data)) {
                 data = sanitizeDates(data);
             } else if (data && typeof data === 'object') {
-                if (data.trans) data.trans = sanitizeDates(data.trans);
-                if (data.records) data.records = sanitizeDates(data.records);
+                ['trans', 'records', 'meta', 'verifications', 'plans', 'master', 'ncr', 'rows'].forEach(key => {
+                    if (data[key]) data[key] = sanitizeDates(data[key]);
+                });
             }
 
+            // 🔥 CRITICAL FIX: Normalize DMM Setting Data format 🔥
+            if (pdfModal.selectedForm.id === 'dmm-setting-parameters') {
+                if (Array.isArray(data)) {
+                    data = { meta: data, trans: data };
+                } else if (data && typeof data === 'object') {
+                    if (!data.meta || data.meta.length === 0) {
+                        data.meta = data.records || data.shiftsMeta || data.trans || [];
+                    }
+                    if (!data.trans || data.trans.length === 0) {
+                        data.trans = data.shiftsData || data.records || data.meta || [];
+                    }
+                }
+            }
+
+            // Robust validation to check if standard data payloads are empty
             let isEmpty = false;
-            if (Array.isArray(data) && data.length === 0) isEmpty = true;
-            else if (data && data.trans && data.trans.length === 0) isEmpty = true;
-            else if (data && data.records && data.records.length === 0) isEmpty = true;
-            else if (data && data.verifications && data.verifications.length === 0) isEmpty = true; 
+            if (!data || (Array.isArray(data) && data.length === 0)) {
+                isEmpty = true;
+            } else if (typeof data === 'object' && !Array.isArray(data)) {
+                const arrayProps = ['trans', 'records', 'meta', 'verifications', 'master', 'rows'];
+                const hasKnownProps = arrayProps.some(prop => data[prop] !== undefined);
+                
+                if (hasKnownProps) {
+                    const allEmpty = arrayProps.every(prop => !data[prop] || (Array.isArray(data[prop]) && data[prop].length === 0));
+                    if (allEmpty) isEmpty = true;
+                } else if (Object.keys(data).length === 0) {
+                    isEmpty = true;
+                }
+            }
 
             if (isEmpty) {
                 setNotification({ show: true, type: 'error', message: 'No data found for the selected date range.' });
@@ -313,10 +357,10 @@ const AdminDashboard = () => {
 
             const effectiveDateRange = { from: fetchFromDate, to: fetchToDate };
 
-            // 🔥 Using proper V1, V2 PDF generators, and Mould Quality
+            // Generate PDFs
             switch (pdfModal.selectedForm.id) {
                 case 'unpoured-mould-details': generateUnPouredMouldPDF(data, dateRange); break;
-                case 'dmm-setting-parameters': generateDmmSettingPDF(data, dateRange); break;
+                case 'dmm-setting-parameters': await generateDmmSettingPDF(data, dateRange); break;
                 case 'disa-operator': generateChecklistPDF(data, effectiveDateRange, "DISA MACHINE OPERATOR CHECK SHEET", "Non-Conformance Report"); break;
                 case 'lpa': generateChecklistPDF(data, effectiveDateRange, "LAYERED PROCESS AUDIT - BOTTOM LEVEL", "Non-Conformance Report"); break;
                 case 'error-proof': generateErrorProofV1PDF(data, dateRange); break;

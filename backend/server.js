@@ -17,6 +17,7 @@ const userRoutes = require("./routes/userRoutes");
 const dailyPerformanceRoutes = require("./routes/dailyPerformanceRoutes");
 const configRoutes = require("./routes/configRoutes");
 const mouldQualityRoutes = require('./routes/mouldQualityRoutes');
+const verifyToken = require('./middleware/authMiddleware');
 
 const app = express();
 
@@ -25,6 +26,10 @@ app.use(express.json());
 
 // Routes
 app.use("/api/auth", authRoutes);
+
+// Protect all other routes starting with /api
+app.use("/api", verifyToken);
+
 app.use("/api/disa", disaRoutes);
 
 // CHANGE HERE: Mapped to "/api" instead of "/api/product" 

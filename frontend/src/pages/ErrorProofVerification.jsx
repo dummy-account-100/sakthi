@@ -2,6 +2,8 @@ import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import Header from "../components/Header";
 import SignatureCanvas from "react-signature-canvas";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 // --- Custom Searchable Dropdown for Table Cells ---
 const TableSearchableSelect = ({ options, displayKey, onSelect, value, placeholder }) => {
@@ -145,14 +147,31 @@ const ErrorProofVerification = () => {
     } catch (err) { alert("Error saving record"); }
   };
 
-  const handleGenerateReport = () => {
+ const handleGenerateReport = async () => {
     const targetLine = encodeURIComponent(defaultErrorProofs[0].line);
-    window.open(`${process.env.REACT_APP_API_URL}/api/error-proof/report?line=${targetLine}`, "_blank");
+    try {
+      // 🔥 FIX: Added `&_t=${Date.now()}` to force the browser to get a fresh PDF every time
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/error-proof/report?line=${targetLine}&_t=${Date.now()}`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `ErrorProof_Verification_${targetLine}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      toast.success("PDF Downloaded successfully!");
+    } catch (err) {
+      console.error("Download failed", err);
+      toast.error("Failed to download PDF. Please check your connection or login again.");
+    }
   };
 
   return (
     <>
       <Header />
+      <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} />
       <div className="min-h-screen bg-[#2d2d2d] flex flex-col items-center p-6">
 
         <div className="bg-white w-full max-w-[100rem] rounded-xl p-8 shadow-2xl overflow-x-auto mt-6">
@@ -248,7 +267,7 @@ const ErrorProofVerification = () => {
 
               <div className="flex gap-4">
                 <button onClick={handleGenerateReport} className="w-1/2 bg-gray-800 hover:bg-gray-900 text-white py-3 rounded font-bold transition-colors shadow-md">
-                  Preview PDF
+                  Download PDF
                 </button>
                 <button onClick={handleSubmit} className="w-1/2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded font-bold transition-colors shadow-lg">
                   Save & Assign

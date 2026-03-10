@@ -5,6 +5,27 @@ import { Loader, AlertTriangle, CheckCircle, Save, X, ChevronDown } from 'lucide
 const API = process.env.REACT_APP_API_URL;
 const DISA_MACHINES = ['DISA - I', 'DISA - II', 'DISA - III', 'DISA - IV', 'DISA - V', 'DISA - VI'];
 
+// Helper: axios instance with JWT token always attached
+// Capture real axios methods FIRST to avoid infinite recursion
+const _get = axios.get.bind(axios);
+const _post = axios.post.bind(axios);
+const _put = axios.put.bind(axios);
+
+const authAxios = {
+    get: (url, config = {}) => {
+        const token = localStorage.getItem('token');
+        return _get(url, { ...config, headers: { ...(config.headers || {}), Authorization: `Bearer ${token}` } });
+    },
+    post: (url, data, config = {}) => {
+        const token = localStorage.getItem('token');
+        return _post(url, data, { ...config, headers: { ...(config.headers || {}), Authorization: `Bearer ${token}` } });
+    },
+    put: (url, data, config = {}) => {
+        const token = localStorage.getItem('token');
+        return _put(url, data, { ...config, headers: { ...(config.headers || {}), Authorization: `Bearer ${token}` } });
+    },
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Small helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,7 +160,7 @@ const UnpouredEditor = ({ date, disa, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        axios.get(`${API}/api/unpoured-moulds/details`, { params: { date, disa } })
+        authAxios.get(`${API}/api/unpoured-moulds/details`, { params: { date, disa } })
             .then(r => setData(r.data))
             .catch(() => setToast({ msg: 'Failed to load data', type: 'error' }))
             .finally(() => setLoading(false));
@@ -179,7 +200,7 @@ const UnpouredEditor = ({ date, disa, toast, setToast }) => {
                 payloadData[shift].rowTotal = total;
             });
 
-            await axios.post(`${API}/api/unpoured-moulds/save`, { date, disa, shiftsData: payloadData });
+            await authAxios.post(`${API}/api/unpoured-moulds/save`, { date, disa, shiftsData: payloadData });
             setToast({ msg: 'Saved successfully!', type: 'success' });
         } catch { setToast({ msg: 'Save failed', type: 'error' }); }
     };
@@ -216,7 +237,7 @@ const DmmEditor = ({ date, disa, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        axios.get(`${API}/api/dmm-settings/details`, { params: { date, disa } })
+        authAxios.get(`${API}/api/dmm-settings/details`, { params: { date, disa } })
             .then(r => setData(r.data))
             .catch(() => setToast({ msg: 'Failed to load data', type: 'error' }))
             .finally(() => setLoading(false));
@@ -232,7 +253,7 @@ const DmmEditor = ({ date, disa, toast, setToast }) => {
     const handleSave = async () => {
         setToast({ msg: 'Saving…', type: 'loading' });
         try {
-            await axios.post(`${API}/api/dmm-settings/save`, { date, disa, shiftsData: data.shiftsData, shiftsMeta: data.shiftsMeta });
+            await authAxios.post(`${API}/api/dmm-settings/save`, { date, disa, shiftsData: data.shiftsData, shiftsMeta: data.shiftsMeta });
             setToast({ msg: 'Saved successfully!', type: 'success' });
         } catch { setToast({ msg: 'Save failed', type: 'error' }); }
     };
@@ -285,7 +306,7 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        axios.get(`${API}/api/disa-checklist/details`, { params: { date, disaMachine: disa } })
+        authAxios.get(`${API}/api/disa-checklist/details`, { params: { date, disaMachine: disa } })
             .then(res => {
                 const cl = res.data.checklist.map(item => ({
                     ...item,
@@ -342,7 +363,7 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
     const submitReport = async () => {
         if (!ncForm.ncDetails || !ncForm.responsibility) return setToast({ msg: 'Details and Responsibility are mandatory.', type: 'error' });
         try {
-            await axios.post(`${API}/api/disa-checklist/report-nc`, {
+            await authAxios.post(`${API}/api/disa-checklist/report-nc`, {
                 checklistId: modalItem.MasterId, slNo: modalItem.SlNo, reportDate: date, disaMachine: disa, ...ncForm
             });
             setToast({ msg: 'NC Report Logged Successfully.', type: 'success' });
@@ -375,7 +396,7 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
             const itemsToSave = data.checklist.map(item => ({
                 MasterId: item.MasterId, IsDone: item.IsDone, IsHoliday: item.IsHoliday, IsVatCleaning: item.IsVatCleaning, ReadingValue: item.ReadingValue || ''
             }));
-            await axios.post(`${API}/api/disa-checklist/submit-batch`, {
+            await authAxios.post(`${API}/api/disa-checklist/submit-batch`, {
                 items: itemsToSave, sign: data.originalData.checklist[0]?.AssignedHOD || '',
                 date, disaMachine: disa, operatorSignature: data.originalData.checklist[0]?.OperatorSignature || ''
             });
@@ -494,13 +515,13 @@ const ErrorProofEditor = ({ date, disa, toast, setToast }) => {
     useEffect(() => {
         setLoading(true);
         // Uses error-proof2 dynamically
-        axios.get(`${API}/api/error-proof2/details`, { params: { date, machine: disa } })
+        authAxios.get(`${API}/api/error-proof2/details`, { params: { date, machine: disa } })
             .then(r => {
                 const resData = r.data;
                 const verifications = resData.verifications || [];
                 const reactionPlans = resData.reactionPlans || [];
                 const first = verifications[0] || {};
-                
+
                 setData({
                     verifications,
                     reactionPlans,
@@ -539,7 +560,7 @@ const ErrorProofEditor = ({ date, disa, toast, setToast }) => {
     const handleSave = async () => {
         setToast({ msg: 'Saving…', type: 'loading' });
         try {
-            await axios.post(`${API}/api/error-proof2/bulk-update`, {
+            await authAxios.post(`${API}/api/error-proof2/bulk-update`, {
                 verifications: data.verifications,
                 reactionPlans: data.reactionPlans,
             });
@@ -641,6 +662,239 @@ const ErrorProofEditor = ({ date, disa, toast, setToast }) => {
     );
 };
 
+/* 4B. ERROR PROOF VERIFICATION V1 */
+const ErrorProofV1Editor = ({ date, disa, toast, setToast }) => {
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    // newPlans: keyed by verification id, holds new reaction plan fields for newly-NOT_OK rows
+    const [newPlans, setNewPlans] = useState({});
+
+    useEffect(() => {
+        setLoading(true);
+        authAxios.get(`${API}/api/error-proof/v1-by-date`, { params: { date } })
+            .then(r => {
+                const resData = r.data || {};
+                setData({
+                    verifications: resData.verifications || [],
+                    reactionPlans: resData.reactionPlans || [],
+                });
+            })
+            .catch(() => setToast({ msg: 'Failed to load data', type: 'error' }))
+            .finally(() => setLoading(false));
+    }, [date]);
+
+    const setVer = (idx, field, val) => {
+        const v = [...data.verifications];
+        v[idx] = { ...v[idx], [field]: val };
+        // When changing to OK — clear new plan form AND remove existing reaction plans for this proof
+        if (field === 'observationResult' && val !== 'NOT_OK') {
+            const key = v[idx].id || idx;
+            const proofName = v[idx].errorProofName;
+            setNewPlans(p => { const n = { ...p }; delete n[key]; return n; });
+            // Remove existing DB reaction plans for this proof name from the view
+            setData(prev => ({
+                ...prev,
+                verifications: v,
+                reactionPlans: prev.reactionPlans.filter(rp => rp.errorProofName !== proofName),
+                _deletedProofNames: [...(prev._deletedProofNames || []), proofName],
+            }));
+            return;
+        }
+        // When changing TO NOT_OK, initialize an empty plan form if not already present
+        if (field === 'observationResult' && val === 'NOT_OK') {
+            const key = v[idx].id || idx;
+            if (!newPlans[key]) {
+                setNewPlans(p => ({
+                    ...p,
+                    [key]: {
+                        errorProofNo: '', problem: '', rootCause: '',
+                        correctiveAction: '', status: 'Pending',
+                        reviewedBy: '', approvedBy: '', remarks: '',
+                        _verIdx: idx
+                    }
+                }));
+            }
+        }
+        setData(prev => ({ ...prev, verifications: v }));
+    };
+
+    const setPlan = (idx, field, val) => {
+        const p = [...data.reactionPlans];
+        p[idx] = { ...p[idx], [field]: val };
+        setData(prev => ({ ...prev, reactionPlans: p }));
+    };
+
+    const setNewPlan = (key, field, val) => {
+        setNewPlans(p => ({ ...p, [key]: { ...p[key], [field]: val } }));
+    };
+
+    const handleSave = async () => {
+        setToast({ msg: 'Saving…', type: 'loading' });
+        try {
+            // 1. Update observation results + delete reaction plans for OK verifications
+            await authAxios.post(`${API}/api/error-proof/bulk-update`, {
+                verifications: data.verifications,
+                reactionPlans: data.reactionPlans,
+                deletedProofNames: data._deletedProofNames || [],
+                date,
+            });
+
+            // 2. Insert NEW reaction plans for newly-NOT_OK rows
+            const snoRes = await authAxios.get(`${API}/api/error-proof/next-sno`);
+            let sNo = snoRes.data.nextSNo || 1;
+
+            for (const [key, plan] of Object.entries(newPlans)) {
+                const ver = data.verifications[plan._verIdx];
+                if (!ver) continue;
+                await authAxios.post(`${API}/api/error-proof/add-reaction`, {
+                    sNo, errorProofNo: plan.errorProofNo,
+                    errorProofName: ver.errorProofName,
+                    recordDate: date, shift: ver.shift,
+                    problem: plan.problem, rootCause: plan.rootCause,
+                    correctiveAction: plan.correctiveAction,
+                    status: plan.status,
+                    reviewedBy: plan.reviewedBy, approvedBy: plan.approvedBy,
+                    remarks: plan.remarks
+                });
+                sNo++;
+            }
+
+            setToast({ msg: 'Saved successfully!', type: 'success' });
+            setNewPlans({});
+            // Reload to reflect saved state
+            setLoading(true);
+            const r = await authAxios.get(`${API}/api/error-proof/v1-by-date`, { params: { date } });
+            setData({ verifications: r.data.verifications || [], reactionPlans: r.data.reactionPlans || [] });
+            setLoading(false);
+        } catch (e) {
+            setToast({ msg: 'Save failed', type: 'error' });
+            setLoading(false);
+        }
+    };
+
+    if (loading) return <CenteredLoader />;
+    if (!data || data.verifications.length === 0) return <NoData msg={`No V1 error proof records found on ${date}.`} />;
+
+    const RESULTS = ['', 'OK', 'NOT_OK'];
+    const STATUSES = ['Pending', 'Completed'];
+    const inp = "w-full bg-[#333] border border-white/10 rounded px-2 py-1.5 text-sm text-white focus:border-[#ff9100] outline-none";
+
+    return (
+        <div className="space-y-6">
+            {/* 1. Verifications Table */}
+            <div className="bg-[#2a2a2a] border border-white/10 rounded-xl p-5 shadow-lg overflow-x-auto">
+                <SectionHeader title="Verification Checklist (V1)" />
+                <table className="w-full text-sm text-white mt-4 min-w-[700px]">
+                    <thead className="bg-[#111] text-xs uppercase text-white/50">
+                        <tr>
+                            <th className="p-3 text-left">Line</th>
+                            <th className="p-3 text-left">Error Proof Name</th>
+                            <th className="p-3 text-left">Nature</th>
+                            <th className="p-3 text-center">Freq</th>
+                            <th className="p-3 text-center">Shift</th>
+                            <th className="p-3 text-center w-32">Result</th>
+                            <th className="p-3 text-center">Verified By</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                        {data.verifications.map((v, i) => (
+                            <tr key={v.id || i} className="hover:bg-white/5 transition-colors">
+                                <td className="p-3 font-bold text-[#ff9100]">{v.line}</td>
+                                <td className="p-3 font-bold">{v.errorProofName}</td>
+                                <td className="p-3 text-white/70">{v.natureOfErrorProof}</td>
+                                <td className="p-3 text-center">{v.frequency}</td>
+                                <td className="p-3 text-center font-bold text-orange-400">{v.shift}</td>
+                                <td className="p-2">
+                                    <select
+                                        value={v.observationResult || ''}
+                                        onChange={e => setVer(i, 'observationResult', e.target.value)}
+                                        className={`w-full bg-[#333] border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-[#ff9100] ${v.observationResult === 'NOT_OK' ? 'border-red-500 text-red-400' : v.observationResult === 'OK' ? 'border-green-500 text-green-400' : 'border-white/10 text-white'}`}>
+                                        {RESULTS.map(r => <option key={r} value={r}>{r === 'NOT_OK' ? 'NOT OK' : r || '—'}</option>)}
+                                    </select>
+                                </td>
+                                <td className="p-3 text-center">{v.verifiedBy}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* 2. NEW Reaction Plan forms for newly-NOT_OK rows */}
+            {Object.entries(newPlans).map(([key, plan]) => {
+                const ver = data.verifications[plan._verIdx];
+                if (!ver) return null;
+                return (
+                    <div key={key} className="bg-[#2a2a2a] border-2 border-red-500/40 rounded-xl p-5 shadow-lg overflow-x-auto">
+                        <div className="flex items-center gap-3 mb-4">
+                            <span className="bg-red-500/20 text-red-400 text-xs font-black uppercase tracking-widest px-3 py-1 rounded-full">NOT OK — Reaction Plan Required</span>
+                            <span className="text-white/60 text-sm font-bold">{ver.errorProofName}</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div><label className="text-xs text-white/50 uppercase font-bold mb-1 block">Error Proof No</label>
+                                <input value={plan.errorProofNo} onChange={e => setNewPlan(key, 'errorProofNo', e.target.value)} placeholder="e.g. EP-01" className={inp} /></div>
+                            <div><label className="text-xs text-white/50 uppercase font-bold mb-1 block">Problem</label>
+                                <input value={plan.problem} onChange={e => setNewPlan(key, 'problem', e.target.value)} placeholder="Describe problem..." className={inp} /></div>
+                            <div><label className="text-xs text-white/50 uppercase font-bold mb-1 block">Root Cause</label>
+                                <input value={plan.rootCause} onChange={e => setNewPlan(key, 'rootCause', e.target.value)} placeholder="Root cause..." className={inp} /></div>
+                            <div><label className="text-xs text-white/50 uppercase font-bold mb-1 block">Corrective Action</label>
+                                <input value={plan.correctiveAction} onChange={e => setNewPlan(key, 'correctiveAction', e.target.value)} placeholder="Action taken..." className={inp} /></div>
+                            <div><label className="text-xs text-white/50 uppercase font-bold mb-1 block">Reviewed By (Operator)</label>
+                                <input value={plan.reviewedBy} onChange={e => setNewPlan(key, 'reviewedBy', e.target.value)} placeholder="Operator name..." className={inp} /></div>
+                            <div><label className="text-xs text-white/50 uppercase font-bold mb-1 block">Approved By (Supervisor)</label>
+                                <input value={plan.approvedBy} onChange={e => setNewPlan(key, 'approvedBy', e.target.value)} placeholder="Supervisor name..." className={inp} /></div>
+                            <div><label className="text-xs text-white/50 uppercase font-bold mb-1 block">Remarks</label>
+                                <input value={plan.remarks} onChange={e => setNewPlan(key, 'remarks', e.target.value)} placeholder="Remarks..." className={inp} /></div>
+                            <div><label className="text-xs text-white/50 uppercase font-bold mb-1 block">Status</label>
+                                <select value={plan.status} onChange={e => setNewPlan(key, 'status', e.target.value)} className={inp}>
+                                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select></div>
+                        </div>
+                    </div>
+                );
+            })}
+
+            {/* 3. Existing Reaction Plans (from DB) */}
+            {data.reactionPlans.length > 0 && (
+                <div className="bg-[#2a2a2a] border border-white/10 rounded-xl p-5 shadow-lg overflow-x-auto">
+                    <SectionHeader title="Existing Reaction Plans" />
+                    <table className="w-full text-sm text-white mt-4 min-w-[900px]">
+                        <thead className="bg-[#111] text-xs uppercase text-white/50">
+                            <tr>
+                                <th className="p-3">Error Proof Name</th>
+                                <th className="p-3 w-20">Shift</th>
+                                <th className="p-3">Problem</th>
+                                <th className="p-3">Root Cause</th>
+                                <th className="p-3">Corrective Action</th>
+                                <th className="p-3 w-32">Status</th>
+                                <th className="p-3">Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {data.reactionPlans.map((rp, i) => (
+                                <tr key={rp.sNo || i} className="hover:bg-white/5 transition-colors">
+                                    <td className="p-2 text-white/70 font-bold">{rp.errorProofName}</td>
+                                    <td className="p-2 text-center text-orange-400 font-bold">{rp.shift}</td>
+                                    <td className="p-2"><input value={rp.problem || ''} onChange={e => setPlan(i, 'problem', e.target.value)} className={inp} /></td>
+                                    <td className="p-2"><input value={rp.rootCause || ''} onChange={e => setPlan(i, 'rootCause', e.target.value)} className={inp} /></td>
+                                    <td className="p-2"><input value={rp.correctiveAction || ''} onChange={e => setPlan(i, 'correctiveAction', e.target.value)} className={inp} /></td>
+                                    <td className="p-2">
+                                        <select value={rp.status || 'Pending'} onChange={e => setPlan(i, 'status', e.target.value)} className={inp}>
+                                            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                                        </select>
+                                    </td>
+                                    <td className="p-2"><input value={rp.remarks || ''} onChange={e => setPlan(i, 'remarks', e.target.value)} className={inp} /></td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            <SaveButton onClick={handleSave} />
+        </div>
+    );
+};
+
 /* 5. DISA SETTING ADJUSTMENT */
 const DisaSettingEditor = ({ date, toast, setToast }) => {
     const [records, setRecords] = useState([]);
@@ -649,11 +903,11 @@ const DisaSettingEditor = ({ date, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        axios.get(`${API}/api/disa/records`, { params: { fromDate: date, toDate: date } })
+        authAxios.get(`${API}/api/disa/records`, { params: { fromDate: date, toDate: date } })
             .then(r => {
                 const arr = Array.isArray(r.data) ? r.data : [];
                 setRecords(arr);
-                return axios.get(`${API}/api/disa/custom-columns`);
+                return authAxios.get(`${API}/api/disa/custom-columns`);
             })
             .then(r => setCustomCols(r.data || []))
             .catch(() => setToast({ msg: 'Failed to load data', type: 'error' }))
@@ -672,7 +926,7 @@ const DisaSettingEditor = ({ date, toast, setToast }) => {
     const handleSaveRow = async (rec) => {
         setToast({ msg: 'Saving…', type: 'loading' });
         try {
-            await axios.put(`${API}/api/disa/records/${rec.id}`, rec);
+            await authAxios.put(`${API}/api/disa/records/${rec.id}`, rec);
             setToast({ msg: 'Record updated!', type: 'success' });
         } catch { setToast({ msg: 'Save failed', type: 'error' }); }
     };
@@ -724,7 +978,7 @@ const FourMEditor = ({ date, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        axios.get(`${API}/api/4m-change/records-by-date`, { params: { date } })
+        authAxios.get(`${API}/api/4m-change/records-by-date`, { params: { date } })
             .then(r => {
                 if (Array.isArray(r.data)) setData({ records: [], customColumns: [] });
                 else setData(r.data);
@@ -743,7 +997,7 @@ const FourMEditor = ({ date, toast, setToast }) => {
     const handleSaveRow = async (rec) => {
         setToast({ msg: 'Saving…', type: 'loading' });
         try {
-            await axios.put(`${API}/api/4m-change/records/${rec.id}`, rec);
+            await authAxios.put(`${API}/api/4m-change/records/${rec.id}`, rec);
             setToast({ msg: 'Row saved!', type: 'success' });
         } catch { setToast({ msg: 'Save failed', type: 'error' }); }
     };
@@ -809,7 +1063,7 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        axios.get(`${API}/api/bottom-level-audit/details`, { params: { date, disaMachine: disa } })
+        authAxios.get(`${API}/api/bottom-level-audit/details`, { params: { date, disaMachine: disa } })
             .then(res => {
                 const cl = res.data.checklist.map(item => ({
                     ...item,
@@ -866,7 +1120,7 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
     const submitReport = async () => {
         if (!ncForm.ncDetails || !ncForm.responsibility) return setToast({ msg: 'Details and Responsibility are mandatory.', type: 'error' });
         try {
-            await axios.post(`${API}/api/bottom-level-audit/report-nc`, {
+            await authAxios.post(`${API}/api/bottom-level-audit/report-nc`, {
                 checklistId: modalItem.MasterId, slNo: modalItem.SlNo, reportDate: date, disaMachine: disa, ...ncForm
             });
             setToast({ msg: 'NC Report Logged Successfully.', type: 'success' });
@@ -899,7 +1153,7 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
             const itemsToSave = data.checklist.map(item => ({
                 MasterId: item.MasterId, IsDone: item.IsDone, IsHoliday: item.IsHoliday, IsVatCleaning: item.IsVatCleaning, ReadingValue: item.ReadingValue || ''
             }));
-            await axios.post(`${API}/api/bottom-level-audit/submit-batch`, {
+            await authAxios.post(`${API}/api/bottom-level-audit/submit-batch`, {
                 items: itemsToSave, sign: data.originalData.checklist[0]?.AssignedHOD || '',
                 date, disaMachine: disa, operatorSignature: data.originalData.checklist[0]?.OperatorSignature || ''
             });
@@ -1019,16 +1273,16 @@ const DisamaticEditor = ({ date, disa, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        axios.get(`${API}/api/forms/by-date`, { params: { date, disa: pureDisa } })
+        authAxios.get(`${API}/api/forms/by-date`, { params: { date, disa: pureDisa } })
             .then(r => {
                 const fetched = r.data || [];
                 const grouped = {};
-                
+
                 // Group multiple form submissions by Shift
                 fetched.forEach(rep => {
                     if (!grouped[rep.shift]) {
                         // Create deep copy for first occurrence of shift
-                        grouped[rep.shift] = { 
+                        grouped[rep.shift] = {
                             ...rep,
                             productions: [...(rep.productions || [])],
                             nextShiftPlans: [...(rep.nextShiftPlans || [])],
@@ -1043,16 +1297,16 @@ const DisamaticEditor = ({ date, disa, toast, setToast }) => {
                         grouped[rep.shift].delays.push(...(rep.delays || []));
                         grouped[rep.shift].mouldHardness.push(...(rep.mouldHardness || []));
                         grouped[rep.shift].patternTemps.push(...(rep.patternTemps || []));
-                        
+
                         // Safely concatenate text fields
                         if (rep.significantEvent && rep.significantEvent !== '-') {
-                            grouped[rep.shift].significantEvent = grouped[rep.shift].significantEvent && grouped[rep.shift].significantEvent !== '-' 
-                                ? grouped[rep.shift].significantEvent + ' | ' + rep.significantEvent 
+                            grouped[rep.shift].significantEvent = grouped[rep.shift].significantEvent && grouped[rep.shift].significantEvent !== '-'
+                                ? grouped[rep.shift].significantEvent + ' | ' + rep.significantEvent
                                 : rep.significantEvent;
                         }
                         if (rep.maintenance && rep.maintenance !== '-') {
-                            grouped[rep.shift].maintenance = grouped[rep.shift].maintenance && grouped[rep.shift].maintenance !== '-' 
-                                ? grouped[rep.shift].maintenance + ' | ' + rep.maintenance 
+                            grouped[rep.shift].maintenance = grouped[rep.shift].maintenance && grouped[rep.shift].maintenance !== '-'
+                                ? grouped[rep.shift].maintenance + ' | ' + rep.maintenance
                                 : rep.maintenance;
                         }
                     }
@@ -1061,7 +1315,7 @@ const DisamaticEditor = ({ date, disa, toast, setToast }) => {
                 // Sort strictly by Shift order I, II, III
                 const shiftOrder = { 'I': 1, 'II': 2, 'III': 3 };
                 const sorted = Object.values(grouped).sort((a, b) => (shiftOrder[a.shift] || 99) - (shiftOrder[b.shift] || 99));
-                
+
                 setReports(sorted);
             })
             .catch(() => setToast({ msg: 'Failed to load data', type: 'error' }))
@@ -1091,7 +1345,7 @@ const DisamaticEditor = ({ date, disa, toast, setToast }) => {
         try {
             // By passing the merged arrays to the primary report's ID, the backend correctly loops through and updates all individual rows via their SQL table ID.
             for (const rep of reports) {
-                await axios.put(`${API}/api/forms/${rep.id}`, rep);
+                await authAxios.put(`${API}/api/forms/${rep.id}`, rep);
             }
             setToast({ msg: 'Saved successfully!', type: 'success' });
         } catch (e) {
@@ -1106,18 +1360,18 @@ const DisamaticEditor = ({ date, disa, toast, setToast }) => {
         <div className="space-y-8">
             {reports.map((report, rIdx) => (
                 <div key={report.id} className="bg-[#2a2a2a] border border-white/10 rounded-xl p-5 shadow-lg">
-                    
+
                     <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
                         <h3 className="text-xl font-black text-[#ff9100] uppercase tracking-wider">Shift {report.shift}</h3>
                     </div>
-                    
+
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                         <Field label="Incharge" value={report.incharge} onChange={v => updateReport(rIdx, 'incharge', v)} />
                         <Field label="Member" value={report.member} onChange={v => updateReport(rIdx, 'member', v)} />
                         <Field label="P/P Operator" value={report.ppOperator} onChange={v => updateReport(rIdx, 'ppOperator', v)} />
                         <Field label="Supervisor" value={report.supervisorName} onChange={v => updateReport(rIdx, 'supervisorName', v)} />
                     </div>
-                    
+
                     {/* PRODUCTIONS TABLE */}
                     <SectionHeader title="Productions" />
                     <SubTable headers={['S.No', 'Component', 'Counter No', 'Produced', 'Poured', 'Cycle Time', 'Moulds/Hr', 'Remarks']}>
@@ -1203,10 +1457,204 @@ const DisamaticEditor = ({ date, disa, toast, setToast }) => {
     );
 };
 
+/* 9. PERFORMANCE EDITOR */
+const PerformanceEditor = ({ date, disa, toast, setToast }) => {
+    const [report, setReport] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        setLoading(true);
+        authAxios.get(`${API}/api/daily-performance/by-date`, { params: { date, disa: disa } })
+            .then(res => {
+                const data = Array.isArray(res.data) ? res.data[0] : res.data;
+                setReport(data || null);
+            })
+            .catch(() => setToast({ msg: 'Failed to load', type: 'error' }))
+            .finally(() => setLoading(false));
+    }, [date, disa]);
+
+    const handleSave = async () => {
+        setToast({ msg: 'Saving...', type: 'loading' });
+        try {
+            // Reconstruct the summary object the backend expects during PUT
+            const summaryObj = {};
+            if (report.summary) {
+                report.summary.forEach(s => {
+                    summaryObj[s.shiftName] = {
+                        pouredMoulds: s.pouredMoulds,
+                        tonnage: s.tonnage,
+                        casted: s.casted,
+                        value: s.shiftValue || s.value
+                    };
+                });
+            }
+
+            const payload = {
+                ...report,
+                summary: summaryObj,
+            };
+
+            await authAxios.put(`${API}/api/daily-performance/${report.id}`, payload);
+            setToast({ msg: 'Saved successfully', type: 'success' });
+        } catch { setToast({ msg: 'Save failed', type: 'error' }); }
+    };
+
+    if (loading) return <CenteredLoader />;
+    if (!report) return <NoData />;
+
+    const updateReport = (field, val) => setReport(prev => ({ ...prev, [field]: val }));
+
+    const updateDetail = (idx, field, val) => {
+        const details = [...report.details];
+        details[idx] = { ...details[idx], [field]: val };
+        updateReport('details', details);
+    }
+
+    const updateSummary = (shiftName, field, val) => {
+        const sumArray = [...report.summary];
+        const idx = sumArray.findIndex(s => s.shiftName === shiftName);
+        if (idx !== -1) {
+            sumArray[idx] = { ...sumArray[idx], [field]: val };
+        } else {
+            sumArray.push({ shiftName, [field]: val });
+        }
+        updateReport('summary', sumArray);
+    }
+
+    const getSummaryField = (shiftName, field) => {
+        const s = report.summary?.find(x => x.shiftName === shiftName);
+        return s ? s[field] : '';
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="bg-[#2a2a2a] p-5 rounded-xl border border-white/10 shadow-lg">
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                    <Field label="Incharge" value={report.incharge} onChange={v => updateReport('incharge', v)} />
+                    <Field label="HOF" value={report.hof} onChange={v => updateReport('hof', v)} />
+                    <Field label="HOD" value={report.hod} onChange={v => updateReport('hod', v)} />
+                </div>
+
+                <SectionHeader title="Performance Summary" />
+                <SubTable headers={['Shift', 'Poured Moulds', 'Tonnage', 'Casted', 'Value']}>
+                    {['I', 'II', 'III'].map(shift => (
+                        <tr key={shift} className="border-b border-white/5">
+                            <td className="p-2 text-white font-bold text-center">{shift}</td>
+                            <td className="p-1"><input className="w-full bg-transparent border border-white/10 rounded text-white px-2 py-1 focus:border-[#ff9100] outline-none text-center" value={getSummaryField(shift, 'pouredMoulds')} onChange={e => updateSummary(shift, 'pouredMoulds', e.target.value)} /></td>
+                            <td className="p-1"><input className="w-full bg-transparent border border-white/10 rounded text-white px-2 py-1 focus:border-[#ff9100] outline-none text-center" value={getSummaryField(shift, 'tonnage')} onChange={e => updateSummary(shift, 'tonnage', e.target.value)} /></td>
+                            <td className="p-1"><input className="w-full bg-transparent border border-white/10 rounded text-white px-2 py-1 focus:border-[#ff9100] outline-none text-center" value={getSummaryField(shift, 'casted')} onChange={e => updateSummary(shift, 'casted', e.target.value)} /></td>
+                            <td className="p-1"><input className="w-full bg-transparent border border-white/10 rounded text-white px-2 py-1 focus:border-[#ff9100] outline-none text-center" value={getSummaryField(shift, 'shiftValue')} onChange={e => updateSummary(shift, 'shiftValue', e.target.value)} /></td>
+                        </tr>
+                    ))}
+                </SubTable>
+
+                <SectionHeader title="Performance Details" />
+                <div className="overflow-x-auto custom-scrollbar">
+                    <SubTable headers={['Pattern Code', 'Item Desc', 'Planned', 'Unplanned', 'Moulds Prod', 'Moulds Pour']}>
+                        {report.details?.map((d, i) => (
+                            <tr key={i} className="border-b border-white/5 hover:bg-white/5">
+                                <td className="p-1"><input className="w-full bg-transparent border border-white/10 rounded text-white px-2 py-1 focus:border-[#ff9100] outline-none text-center" value={d.patternCode || ''} onChange={e => updateDetail(i, 'patternCode', e.target.value)} /></td>
+                                <td className="p-1"><input className="w-full bg-transparent border border-white/10 rounded text-white px-2 py-1 focus:border-[#ff9100] outline-none text-center" value={d.itemDescription || ''} onChange={e => updateDetail(i, 'itemDescription', e.target.value)} /></td>
+                                <td className="p-1"><input className="w-full bg-transparent border border-white/10 rounded text-white px-2 py-1 focus:border-[#ff9100] outline-none text-center" value={d.planned || ''} onChange={e => updateDetail(i, 'planned', e.target.value)} /></td>
+                                <td className="p-1"><input className="w-full bg-transparent border border-white/10 rounded text-white px-2 py-1 focus:border-[#ff9100] outline-none text-center" value={d.unplanned || ''} onChange={e => updateDetail(i, 'unplanned', e.target.value)} /></td>
+                                <td className="p-1"><input className="w-full bg-transparent border border-white/10 rounded text-white px-2 py-1 focus:border-[#ff9100] outline-none text-center" value={d.mouldsProd || ''} onChange={e => updateDetail(i, 'mouldsProd', e.target.value)} /></td>
+                                <td className="p-1"><input className="w-full bg-transparent border border-white/10 rounded text-white px-2 py-1 focus:border-[#ff9100] outline-none text-center" value={d.mouldsPour || ''} onChange={e => updateDetail(i, 'mouldsPour', e.target.value)} /></td>
+                            </tr>
+                        ))}
+                    </SubTable>
+                </div>
+
+                <SectionHeader title="Unplanned Reasons" />
+                <Field label="Reasons" value={report.unplannedReasons} onChange={v => updateReport('unplannedReasons', v)} multiline />
+            </div>
+            <SaveButton onClick={handleSave} />
+        </div>
+    )
+}
+
+/* 10. MOULD QUALITY EDITOR */
+const MouldQualityEditor = ({ date, disa, toast, setToast }) => {
+    const [report, setReport] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        setLoading(true);
+        authAxios.get(`${API}/api/mould-quality/by-date`, { params: { date, disa } })
+            .then(res => setReport(res.data))
+            .catch(() => setToast({ msg: 'Failed to load', type: 'error' }))
+            .finally(() => setLoading(false));
+    }, [date, disa]);
+
+    const updateReport = (field, val) => setReport(prev => ({ ...prev, [field]: val }));
+    const updateRow = (idx, field, val) => {
+        const rows = [...report.rows];
+        rows[idx] = { ...rows[idx], [field]: val };
+        setReport(prev => ({ ...prev, rows }));
+    };
+
+    const handleSave = async () => {
+        setToast({ msg: 'Saving...', type: 'loading' });
+        try {
+            await authAxios.put(`${API}/api/mould-quality/update/${report.id}`, report);
+            setToast({ msg: 'Saved successfully', type: 'success' });
+        } catch { setToast({ msg: 'Save failed', type: 'error' }); }
+    };
+
+    if (loading) return <CenteredLoader />;
+    if (!report) return <NoData />;
+
+    return (
+        <div className="space-y-6">
+            <div className="bg-[#2a2a2a] p-5 rounded-xl border border-white/10 shadow-lg">
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                    <Field label="Verified By" value={report.verifiedBy} onChange={v => updateReport('verifiedBy', v)} />
+                    <Field label="Approved By" value={report.approvedBy} onChange={v => updateReport('approvedBy', v)} />
+                </div>
+                <SectionHeader title="Mould Inspection Rows" />
+                <div className="overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-[#222] text-white/50 text-[10px] uppercase tracking-widest">
+                            <tr>
+                                <th className="p-2 border border-white/5">S.No</th>
+                                <th className="p-2 border border-white/5">Shift</th>
+                                <th className="p-2 border border-white/5">Part Name</th>
+                                <th className="p-2 border border-white/5">Data Code</th>
+                                <th className="p-2 border border-white/5">FM Soft Ramming</th>
+                                <th className="p-2 border border-white/5">FM Mould Breakage</th>
+                                <th className="p-2 border border-white/5">FM Mould Crack</th>
+                                <th className="p-2 border border-white/5">DR Mould Crush</th>
+                                <th className="p-2 border border-white/5">DR Loose Sand</th>
+                                <th className="p-2 border border-white/5">Target Date</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {report.rows.map((r, i) => (
+                                <tr key={r.id || i} className="border-b border-white/5 hover:bg-white/5">
+                                    <td className="p-1 border border-white/5"><input className="w-full bg-transparent border border-white/10 rounded focus:border-[#ff9100] outline-none text-white px-2 py-1 text-center" value={r.sNo || ''} onChange={e => updateRow(i, 'sNo', e.target.value)} /></td>
+                                    <td className="p-1 border border-white/5"><input className="w-full bg-transparent border border-white/10 rounded focus:border-[#ff9100] outline-none text-white px-2 py-1 text-center" value={r.shift || ''} onChange={e => updateRow(i, 'shift', e.target.value)} /></td>
+                                    <td className="p-1 border border-white/5"><input className="w-full bg-transparent border border-white/10 rounded focus:border-[#ff9100] outline-none text-white px-2 py-1 text-center" value={r.partName || ''} onChange={e => updateRow(i, 'partName', e.target.value)} /></td>
+                                    <td className="p-1 border border-white/5"><input className="w-full bg-transparent border border-white/10 rounded focus:border-[#ff9100] outline-none text-white px-2 py-1 text-center" value={r.dataCode || ''} onChange={e => updateRow(i, 'dataCode', e.target.value)} /></td>
+                                    <td className="p-1 border border-white/5"><input className="w-full bg-transparent border border-white/10 rounded focus:border-[#ff9100] outline-none text-white px-2 py-1 text-center" value={r.fmSoftRamming || ''} onChange={e => updateRow(i, 'fmSoftRamming', e.target.value)} /></td>
+                                    <td className="p-1 border border-white/5"><input className="w-full bg-transparent border border-white/10 rounded focus:border-[#ff9100] outline-none text-white px-2 py-1 text-center" value={r.fmMouldBreakage || ''} onChange={e => updateRow(i, 'fmMouldBreakage', e.target.value)} /></td>
+                                    <td className="p-1 border border-white/5"><input className="w-full bg-transparent border border-white/10 rounded focus:border-[#ff9100] outline-none text-white px-2 py-1 text-center" value={r.fmMouldCrack || ''} onChange={e => updateRow(i, 'fmMouldCrack', e.target.value)} /></td>
+                                    <td className="p-1 border border-white/5"><input className="w-full bg-transparent border border-white/10 rounded focus:border-[#ff9100] outline-none text-white px-2 py-1 text-center" value={r.drMouldCrush || ''} onChange={e => updateRow(i, 'drMouldCrush', e.target.value)} /></td>
+                                    <td className="p-1 border border-white/5"><input className="w-full bg-transparent border border-white/10 rounded focus:border-[#ff9100] outline-none text-white px-2 py-1 text-center" value={r.drLooseSand || ''} onChange={e => updateRow(i, 'drLooseSand', e.target.value)} /></td>
+                                    <td className="p-1 border border-white/5"><input className="w-full bg-transparent border border-white/10 rounded focus:border-[#ff9100] outline-none text-white px-2 py-1 text-center" value={r.drDateHeatCode || ''} onChange={e => updateRow(i, 'drDateHeatCode', e.target.value)} /></td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <SaveButton onClick={handleSave} />
+        </div>
+    )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  NEEDS-MACHINE forms
 // ─────────────────────────────────────────────────────────────────────────────
-const NEEDS_MACHINE = ['unpoured-mould-details', 'dmm-setting-parameters', 'disa-operator', 'error-proof', 'lpa', 'disamatic-report'];
+const NEEDS_MACHINE = ['unpoured-mould-details', 'dmm-setting-parameters', 'disa-operator', 'lpa', 'disamatic-report', 'error-proof2', 'performance', 'mould-quality'];
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  MAIN EXPORT
@@ -1225,11 +1673,14 @@ const AdminFormEditor = ({ form, date, onBack }) => {
             case 'unpoured-mould-details': return <UnpouredEditor {...props} />;
             case 'dmm-setting-parameters': return <DmmEditor {...props} />;
             case 'disa-operator': return <DisaChecklistEditor {...props} />;
-            case 'error-proof': return <ErrorProofEditor {...props} />;
+            case 'error-proof': return <ErrorProofV1Editor {...props} />;
+            case 'error-proof2': return <ErrorProofEditor {...props} />;
             case 'disa-setting-adjustment': return <DisaSettingEditor date={date} toast={toast} setToast={setToast} />;
             case '4m-change': return <FourMEditor date={date} toast={toast} setToast={setToast} />;
             case 'lpa': return <LpaEditor {...props} />;
             case 'disamatic-report': return <DisamaticEditor {...props} />;
+            case 'performance': return <PerformanceEditor {...props} />;
+            case 'mould-quality': return <MouldQualityEditor {...props} />;
             default: return (
                 <div className="flex flex-col items-center justify-center py-20 text-white/30">
                     <AlertTriangle className="w-10 h-10 mb-3" />

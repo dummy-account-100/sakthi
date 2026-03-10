@@ -1,4 +1,5 @@
 const sql = require("../db");
+const bcrypt = require("bcrypt");
 
 // ==========================================
 //   1. ADD USER (Your original code preserved)
@@ -11,21 +12,22 @@ exports.addUser = async (req, res) => {
   }
 
   try {
+    const hashedPassword = await bcrypt.hash(password, 10);
     // 🔥 Changed the table name here from AppUsers to Users
     await sql.query`
       INSERT INTO Users (username, password, role)
-      VALUES (${username}, ${password}, ${role})
+      VALUES (${username}, ${hashedPassword}, ${role})
     `;
 
     res.status(201).json({ message: "User added successfully!" });
   } catch (error) {
     console.error("Error adding user:", error);
-    
+
     // Error number 2627 in MSSQL means Unique Constraint Violation (Username exists)
     if (error.number === 2627) {
       return res.status(400).json({ error: "Username already exists!" });
     }
-    
+
     res.status(500).json({ error: "Failed to add user to database." });
   }
 };
@@ -64,16 +66,16 @@ exports.updateUser = async (req, res) => {
       SET username = ${username}, role = ${role} 
       WHERE id = ${id}
     `;
-    
+
     res.status(200).json({ message: "User updated successfully!" });
   } catch (error) {
     console.error("Error updating user:", error);
-    
+
     // Same protection as your Add User: Prevent renaming to an existing username
     if (error.number === 2627) {
       return res.status(400).json({ error: "Username already exists!" });
     }
-    
+
     res.status(500).json({ error: "Failed to update user." });
   }
 };

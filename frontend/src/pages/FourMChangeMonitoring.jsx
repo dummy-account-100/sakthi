@@ -132,9 +132,23 @@ const FourMChangeMonitoring = () => {
     }
   };
 
-  const handleGenerateReport = () => {
-    // 🔥 FILTER BY TODAY'S DATE FOR THE OPERATOR PREVIEW
-    window.open(`${process.env.REACT_APP_API_URL}/api/4m-change/report?fromDate=${recordDate}&toDate=${recordDate}`, "_blank");
+  const handleGenerateReport = async () => {
+    try {
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/4m-change/report?fromDate=${recordDate}&toDate=${recordDate}`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `4M_Change_${recordDate}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      toast.success("PDF Downloaded successfully!");
+    } catch (err) {
+      console.error("Download failed", err);
+      toast.error("Failed to download PDF. Please check your connection or login again.");
+    }
   };
 
   const StatusSelect = ({ value, onChange, options = ["-", "OK", "Not OK"] }) => (

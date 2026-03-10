@@ -23,7 +23,7 @@ const DISASettingAdjustment = () => {
   const [mouldCountNo, setMouldCountNo] = useState("");
   const [prevMouldCountNo, setPrevMouldCountNo] = useState(0);
   const [noOfMoulds, setNoOfMoulds] = useState(0);
-  
+
   const [workCarriedOut, setWorkCarriedOut] = useState([""]);
   const [preventiveWorkCarried, setPreventiveWorkCarried] = useState([""]);
   const [remarks, setRemarks] = useState("");
@@ -109,7 +109,7 @@ const DISASettingAdjustment = () => {
       .filter((item) => item.trim() !== "")
       .map((item) => `• ${item.trim()}`)
       .join("\n");
-      
+
     const finalPreventiveWork = preventiveWorkCarried
       .filter((item) => item.trim() !== "")
       .map((item) => `• ${item.trim()}`)
@@ -138,16 +138,31 @@ const DISASettingAdjustment = () => {
       setPreventiveWorkCarried([""]);
       setRemarks("");
       setCustomValues({}); // Clear custom fields
-      clearSignature(); 
-      
+      clearSignature();
+
     } catch (err) {
       console.error(err);
       toast.error("Error saving record. Please try again.");
     }
   };
 
-  const handleGenerateReport = () => {
-    window.open(`${process.env.REACT_APP_API_URL}/api/disa/report`, "_blank");
+  const handleGenerateReport = async () => {
+    try {
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/disa/report`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `DISA_SettingAdjustment_Report_${recordDate}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      toast.success("PDF Downloaded successfully!");
+    } catch (err) {
+      console.error("Download failed", err);
+      toast.error("Failed to download PDF. Please check your connection or login again.");
+    }
   };
 
   return (
@@ -169,7 +184,7 @@ const DISASettingAdjustment = () => {
                   <th className="border border-gray-300 p-2 w-36">Current Mould Counter</th>
                   <th className="border border-gray-300 p-2 w-36">Previous Mould Counter</th>
                   <th className="border border-gray-300 p-2 w-36">Calculated No. of Moulds</th>
-                  
+
                   <th className="border border-gray-300 p-2 w-48">
                     <div className="flex items-center justify-between">
                       <span>Work Carried Out</span>
@@ -232,11 +247,11 @@ const DISASettingAdjustment = () => {
                   {/* 🔥 NEW: Render Custom Column Inputs */}
                   {customColumns.map((col) => (
                     <td key={col.id} className="border border-gray-300 p-2 align-top">
-                      <textarea 
-                        className="w-full border p-2 rounded focus:outline-blue-500 text-sm resize-y min-h-[40px] h-full" 
-                        placeholder={col.columnName} 
-                        value={customValues[col.id] || ""} 
-                        onChange={(e) => handleCustomValueChange(col.id, e.target.value)} 
+                      <textarea
+                        className="w-full border p-2 rounded focus:outline-blue-500 text-sm resize-y min-h-[40px] h-full"
+                        placeholder={col.columnName}
+                        value={customValues[col.id] || ""}
+                        onChange={(e) => handleCustomValueChange(col.id, e.target.value)}
                       />
                     </td>
                   ))}
@@ -244,10 +259,10 @@ const DISASettingAdjustment = () => {
                   <td className="border border-gray-300 p-2 align-top">
                     <div className="flex flex-col items-center">
                       <div className="border border-gray-300 bg-gray-50 rounded w-full mb-2">
-                        <SignatureCanvas 
-                          ref={sigCanvas} 
+                        <SignatureCanvas
+                          ref={sigCanvas}
                           penColor="blue"
-                          canvasProps={{ className: 'w-full h-24 rounded' }} 
+                          canvasProps={{ className: 'w-full h-24 rounded' }}
                         />
                       </div>
                       <button onClick={clearSignature} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1 px-3 rounded transition-colors w-full">

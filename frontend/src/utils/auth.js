@@ -1,20 +1,21 @@
-// src/utils/auth.js
+// frontend/src/utils/auth.js
 
 export const getUser = () => {
-    const user = localStorage.getItem("user");
-    try {
-        return user ? JSON.parse(user) : null;
-    } catch (e) {
-        return null;
-    }
+  const userData = localStorage.getItem("user");
+  if (!userData) return null;
+  try {
+    return JSON.parse(userData);
+  } catch (error) {
+    return null;
+  }
 };
 
-export const setToken = (token, user) => {
-    localStorage.setItem("token", token);
-    localStorage.setItem("user", JSON.stringify(user));
-};
-
+// AdminDashboard.jsx is looking exactly for this function name
 export const removeToken = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+  localStorage.removeItem("user");
+};
+
+export const logout = (navigate) => {
+  removeToken();
+  navigate("/");
 };

@@ -15,7 +15,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     return <Navigate to="/" replace />;
   }
 
-  if (!user?.role) {
+  if (!user?.role || !user?.token) {
     localStorage.removeItem("user");
     return <Navigate to="/" replace />;
   }
