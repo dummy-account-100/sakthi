@@ -1,27 +1,49 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { CheckCircle, AlertTriangle, Save, Loader, FileDown, PlusCircle, Trash2 } from 'lucide-react';
+import { X, CheckCircle, AlertTriangle, FileDown, Loader, Save, PlusCircle, Trash2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import SignatureCanvas from 'react-signature-canvas';
 import Header from '../components/Header';
+import logo from '../Assets/logo.png';
 
-const NotificationModal = ({ data, onClose }) => {
+// --- Upgraded to Toast Notification ---
+const ToastNotification = ({ data, onClose }) => {
+  useEffect(() => {
+    if (data.show && data.type !== 'loading') {
+      const timer = setTimeout(onClose, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [data, onClose]);
+
   if (!data.show) return null;
+
   const isError = data.type === 'error';
   const isLoading = data.type === 'loading';
+
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className={`border-2 w-full max-w-md p-6 rounded-2xl shadow-2xl bg-white ${isError ? 'border-red-200' : 'border-green-200'}`}>
-        <div className="flex items-center gap-4">
-          {isLoading ? <Loader className="animate-spin text-orange-600" /> : isError ? <AlertTriangle className="text-red-600" /> : <CheckCircle className="text-green-600" />}
-          <div>
-            <h3 className="font-bold text-lg">{isLoading ? 'Processing...' : isError ? 'Error' : 'Success'}</h3>
-            <p className="text-sm text-gray-600">{data.message}</p>
-          </div>
-        </div>
-        {!isLoading && <button onClick={onClose} className="mt-4 px-4 py-2 bg-gray-900 text-white rounded text-sm font-bold float-right hover:bg-orange-600 transition-colors">Close</button>}
-      </div>
+    <div className={`fixed top-6 right-6 z-[200] flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl transition-all duration-300 animate-in slide-in-from-right-8 ${isLoading ? 'bg-blue-50 border-l-4 border-blue-600 text-blue-800' : isError ? 'bg-red-50 border-l-4 border-red-600 text-red-800' : 'bg-green-50 border-l-4 border-green-600 text-green-800'}`}>
+      {isLoading ? <Loader className="animate-spin" size={20} /> : isError ? <AlertTriangle size={20} /> : <CheckCircle size={20} />}
+      <p className="font-bold text-sm">{data.message}</p>
+      {!isLoading && <button onClick={onClose} className="ml-4 opacity-50 hover:opacity-100"><X size={16} /></button>}
+    </div>
+  );
+};
+
+const SearchableSelect = ({ label, options, displayKey, onSelect, value, placeholder }) => {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  useEffect(() => { if (value) setSearch(value); }, [value]);
+  const filtered = options.filter((item) => item[displayKey]?.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <div className="relative w-full">
+      {label && <label className="text-[11px] font-black text-gray-800 uppercase block mb-1 tracking-wider">{label}</label>}
+      <input type="text" value={search} onChange={(e) => { setSearch(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} className="w-full p-3 text-sm font-bold border-2 border-gray-600 bg-white text-gray-900 rounded-lg outline-none focus:border-orange-600 placeholder-gray-500 shadow-sm" placeholder={placeholder || "Search..."} />
+      {open && <ul className="absolute bottom-full mb-1 z-50 bg-white border-2 border-gray-400 w-full max-h-60 overflow-y-auto rounded-lg shadow-2xl">
+        {filtered.length > 0 ? filtered.map((item, index) => (
+          <li key={index} onMouseDown={(e) => { e.preventDefault(); setSearch(item[displayKey]); setOpen(false); onSelect(item); }} className="p-3 hover:bg-orange-100 cursor-pointer text-sm font-bold border-b border-gray-200 text-gray-900">{item[displayKey]}</li>
+        )) : <li className="p-3 text-gray-500 text-sm font-medium">No results</li>}
+      </ul>}
     </div>
   );
 };
@@ -166,15 +188,41 @@ const DmmSettingParameters = () => {
     setNotification({ show: true, type: 'loading', message: 'Generating PDF...' });
     try {
       const doc = new jsPDF('l', 'mm', 'a4');
-      doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-      doc.text("SAKTHI AUTO COMPONENT LIMITED", 148.5, 10, { align: 'center' });
-      doc.setFontSize(16); doc.text("DMM SETTING PARAMETERS CHECK SHEET", 148.5, 18, { align: 'center' });
-      doc.setFontSize(10); doc.setFont('helvetica', 'normal');
-      doc.text(` ${headerData.disaMachine}`, 10, 28);
-      doc.text(`DATE: ${new Date(headerData.date).toLocaleDateString('en-GB')}`, 280, 28, { align: 'right' });
+      
+      // ==============================================================
+      // 🔥 STANDARDIZED HEADER WITH IMAGE LOGO
+      // ==============================================================
+      doc.setLineWidth(0.3);
+      
+      // Box 1: SAKTHI AUTO (Logo Area)
+      doc.rect(10, 10, 40, 20);
+      try {
+        doc.addImage(logo, 'PNG', 12, 11, 36, 18);
+      } catch (err) {
+        doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+        doc.text("SAKTHI", 30, 18, { align: 'center' });
+        doc.text("AUTO", 30, 26, { align: 'center' });
+      }
+
+      // Box 2: Title (Full width between Logo and Meta)
+      doc.rect(50, 10, 197, 20);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text("DMM SETTING PARAMETERS CHECK SHEET", 148.5, 22, { align: 'center' });
+
+      // Box 3: Meta (DISA & Date)
+      doc.rect(247, 10, 40, 20);
+      doc.setFontSize(11);
+      doc.text(headerData.disaMachine, 267, 16, { align: 'center' });
+      doc.line(247, 20, 287, 20);
+      doc.setFontSize(10);
+      const formattedDate = new Date(headerData.date).toLocaleDateString('en-GB');
+      doc.text(`DATE: ${formattedDate}`, 267, 26, { align: 'center' });
+      // ==============================================================
 
       autoTable(doc, {
-        startY: 32, margin: { left: 10, right: 10 },
+        startY: 35, // Pushed down to accommodate the 3-box header
+        margin: { left: 10, right: 10 },
         head: [['SHIFT', 'OPERATOR NAME', 'VERIFIED BY', 'SIGNATURE']],
         body: [
           ['SHIFT I', shiftsMeta[1].operator || '-', shiftsMeta[1].supervisor || '-', ''],
@@ -244,7 +292,7 @@ const DmmSettingParameters = () => {
     <>
       <Header />
       <div className="min-h-screen bg-[#2d2d2d] flex flex-col items-center justify-center p-6 pb-20">
-        <NotificationModal data={notification} onClose={() => setNotification({ ...notification, show: false })} />
+        <ToastNotification data={notification} onClose={() => setNotification({ ...notification, show: false })} />
         
         <div className="bg-white w-full max-w-[100rem] rounded-xl p-8 shadow-2xl flex flex-col border-4 border-gray-100">
           

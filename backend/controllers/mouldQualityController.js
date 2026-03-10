@@ -1,5 +1,7 @@
 const sql = require("../db");
 const PDFDocument = require("pdfkit");
+const fs = require("fs");
+const path = require("path");
 
 // --- GET USERS FOR DROPDOWNS ---
 exports.getUsers = async (req, res) => {
@@ -81,7 +83,7 @@ exports.signSupervisor = async (req, res) => {
   }
 };
 
-// --- PDF GENERATOR (🔥 FIXED TEXT OVERLAP) ---
+// --- PDF GENERATOR (🔥 FIXED BOX ALIGNMENT & LOGO RENDERING) ---
 exports.generateReport = async (req, res) => {
   try {
     const { reportId, date, disaMachine } = req.query;
@@ -117,15 +119,40 @@ exports.generateReport = async (req, res) => {
     const startX = 40; 
     let y = 30;
 
-    // --- Header ---
-    doc.font("Helvetica-Bold").fontSize(16).text("SAKTHI AUTO COMPONENT LIMITED", startX, y, { align: "center", width: 720 });
-    doc.fontSize(14).text("MOULDING QUALITY INSPECTION REPORT", startX, y + 20, { align: "center", width: 720 });
+    // ==============================================================
+    // 🔥 3-BOX HEADER DESIGN (EXACT MATCH TO FRONTEND)
+    // Total Width = 720 points (Matches Table Width Perfectly)
+    // ==============================================================
+    doc.lineWidth(1);
     
+    // BOX 1: LOGO (Width: 100)
+    doc.rect(startX, y, 100, 40).stroke();
+    
+    // Pointing directly to logo.jpg in the same directory as this controller
+    const logoPath = path.join(__dirname, 'logo.jpg');
+
+    if (fs.existsSync(logoPath)) {
+        // Embeds the actual JPG image centered in the box
+        doc.image(logoPath, startX + 10, y + 5, { width: 80, height: 30, fit: [80, 30], align: 'center', valign: 'center' });
+    } else {
+        // Fallback text if image file is still not found
+        doc.font("Helvetica-Bold").fontSize(12).text("SAKTHI\nAUTO", startX, y + 10, { width: 100, align: "center" });
+    }
+
+    // BOX 2: TITLE (Width: 500)
+    doc.rect(startX + 100, y, 500, 40).stroke();
+    doc.font("Helvetica-Bold").fontSize(14).text("SAKTHI AUTO COMPONENT LIMITED", startX + 100, y + 8, { width: 500, align: "center" });
+    doc.fontSize(12).text("MOULDING QUALITY INSPECTION REPORT", startX + 100, y + 24, { width: 500, align: "center" });
+
+    // BOX 3: META DATA (Width: 120)
     const displayDate = new Date(header.reportDate).toLocaleDateString('en-GB');
-    doc.fontSize(10).text(`Machine: ${header.disaMachine || '-'}`, startX, y + 45);
-    doc.text(`Date: ${displayDate}`, startX + 570, y + 45, { align: "right", width: 150 });
-    
-    y += 65;
+    doc.rect(startX + 600, y, 120, 40).stroke();
+    doc.font("Helvetica-Bold").fontSize(11).text(header.disaMachine || '-', startX + 600, y + 7, { width: 120, align: "center" });
+    doc.moveTo(startX + 600, y + 20).lineTo(startX + 720, y + 20).stroke(); // Split line
+    doc.font("Helvetica").fontSize(10).text(`DATE: ${displayDate}`, startX + 600, y + 26, { width: 120, align: "center" });
+
+    y += 55; // Space below header before table starts
+    // ==============================================================
 
     // Table settings
     const colWidths = [25, 30, 80, 45, 35, 35, 35, 35, 35, 35, 35, 35, 35, 45, 30, 25, 25, 25, 25, 25, 25];
@@ -141,7 +168,7 @@ exports.generateReport = async (req, res) => {
         doc.rect(startX + 55, cy, 80, 55).stroke(); doc.text("Part Name", startX + 55, cy + 25, { width: 80, align: "center" });
         
         doc.rect(startX + 135, cy, 45, 55).stroke(); 
-        doc.text("Data\nCode", startX + 135, cy + 20, { width: 45, align: "center" }); // Native wrapping
+        doc.text("Data\nCode", startX + 135, cy + 20, { width: 45, align: "center" });
         
         doc.rect(startX + 180, cy, 210, 15).stroke(); doc.text("First Moulding", startX + 180, cy + 5, { width: 210, align: "center" });
         doc.rect(startX + 390, cy, 330, 15).stroke(); doc.text("During Running", startX + 390, cy + 5, { width: 330, align: "center" });
@@ -150,7 +177,6 @@ exports.generateReport = async (req, res) => {
         let cy2 = cy + 15;
         let cx = startX + 180;
         
-        // 🔥 FIX: Reduce font size slightly so text fits without clipping
         doc.fontSize(6);
         
         const l2Single = [
@@ -166,7 +192,6 @@ exports.generateReport = async (req, res) => {
             cx += h.w;
         });
 
-        // 🔥 FIX: Passed as single strings with \n so PDFKit perfectly centers all three lines
         const l2Double = [
             { label: "Surface\nHardness\n(Min 85)", w: 50 },
             { label: "Inside\nPenetrant\n(Min 20)", w: 50 },
@@ -182,7 +207,7 @@ exports.generateReport = async (req, res) => {
         // Row 3 (Bottom Level for PP/SP)
         let cy3 = cy2 + 25; 
         cx = startX + 570; 
-        doc.fontSize(7); // Back to normal size
+        doc.fontSize(7);
         for(let i=0; i<3; i++) {
             doc.rect(cx, cy3, 25, 15).stroke(); doc.text("PP", cx, cy3 + 5, { width: 25, align: "center" }); cx += 25;
             doc.rect(cx, cy3, 25, 15).stroke(); doc.text("SP", cx, cy3 + 5, { width: 25, align: "center" }); cx += 25;

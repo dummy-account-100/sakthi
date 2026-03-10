@@ -3,6 +3,7 @@ const router = express.Router();
 const sql = require("../db"); // Adjusted to safe import
 const PDFDocument = require("pdfkit");
 const path = require("path");
+const fs = require("fs");
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  DROPDOWN DATA
@@ -251,7 +252,7 @@ router.post("/sign-hod", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  DYNAMIC PDF REPORT (Filtered by Date & Alignment Fixed)
+//  DYNAMIC PDF REPORT (🔥 FIXED 3-BOX HEADER ALIGNMENT & LOGO.JPG)
 // ══════════════════════════════════════════════════════════════════════════════
 router.get("/report", async (req, res) => {
     try {
@@ -292,7 +293,7 @@ router.get("/report", async (req, res) => {
         doc.pipe(res);
 
         const topRecord = result.recordset.length > 0 ? result.recordset[0] : {};
-        const headerLine = topRecord.line || "DISA - I";
+        const headerLine = topRecord.line || "ALL LINES";
         const hodSignature = topRecord.HODSignature;
 
         const uniquePartNames = [...new Set(result.recordset.map(row => row.partName).filter(name => name && name.trim() !== ""))];
@@ -315,16 +316,53 @@ router.get("/report", async (req, res) => {
         const minRowHeight = 40;
 
         const drawHeaders = (y) => {
-            doc.font("Helvetica-Bold").fontSize(16).text("4M CHANGE MONITORING CHECK SHEET", startX, y, { align: "center" });
-            doc.font("Helvetica-Bold").fontSize(12)
-                .text(`Line: ${headerLine}`, startX, y + 25)
-                .text(`Part Name: ${headerPart}`, startX, y + 25, { align: "right", width: pageWidth });
+            // 🔥 STANDARDIZED 3-BOX HEADER DESIGN
+            const logoBoxWidth = 100;
+            const metaBoxWidth = 150;
+            const titleBoxWidth = pageWidth - logoBoxWidth - metaBoxWidth;
+            const headerHeight = 40;
 
-            if (fromDate && toDate) {
-                doc.font("Helvetica").fontSize(9).text(`Filtered: ${fromDate} to ${toDate}`, startX, y + 38, { align: "center" });
+            doc.lineWidth(1);
+
+            // BOX 1: LOGO
+            doc.rect(startX, y, logoBoxWidth, headerHeight).stroke();
+            const logoPath = path.join(__dirname, "logo.jpg");
+            if (fs.existsSync(logoPath)) {
+                doc.image(logoPath, startX + 10, y + 5, {
+                    width: 80, height: 30, fit: [80, 30], align: 'center', valign: 'center'
+                });
+            } else {
+                doc.font("Helvetica-Bold").fontSize(12).fillColor('black').text("SAKTHI\nAUTO", startX, y + 10, { width: logoBoxWidth, align: "center" });
             }
 
-            const tableHeaderY = y + 50;
+            // BOX 2: TITLE
+            doc.rect(startX + logoBoxWidth, y, titleBoxWidth, headerHeight).stroke();
+            doc.font("Helvetica-Bold").fontSize(14).fillColor('black').text("SAKTHI AUTO COMPONENT LIMITED", startX + logoBoxWidth, y + 8, { width: titleBoxWidth, align: "center" });
+            doc.fontSize(12).text("4M CHANGE MONITORING CHECK SHEET", startX + logoBoxWidth, y + 24, { width: titleBoxWidth, align: "center" });
+
+            // BOX 3: META DATA (Line & Dates)
+            doc.rect(startX + logoBoxWidth + titleBoxWidth, y, metaBoxWidth, headerHeight).stroke();
+            doc.font("Helvetica-Bold").fontSize(11).text(headerLine, startX + logoBoxWidth + titleBoxWidth, y + 7, { width: metaBoxWidth, align: "center" });
+            doc.moveTo(startX + logoBoxWidth + titleBoxWidth, y + 20).lineTo(startX + pageWidth, y + 20).stroke();
+            
+            let dateText = "ALL DATES";
+            if (fromDate && toDate) {
+                const fD = new Date(fromDate).toLocaleDateString('en-GB');
+                const tD = new Date(toDate).toLocaleDateString('en-GB');
+                dateText = `${fD} to ${tD}`;
+            }
+            doc.font("Helvetica").fontSize(9).text(dateText, startX + logoBoxWidth + titleBoxWidth, y + 26, { width: metaBoxWidth, align: "center" });
+
+            // PART NAME (Displayed below the boxes to accommodate long lists without breaking layout)
+            let tableHeaderY = y + headerHeight + 5;
+            if (headerPart) {
+                doc.font("Helvetica-Bold").fontSize(9).text(`Part Name(s): ${headerPart}`, startX, tableHeaderY);
+                tableHeaderY += 15;
+            } else {
+                tableHeaderY += 5;
+            }
+
+            // Table Headers
             let currentX = startX;
             doc.font("Helvetica-Bold").fontSize(headerFontSize);
             headers.forEach((header, i) => {

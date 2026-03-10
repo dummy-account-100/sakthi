@@ -5,6 +5,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import SignatureCanvas from 'react-signature-canvas';
 import Header from '../components/Header';
+import logo from '../Assets/logo.png'; // Make sure this path is correct
 
 const NotificationModal = ({ data, onClose }) => {
   if (!data.show) return null;
@@ -234,11 +235,38 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
     try {
       const doc = new jsPDF('l', 'mm', 'a4');
 
-      doc.setFontSize(16); doc.setFont('helvetica', 'bold');
-      doc.text("UN POURED MOULD DETAILS", 148.5, 15, { align: 'center' });
-      doc.setFontSize(11); doc.text(` ${headerData.disaMachine}`, 8, 25);
+      // --- STANDARDIZED HEADER WITH IMAGE LOGO ---
+      doc.setLineWidth(0.3);
+      
+      // Box 1: SAKTHI AUTO (Logo Area)
+      doc.rect(10, 10, 40, 20);
+      try {
+        // Embed the actual image logo inside the 40x20 box
+        // x: 12, y: 11, width: 36, height: 18 (leaves small padding inside the box)
+        doc.addImage(logo, 'PNG', 12, 11, 36, 18);
+      } catch (err) {
+        // Fallback to text if image fails to load/process
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text("SAKTHI", 30, 18, { align: 'center' });
+        doc.text("AUTO", 30, 26, { align: 'center' });
+      }
+
+      // Box 2: Title
+      doc.rect(50, 10, 197, 20);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text("UN POURED MOULD DETAILS", 148.5, 22, { align: 'center' });
+
+      // Box 3: Meta (DISA & Date)
+      doc.rect(247, 10, 40, 20);
+      doc.setFontSize(11);
+      doc.text(headerData.disaMachine, 267, 16, { align: 'center' });
+      doc.line(247, 20, 287, 20);
+      doc.setFontSize(10);
       const formattedDate = new Date(headerData.date).toLocaleDateString('en-GB');
-      doc.text(`DATE: ${formattedDate}`, 289 - doc.getTextWidth(`DATE: ${formattedDate}`) - 8, 25);
+      doc.text(`DATE: ${formattedDate}`, 267, 26, { align: 'center' });
+      // ------------------------------------------
 
       const pdfGroups = [];
       columns.forEach(col => {
@@ -277,7 +305,8 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
       bodyRows.push(totalRow);
 
       autoTable(doc, {
-        startY: 32, margin: { left: 5, right: 5 }, head: [headRow1, headRow2], body: bodyRows, theme: 'grid',
+        startY: 35, // Below the header
+        margin: { left: 5, right: 5 }, head: [headRow1, headRow2], body: bodyRows, theme: 'grid',
         styles: { fontSize: 8, cellPadding: { top: 3.5, right: 1, bottom: 3.5, left: 1 }, lineColor: [0, 0, 0], lineWidth: 0.15, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
         headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', minCellHeight: 12 }, bodyStyles: { minCellHeight: 10 },
         columnStyles: { [columns.length + 2]: { cellWidth: 25 } },

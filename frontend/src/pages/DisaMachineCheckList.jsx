@@ -5,6 +5,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import SignatureCanvas from 'react-signature-canvas';
 import Header from '../components/Header';
+import logo from '../Assets/logo.png'; // Make sure this path is correct
 
 const NotificationModal = ({ data, onClose }) => {
   if (!data.show) return null;
@@ -274,15 +275,35 @@ const DisaMachineCheckList = () => {
       const doc = new jsPDF('l', 'mm', 'a4');
       const monthName = selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' });
 
+      // ==============================================================
+      // 🔥 STANDARDIZED HEADER WITH LOGO BOX (PAGE 1)
+      // ==============================================================
       doc.setLineWidth(0.3);
-      doc.rect(10, 10, 40, 20); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-      doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' });
-      doc.rect(50, 10, 180, 20); doc.setFontSize(16);
+      
+      // Box 1: SAKTHI AUTO (Logo Area)
+      doc.rect(10, 10, 40, 20);
+      try {
+        doc.addImage(logo, 'PNG', 12, 11, 36, 18);
+      } catch (err) {
+        doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+        doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+        doc.text("AUTO", 30, 26, { align: 'center' });
+      }
+
+      // Box 2: Title
+      doc.rect(50, 10, 180, 20);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
       doc.text("DISA MACHINE OPERATOR CHECK SHEET", 140, 22, { align: 'center' });
-      doc.rect(230, 10, 57, 20); doc.setFontSize(11);
-      doc.text(headerData.disaMachine, 258, 18, { align: 'center' });
-      doc.line(230, 22, 287, 22);
-      doc.setFontSize(10); doc.text(`Month: ${monthName}`, 235, 27);
+
+      // Box 3: Meta (DISA & Month)
+      doc.rect(230, 10, 57, 20);
+      doc.setFontSize(11);
+      doc.text(headerData.disaMachine, 258.5, 16, { align: 'center' });
+      doc.line(230, 20, 287, 20);
+      doc.setFontSize(10);
+      doc.text(`Month: ${monthName}`, 258.5, 26, { align: 'center' });
+      // ==============================================================
 
       const days = Array.from({ length: 31 }, (_, i) => (i + 1).toString());
 
@@ -390,18 +411,30 @@ const DisaMachineCheckList = () => {
       doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200);
       doc.text("Page 1 of 2", 270, 200);
 
-      // PAGE 2
+      // ==============================================================
+      // 🔥 PAGE 2 HEADER (NCR)
+      // ==============================================================
       doc.addPage();
       doc.setDrawColor(0); doc.setLineWidth(0.3);
+      
+      // Box 1: Logo
       doc.rect(10, 10, 40, 20);
-      doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-      doc.text("SAKTHI", 30, 18, { align: 'center' });
-      doc.text("AUTO", 30, 26, { align: 'center' });
+      try {
+        doc.addImage(logo, 'PNG', 12, 11, 36, 18);
+      } catch (err) {
+        doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+        doc.text("SAKTHI", 30, 18, { align: 'center' });
+        doc.text("AUTO", 30, 26, { align: 'center' });
+      }
+
+      // Box 2: Title (Full width till end of page margin)
       doc.rect(50, 10, 237, 20);
       doc.setFontSize(16);
-      doc.text("DISA MACHINE OPERATOR CHECK SHEET", 168, 18, { align: 'center' });
+      doc.setFont('helvetica', 'bold');
+      doc.text("DISA MACHINE OPERATOR CHECK SHEET", 168.5, 18, { align: 'center' });
       doc.setFontSize(14);
-      doc.text("Non-Conformance Report", 168, 26, { align: 'center' });
+      doc.text("Non-Conformance Report", 168.5, 26, { align: 'center' });
+      // ==============================================================
 
       const ncRows = ncReports.map((report, index) => [
         index + 1,

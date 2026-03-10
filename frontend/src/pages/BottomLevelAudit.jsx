@@ -5,6 +5,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import SignatureCanvas from 'react-signature-canvas';
 import Header from '../components/Header';
+import logo from '../Assets/logo.png'; // Make sure this path is correct
 
 // --- Upgraded to Toast Notification ---
 const ToastNotification = ({ data, onClose }) => {
@@ -208,12 +209,35 @@ const BottomLevelAudit = () => {
       const monthName = selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' });
       const daysInMonth = new Date(year, month, 0).getDate();
 
+      // ==============================================================
+      // 🔥 STANDARDIZED HEADER WITH LOGO BOX (PAGE 1)
+      // ==============================================================
       doc.setLineWidth(0.3);
-      doc.rect(10, 10, 40, 20); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-      doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' });
-      doc.rect(50, 10, 237, 20); doc.setFontSize(16);
-      doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 168, 22, { align: 'center' });
-      doc.setFontSize(10); doc.text(`${headerData.disaMachine}`, 12, 35); doc.text(`MONTH : ${monthName}`, 235, 35);
+      
+      // Box 1: SAKTHI AUTO (Logo Area)
+      doc.rect(10, 10, 40, 20);
+      try {
+        doc.addImage(logo, 'PNG', 12, 11, 36, 18);
+      } catch (err) {
+        doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+        doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+        doc.text("AUTO", 30, 26, { align: 'center' });
+      }
+
+      // Box 2: Title
+      doc.rect(50, 10, 180, 20);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 140, 22, { align: 'center' });
+
+      // Box 3: Meta (DISA & Month)
+      doc.rect(230, 10, 57, 20);
+      doc.setFontSize(11);
+      doc.text(headerData.disaMachine, 258.5, 16, { align: 'center' });
+      doc.line(230, 20, 287, 20);
+      doc.setFontSize(10);
+      doc.text(`Month: ${monthName}`, 258.5, 26, { align: 'center' });
+      // ==============================================================
 
       const days = Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
       const tableBody = checklist.map((item, rowIndex) => {
@@ -288,10 +312,28 @@ const BottomLevelAudit = () => {
       doc.text("Remarks: If Nonconformity please write on NCR format (back-side)", 10, finalY + 6);
       doc.text("QF/08/MRO - 18, Rev No: 02 dt 01.01.2022", 10, 200); doc.text("Page 1 of 2", 270, 200);
 
-      // PAGE 2 (NCR) 
-      doc.addPage(); doc.setDrawColor(0); doc.setLineWidth(0.3); doc.rect(10, 10, 40, 20); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-      doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); doc.rect(50, 10, 237, 20); doc.setFontSize(16);
-      doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 168, 18, { align: 'center' }); doc.setFontSize(14); doc.text("Non-Conformance Report", 168, 26, { align: 'center' });
+      // ==============================================================
+      // 🔥 PAGE 2 HEADER (NCR)
+      // ==============================================================
+      doc.addPage(); doc.setDrawColor(0); doc.setLineWidth(0.3); 
+      
+      // Box 1: Logo
+      doc.rect(10, 10, 40, 20); 
+      try {
+        doc.addImage(logo, 'PNG', 12, 11, 36, 18);
+      } catch (err) {
+        doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+        doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+        doc.text("AUTO", 30, 26, { align: 'center' }); 
+      }
+
+      // Box 2: Title (Full width till end of page margin)
+      doc.rect(50, 10, 237, 20); 
+      doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+      doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 168.5, 18, { align: 'center' }); 
+      doc.setFontSize(14); 
+      doc.text("Non-Conformance Report", 168.5, 26, { align: 'center' });
+      // ==============================================================
 
       const ncRows = ncReports.map((r, index) => [
         index + 1, new Date(r.ReportDate).toLocaleDateString('en-GB'), r.NonConformityDetails || '', r.Correction || '', r.RootCause || '', r.CorrectiveAction || '',
@@ -441,14 +483,16 @@ const BottomLevelAudit = () => {
                 <div><h3 className="font-bold uppercase text-sm">Non-Conformance Report</h3><p className="text-xs opacity-80 mt-1">Item #{modalItem.SlNo}</p></div>
                 <button onClick={() => setIsModalOpen(false)} className="hover:bg-red-700 rounded-full p-1"><X size={24} /></button>
               </div>
-              <div className="p-8 space-y-6 max-h-[75vh] overflow-y-auto">
+              <div className="p-8 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
                 <div className="bg-red-50 p-4 rounded-lg border border-red-100 flex justify-between"><p className="font-bold text-gray-800">{modalItem.CheckPointDesc}</p><span className="text-[10px] bg-orange-200 text-orange-800 px-2 py-1 rounded font-bold">{ncForm.status}</span></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="col-span-2"><label className="text-xs font-bold text-gray-500 block mb-1">NC Details</label><textarea rows="2" className={inputStyle} value={ncForm.ncDetails} onChange={e => setNcForm({ ...ncForm, ncDetails: e.target.value })} /></div>
                   <div><label className="text-xs font-bold text-gray-500 block mb-1">Correction</label><input className={inputStyle} value={ncForm.correction} onChange={e => setNcForm({ ...ncForm, correction: e.target.value })} /></div>
                   <div><label className="text-xs font-bold text-gray-500 block mb-1">Root Cause</label><input className={inputStyle} value={ncForm.rootCause} onChange={e => setNcForm({ ...ncForm, rootCause: e.target.value })} /></div>
                   <div className="col-span-2"><label className="text-xs font-bold text-gray-500 block mb-1">Corrective Action</label><textarea rows="2" className={inputStyle} value={ncForm.correctiveAction} onChange={e => setNcForm({ ...ncForm, correctiveAction: e.target.value })} /></div>
-                  <div className="col-span-1"><SearchableSelect label="Responsibility" options={supervisors} displayKey="OperatorName" value={ncForm.responsibility} onSelect={(op) => setNcForm(prev => ({ ...prev, responsibility: op.OperatorName }))} /></div>
+                  <div className="col-span-1">
+                    <SearchableSelect label="Responsibility" options={supervisors} displayKey="OperatorName" value={ncForm.responsibility} onSelect={(op) => setNcForm(prev => ({ ...prev, responsibility: op.OperatorName }))} />
+                  </div>
                   <div className="col-span-1"><label className="text-xs font-bold text-gray-500 block mb-1">Target Date</label><input type="date" className={inputStyle} value={ncForm.targetDate} onChange={e => setNcForm({ ...ncForm, targetDate: e.target.value })} /></div>
                 </div>
                 <div className="pt-4 border-t border-gray-100"><button onClick={submitReport} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-lg uppercase shadow-lg transition-colors">Save Report</button></div>
@@ -456,6 +500,14 @@ const BottomLevelAudit = () => {
             </div>
           </div>
         )}
+
+        <style dangerouslySetInnerHTML={{
+          __html: `
+          .custom-scrollbar::-webkit-scrollbar { height: 12px; width: 8px; }
+          .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+          .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+          .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        `}} />
       </div>
     </>
   );

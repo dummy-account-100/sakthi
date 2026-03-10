@@ -1,12 +1,35 @@
-import  { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
-import {  AlertTriangle, Save, FileDown, UserCheck, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, Save, FileDown, UserCheck, ShieldCheck, X, CheckCircle, Loader } from 'lucide-react';
 import SignatureCanvas from "react-signature-canvas";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Header from "../components/Header";
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import logo from '../Assets/logo.png';
+
+const ToastNotification = ({ data, onClose }) => {
+  useEffect(() => {
+    if (data.show && data.type !== 'loading') {
+      const timer = setTimeout(onClose, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [data, onClose]);
+
+  if (!data.show) return null;
+
+  const isError = data.type === 'error';
+  const isLoading = data.type === 'loading';
+
+  return (
+    <div className={`fixed top-6 right-6 z-[200] flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl transition-all duration-300 animate-in slide-in-from-right-8 ${isLoading ? 'bg-blue-50 border-l-4 border-blue-600 text-blue-800' : isError ? 'bg-red-50 border-l-4 border-red-600 text-red-800' : 'bg-green-50 border-l-4 border-green-600 text-green-800'}`}>
+      {isLoading ? <Loader className="animate-spin" size={20} /> : isError ? <AlertTriangle size={20} /> : <CheckCircle size={20} />}
+      <p className="font-bold text-sm">{data.message}</p>
+      {!isLoading && <button onClick={onClose} className="ml-4 opacity-50 hover:opacity-100"><X size={16} /></button>}
+    </div>
+  );
+};
 
 const HeaderSearchableSelect = ({ options, displayKey, onSelect, value, placeholder }) => {
   const [search, setSearch] = useState(value || "");
@@ -160,7 +183,6 @@ const ErrorProofVerification2 = () => {
 }, [fetchData]);
 
 
-
   const handleInputChange = (id, field, value) => {
     setVerifications(prev => prev.map(row => row.Id === id ? { ...row, [field]: value } : row));
   };
@@ -207,9 +229,35 @@ const ErrorProofVerification2 = () => {
     try {
       const doc = new jsPDF('l', 'mm', 'a4');
 
-      doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.text("SAKTHI AUTO COMPONENT LIMITED", 148.5, 12, { align: 'center' });
-      doc.setFontSize(16); doc.text("ERROR PROOF VERIFICATION CHECK LIST - FDY", 148.5, 20, { align: 'center' });
-      doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(`DISA MACHINE: ${headerData.disaMachine}`, 10, 30);
+      // ==============================================================
+      // 🔥 STANDARDIZED HEADER WITH IMAGE LOGO (PAGE 1)
+      // ==============================================================
+      doc.setLineWidth(0.3);
+      
+      // Box 1: SAKTHI AUTO (Logo Area)
+      doc.rect(10, 10, 40, 20);
+      try {
+        doc.addImage(logo, 'PNG', 12, 11, 36, 18);
+      } catch (err) {
+        doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+        doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+        doc.text("AUTO", 30, 26, { align: 'center' });
+      }
+
+      // Box 2: Title
+      doc.rect(50, 10, 187, 20);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text("ERROR PROOF VERIFICATION CHECK LIST - FDY", 143.5, 22, { align: 'center' });
+
+      // Box 3: Meta (DISA & Date)
+      doc.rect(237, 10, 50, 20);
+      doc.setFontSize(11);
+      doc.text(headerData.disaMachine, 262, 16, { align: 'center' });
+      doc.line(237, 20, 287, 20);
+      doc.setFontSize(10);
+      doc.text(`Date: ${currentDate}`, 262, 26, { align: 'center' });
+      // ==============================================================
 
       const mainHead = [
         [
@@ -230,7 +278,7 @@ const ErrorProofVerification2 = () => {
       });
 
       autoTable(doc, {
-        startY: 34, margin: { left: 10, right: 10 }, head: mainHead, body: mainBody, theme: 'grid',
+        startY: 35, margin: { left: 10, right: 10 }, head: mainHead, body: mainBody, theme: 'grid',
         styles: { fontSize: 7, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle' },
         headStyles: { fillColor: [230, 230, 230], textColor: [0, 0, 0], fontStyle: 'bold' },
         columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 45 }, 2: { cellWidth: 70 } }
@@ -254,7 +302,36 @@ const ErrorProofVerification2 = () => {
 
       if (reactionPlans.length > 0) {
         doc.addPage();
-        doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.text("REACTION PLAN", 148.5, 15, { align: 'center' });
+        
+        // ==============================================================
+        // 🔥 STANDARDIZED HEADER WITH IMAGE LOGO (PAGE 2)
+        // ==============================================================
+        doc.setLineWidth(0.3);
+        
+        // Box 1: SAKTHI AUTO (Logo Area)
+        doc.rect(10, 10, 40, 20);
+        try {
+          doc.addImage(logo, 'PNG', 12, 11, 36, 18);
+        } catch (err) {
+          doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+          doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+          doc.text("AUTO", 30, 26, { align: 'center' });
+        }
+
+        // Box 2: Title
+        doc.rect(50, 10, 187, 20);
+        doc.setFontSize(15);
+        doc.setFont('helvetica', 'bold');
+        doc.text("REACTION PLAN", 143.5, 22, { align: 'center' });
+
+        // Box 3: Meta (DISA & Date)
+        doc.rect(237, 10, 50, 20);
+        doc.setFontSize(11);
+        doc.text(headerData.disaMachine, 262, 16, { align: 'center' });
+        doc.line(237, 20, 287, 20);
+        doc.setFontSize(10);
+        doc.text(`Date: ${currentDate}`, 262, 26, { align: 'center' });
+        // ==============================================================
 
         const planHead = [['S.No', 'Error Proof No', 'Error Proof Name', 'Verification Date / Shift', 'Problem', 'Root Cause', 'Corrective Action', 'Status', 'Reviewed By (Op)', 'Approved By (Sup)', 'Remarks']];
         const planBody = reactionPlans.map((p, i) => [
@@ -263,7 +340,7 @@ const ErrorProofVerification2 = () => {
         ]);
 
         autoTable(doc, {
-          startY: 25, margin: { left: 5, right: 5 }, head: planHead, body: planBody, theme: 'grid',
+          startY: 35, margin: { left: 5, right: 5 }, head: planHead, body: planBody, theme: 'grid',
           styles: { fontSize: 7, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle' },
           headStyles: { fillColor: [230, 230, 230], textColor: [0, 0, 0], fontStyle: 'bold' },
           columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 15 }, 2: { cellWidth: 35 }, 3: { cellWidth: 25 }, 4: { cellWidth: 30 } },
@@ -294,7 +371,7 @@ const ErrorProofVerification2 = () => {
       <Header />
       <ToastContainer position="top-right" autoClose={3000} />
 
-      <div className="min-h-screen bg-gray-100 py-8 px-4 flex justify-center pb-20 items-stretch">
+      <div className="min-h-screen bg-[#2d2d2d] py-8 px-4 flex justify-center pb-20 items-stretch">
         <div className="w-full max-w-[95%] min-h-[85vh] bg-white shadow-lg border border-gray-300 rounded-xl flex flex-col overflow-hidden">
 
           <div className="bg-gray-900 py-5 px-6 flex justify-between items-center shrink-0 rounded-t-xl flex-wrap gap-4 border-b-2 border-orange-500">

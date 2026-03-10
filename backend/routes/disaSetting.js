@@ -288,7 +288,7 @@ router.delete("/records/:id", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  PDF REPORT 
+//  PDF REPORT (🔥 FIXED HEADER BOXES & LOGO.JPG)
 // ══════════════════════════════════════════════════════════════════════════════
 router.get("/report", async (req, res) => {
     try {
@@ -339,31 +339,41 @@ router.get("/report", async (req, res) => {
         const totalWeight = allWeights.reduce((sum, w) => sum + w, 0);
         const colWidths = allWeights.map(w => (w / totalWeight) * pageWidth);
 
-        const logoBoxWidth = colWidths[0] + colWidths[1];
-        const titleBoxWidth = pageWidth - logoBoxWidth;
-        const headerHeight = 60;
         const minRowHeight = 45; 
-
         const headerFontSize = headers.length > 8 ? 7 : 9;
         const bodyFontSize = headers.length > 8 ? 7 : 9;
 
         const drawHeaders = (y) => {
-            doc.rect(startX, y, logoBoxWidth, headerHeight).stroke();
-            doc.rect(startX + logoBoxWidth, y, titleBoxWidth, headerHeight).stroke();
+            // 🔥 STANDARDIZED HEADER MATCHING YOUR OTHER PDFS
+            const logoBoxWidth = 100;
+            const titleBoxWidth = pageWidth - logoBoxWidth;
+            const headerHeight = 40;
 
-            const logoPath = path.join(__dirname, "../assets/logo.png");
+            doc.lineWidth(1);
+            
+            // Box 1: Logo
+            doc.rect(startX, y, logoBoxWidth, headerHeight).stroke();
+            
+            // Pointing directly to logo.jpg inside the current __dirname (/controllers)
+            const logoPath = path.join(__dirname, "logo.jpg");
+            
             if (fs.existsSync(logoPath)) {
-                doc.image(logoPath, startX + 15, y + 10, {
-                    fit: [logoBoxWidth - 30, headerHeight - 20],
-                    align: 'center', valign: 'center'
+                // Renders actual image centered in the box
+                doc.image(logoPath, startX + 10, y + 5, {
+                    width: 80, height: 30, fit: [80, 30], align: 'center', valign: 'center'
                 });
+            } else {
+                doc.font("Helvetica-Bold").fontSize(12).text("SAKTHI\nAUTO", startX, y + 10, { width: logoBoxWidth, align: "center" });
             }
 
+            // Box 2: Title
+            doc.rect(startX + logoBoxWidth, y, titleBoxWidth, headerHeight).stroke();
             doc.font("Helvetica-Bold").fontSize(18);
-            doc.text("DISA SETTING ADJUSTMENT RECORD", startX + logoBoxWidth, y + 20, {
+            doc.text("DISA SETTING ADJUSTMENT RECORD", startX + logoBoxWidth, y + 14, {
                 width: titleBoxWidth, align: "center"
             });
 
+            // Table Headers
             const tableHeaderY = y + headerHeight;
             let currentX = startX;
             doc.font("Helvetica-Bold").fontSize(headerFontSize);
