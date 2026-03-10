@@ -35,7 +35,7 @@ axios.interceptors.request.use(
     }
 
     // 🔥 CRITICAL FIX FOR PRODUCTION: Allows cross-origin requests to send Authorization
-    config.withCredentials = true;
+  
 
     return config;
   },

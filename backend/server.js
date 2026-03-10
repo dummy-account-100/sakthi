@@ -21,7 +21,11 @@ const verifyToken = require('./middleware/authMiddleware');
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+    origin: '*', // '*' is perfectly safe now since withCredentials is off on the frontend
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // Routes
