@@ -15,6 +15,8 @@ const Supervisor = () => {
   // --- States for Disamatic Report ---
   const [disaReports, setDisaReports] = useState([]);
   const [selectedDisaReport, setSelectedDisaReport] = useState(null);
+  const [disaPdfUrl, setDisaPdfUrl] = useState(null); // 🔥 Added State
+  const [isDisaPdfLoading, setIsDisaPdfLoading] = useState(false); // 🔥 Added State
   const disaSigCanvas = useRef({});
 
   // --- States for Bottom Level Audit ---
@@ -77,27 +79,24 @@ const Supervisor = () => {
   };
 
   // 🔥 HELPER: Filters duplicates based on Date, Shift, and Disa Machine
-  // Keeps only the report with the highest ID (latest submission)
   const filterUniqueReports = (data) => {
     const uniqueMap = {};
-
     data.forEach((item) => {
-      // Create a unique key: YYYY-MM-DD | Shift | Disa
       const dateStr = new Date(item.reportDate).toISOString().split('T')[0];
       const key = `${dateStr}|${item.shift}|${item.disa || item.disaMachine}`;
-
-      // If key doesn't exist OR current item is newer (higher ID), store it
       if (!uniqueMap[key] || item.id > uniqueMap[key].id) {
         uniqueMap[key] = item;
       }
     });
-
-    // Convert back to array and sort by Date Descending, then ID Descending
     return Object.values(uniqueMap).sort((a, b) => {
       const dateA = new Date(a.reportDate);
       const dateB = new Date(b.reportDate);
       return dateB - dateA || b.id - a.id;
     });
+  };
+
+  const getAuthHeader = () => {
+    return { Authorization: `Bearer ${localStorage.getItem('token')}` };
   };
 
   // ==========================================
@@ -108,6 +107,23 @@ const Supervisor = () => {
       const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/forms/supervisor/${currentSupervisor}`);
       setDisaReports(filterUniqueReports(res.data));
     } catch (err) { toast.error("Failed to load Disamatic reports."); }
+  };
+
+  // 🔥 FIX: Added fetching logic for Disamatic PDF to include Bearer token
+  const handleOpenDisaModal = async (report) => {
+    setSelectedDisaReport(report);
+    setDisaPdfUrl(null);
+    setIsDisaPdfLoading(true);
+    try {
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/forms/download-pdf`, { 
+          params: { reportId: report.id }, 
+          responseType: 'blob',
+          headers: getAuthHeader()
+      });
+      const pdfBlobUrl = URL.createObjectURL(response.data);
+      setDisaPdfUrl(pdfBlobUrl);
+    } catch (error) { toast.error("Failed to generate Disamatic PDF preview."); }
+    setIsDisaPdfLoading(false);
   };
 
   const submitDisaSignature = async () => {
@@ -146,15 +162,14 @@ const Supervisor = () => {
       ]);
 
       const checklist = detailsRes.data.checklist; const monthlyLogs = monthlyRes.data.monthlyLogs || []; 
-      // eslint-disable-next-line
-      const ncReports = monthlyRes.data.ncReports || [];
-      const historyMap = {}; const holidayDays = new Set(); const vatDays = new Set();
+      const historyMap = {}; const holidayDays = new Set(); const vatDays = new Set(); const pmDays = new Set();
       const supSigMap = {}; const hofSig = monthlyLogs.find(l => l.HOFSignature)?.HOFSignature;
 
       monthlyLogs.forEach(log => {
         const logDay = log.DayVal; const key = String(log.MasterId);
         if (Number(log.IsHoliday) === 1) holidayDays.add(logDay);
         if (Number(log.IsVatCleaning) === 1) vatDays.add(logDay);
+        if (Number(log.IsPreventiveMaintenance) === 1) pmDays.add(logDay); // 🔥 Added Preventative Maintenance
         if (log.SupervisorSignature) supSigMap[logDay] = log.SupervisorSignature;
         if (!historyMap[key]) historyMap[key] = {};
         if (log.IsNA === 1) { historyMap[key][logDay] = 'NA'; } else if (log.IsDone === 1) { historyMap[key][logDay] = 'Y'; } else { historyMap[key][logDay] = 'N'; }
@@ -175,6 +190,7 @@ const Supervisor = () => {
         for (let i = 1; i <= daysInMonth; i++) {
           if (holidayDays.has(i)) { if (rowIndex === 0) row.push({ content: 'H\nO\nL\nI\nD\nA\nY', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [230, 230, 230], fontStyle: 'bold', textColor: [100, 100, 100] } }); }
           else if (vatDays.has(i)) { if (rowIndex === 0) row.push({ content: 'V\nA\nT\n\nC\nL\nE\nA\nN\nI\nN\nG', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [210, 230, 255], fontStyle: 'bold', textColor: [50, 100, 150] } }); }
+          else if (pmDays.has(i)) { if (rowIndex === 0) row.push({ content: 'P\nR\nE\nV\n.\n\nM\nA\nI\nN\nT', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [240, 220, 255], fontStyle: 'bold', textColor: [100, 50, 150] } }); } // 🔥 Added Preventive Maintenance column
           else { row.push(historyMap[String(item.MasterId)]?.[i] || ''); }
         }
         return row;
@@ -361,7 +377,11 @@ const Supervisor = () => {
   const handleOpenFourMModal = async (report) => {
     setSelectedFourMReport(report); setFourMPdfUrl(null); setIsFourMPdfLoading(true);
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/4m-change/report`, { params: { reportId: report.id }, responseType: 'blob' });
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/4m-change/report`, { 
+        params: { reportId: report.id }, 
+        responseType: 'blob',
+        headers: getAuthHeader()
+      });
       const pdfBlobUrl = URL.createObjectURL(response.data);
       setFourMPdfUrl(pdfBlobUrl);
     } catch (error) { toast.error("Failed to generate 4M PDF."); }
@@ -394,14 +414,14 @@ const Supervisor = () => {
     setIsErrorPdfLoading(true);
     try {
       const line = report.DisaMachine || report.disaMachine || report.line;
-      // Get exact date safely to filter the PDF
       const localDate = new Date(report.recordDate || report.RecordDate);
       const offset = localDate.getTimezoneOffset();
       const dateStr = new Date(localDate.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
 
       const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/error-proof/report`, { 
           params: { line, date: dateStr }, 
-          responseType: 'blob' 
+          responseType: 'blob',
+          headers: getAuthHeader()
       });
       const pdfBlobUrl = URL.createObjectURL(response.data);
       setErrorPdfUrl(pdfBlobUrl);
@@ -439,7 +459,11 @@ const Supervisor = () => {
     setSelectedMQReport(report);
     setMqPdfUrl(null);
     try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/mould-quality/report?reportId=${report.id}`, { responseType: 'blob' });
+      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/mould-quality/report`, { 
+        params: { reportId: report.id },
+        responseType: 'blob',
+        headers: getAuthHeader()
+      });
       setMqPdfUrl(URL.createObjectURL(res.data));
     } catch (err) { toast.error("Failed to load PDF preview"); }
   };
@@ -478,7 +502,7 @@ const Supervisor = () => {
                       <td className="p-3 border border-gray-300 text-center font-bold text-gray-400">#{report.id}</td>
                       <td className="p-3 border border-gray-300 font-medium">{formatDate(report.reportDate)}</td><td className="p-3 border border-gray-300">{report.shift}</td><td className="p-3 border border-gray-300 font-bold">DISA - {report.disa}</td><td className="p-3 border border-gray-300">{report.ppOperator || "N/A"}</td>
                       <td className="p-3 border border-gray-300">{report.supervisorSignature ? <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">✓ Signed</span> : <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">Pending Review</span>}</td>
-                      <td className="p-3 border border-gray-300 text-center">{!report.supervisorSignature && <button onClick={() => setSelectedDisaReport(report)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow transition-colors">Review & Sign</button>}</td>
+                      <td className="p-3 border border-gray-300 text-center">{!report.supervisorSignature && <button onClick={() => handleOpenDisaModal(report)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow transition-colors">Review & Sign</button>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -656,13 +680,14 @@ const Supervisor = () => {
         <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
           <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
             <h3 className="font-bold text-xl uppercase tracking-wider">Review & Sign Disamatic Report</h3>
-            <button onClick={() => setSelectedDisaReport(null)} className="text-gray-400 hover:text-red-400 transition-colors">
+            <button onClick={() => { setSelectedDisaReport(null); setDisaPdfUrl(null); }} className="text-gray-400 hover:text-red-400 transition-colors">
               <X size={28} />
             </button>
           </div>
           <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
             <div className="flex-1 h-full bg-[#525659] relative flex items-center justify-center">
-              <iframe src={`${process.env.REACT_APP_API_URL}/api/forms/download-pdf?reportId=${selectedDisaReport.id}#toolbar=0&view=FitH`} className="w-full h-full border-none relative z-10" title="PDF" />
+              {isDisaPdfLoading && <Loader className="animate-spin text-white w-12 h-12 absolute" />}
+              {disaPdfUrl && <iframe src={`${disaPdfUrl}#toolbar=0&view=FitH`} className="w-full h-full border-none relative z-10" title="PDF" />}
             </div>
             <div className="w-full lg:w-[400px] bg-gray-50 border-l border-gray-300 flex flex-col shrink-0 shadow-2xl z-10 overflow-y-auto">
               <div className="p-6 flex-1 flex flex-col">

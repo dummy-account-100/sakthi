@@ -40,7 +40,8 @@ const NotificationToast = ({ data, onClose }) => {
     );
 };
 
-const ConfigDisaColumns = () => {
+// Accept the onBack prop here
+const ConfigDisaColumns = ({ onBack }) => {
     const navigate = useNavigate();
 
     const [loading, setLoading] = useState(true);
@@ -145,7 +146,8 @@ const ConfigDisaColumns = () => {
 
             <div className="bg-[#222] border-b border-white/5 py-4 px-10 flex items-center justify-between sticky top-0 z-50">
                 <div className="flex items-center gap-6">
-                    <button onClick={() => navigate('/admin')} className="text-white/50 hover:text-[#ff9100] transition-colors p-2 rounded-lg hover:bg-white/5">
+                    {/* Fire the onBack prop if it exists, otherwise fallback to navigate */}
+                    <button onClick={onBack || (() => navigate('/admin'))} className="text-white/50 hover:text-[#ff9100] transition-colors p-2 rounded-lg hover:bg-white/5">
                         <ArrowLeft className="w-6 h-6" />
                     </button>
                     <div>

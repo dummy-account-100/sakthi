@@ -294,6 +294,7 @@ const DmmEditor = ({ date, disa, toast, setToast }) => {
     );
 };
 
+
 /* 3. DISA OPERATOR CHECKLIST */
 const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
     const [data, setData] = useState(null);
@@ -313,6 +314,7 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
                     IsDone: item.IsDone === true || item.IsDone === 1,
                     IsHoliday: item.IsHoliday === true || item.IsHoliday === 1,
                     IsVatCleaning: item.IsVatCleaning === true || item.IsVatCleaning === 1,
+                    IsPreventiveMaintenance: item.IsPreventiveMaintenance === true || item.IsPreventiveMaintenance === 1, // Added PM Mapping
                     ReadingValue: item.ReadingValue || ''
                 }));
                 setData({ checklist: cl, originalData: res.data });
@@ -380,13 +382,20 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
 
     const handleMasterHolidayToggle = (checked) => {
         setData(prev => ({
-            ...prev, checklist: prev.checklist.map(c => ({ ...c, IsHoliday: checked, IsVatCleaning: checked ? false : c.IsVatCleaning, IsDone: checked ? false : c.IsDone, ReadingValue: checked ? '' : c.ReadingValue }))
+            ...prev, checklist: prev.checklist.map(c => ({ ...c, IsHoliday: checked, IsVatCleaning: checked ? false : c.IsVatCleaning, IsPreventiveMaintenance: checked ? false : c.IsPreventiveMaintenance, IsDone: checked ? false : c.IsDone, ReadingValue: checked ? '' : c.ReadingValue }))
         }));
     };
 
     const handleMasterVatToggle = (checked) => {
         setData(prev => ({
-            ...prev, checklist: prev.checklist.map(c => ({ ...c, IsVatCleaning: checked, IsHoliday: checked ? false : c.IsHoliday, IsDone: checked ? false : c.IsDone, ReadingValue: checked ? '' : c.ReadingValue }))
+            ...prev, checklist: prev.checklist.map(c => ({ ...c, IsVatCleaning: checked, IsHoliday: checked ? false : c.IsHoliday, IsPreventiveMaintenance: checked ? false : c.IsPreventiveMaintenance, IsDone: checked ? false : c.IsDone, ReadingValue: checked ? '' : c.ReadingValue }))
+        }));
+    };
+
+    // Added PM Master Toggle
+    const handleMasterPMToggle = (checked) => {
+        setData(prev => ({
+            ...prev, checklist: prev.checklist.map(c => ({ ...c, IsPreventiveMaintenance: checked, IsHoliday: checked ? false : c.IsHoliday, IsVatCleaning: checked ? false : c.IsVatCleaning, IsDone: checked ? false : c.IsDone, ReadingValue: checked ? '' : c.ReadingValue }))
         }));
     };
 
@@ -394,7 +403,7 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
         setToast({ msg: 'Saving…', type: 'loading' });
         try {
             const itemsToSave = data.checklist.map(item => ({
-                MasterId: item.MasterId, IsDone: item.IsDone, IsHoliday: item.IsHoliday, IsVatCleaning: item.IsVatCleaning, ReadingValue: item.ReadingValue || ''
+                MasterId: item.MasterId, IsDone: item.IsDone, IsHoliday: item.IsHoliday, IsVatCleaning: item.IsVatCleaning, IsPreventiveMaintenance: item.IsPreventiveMaintenance, ReadingValue: item.ReadingValue || ''
             }));
             await authAxios.post(`${API}/api/disa-checklist/submit-batch`, {
                 items: itemsToSave, sign: data.originalData.checklist[0]?.AssignedHOD || '',
@@ -409,6 +418,7 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
 
     const isGlobalHoliday = data.checklist.every(i => i.IsHoliday);
     const isGlobalVatCleaning = data.checklist.every(i => i.IsVatCleaning);
+    const isGlobalPM = data.checklist.every(i => i.IsPreventiveMaintenance);
 
     return (
         <div className="space-y-4">
@@ -429,12 +439,16 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
                                 VAT Cleaning<br />
                                 <input type="checkbox" checked={isGlobalVatCleaning} onChange={e => handleMasterVatToggle(e.target.checked)} className="w-4 h-4 mt-2 accent-blue-600 cursor-pointer" />
                             </th>
+                            <th className="p-3 text-center text-[10px] uppercase tracking-widest text-white/50 w-24 border-l border-white/5">
+                                Prev. Maint.<br />
+                                <input type="checkbox" checked={isGlobalPM} onChange={e => handleMasterPMToggle(e.target.checked)} className="w-4 h-4 mt-2 accent-purple-600 cursor-pointer" />
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
                         {data.checklist.map((item, i) => {
                             const hasReport = !!reportsMap[item.MasterId];
-                            const isDisabled = item.IsHoliday || item.IsVatCleaning;
+                            const isDisabled = item.IsHoliday || item.IsVatCleaning || item.IsPreventiveMaintenance; // Updated Condition
                             const isDecimalRow = item.SlNo === 1 || item.SlNo === 2 || item.SlNo === 17;
 
                             return (
@@ -467,6 +481,10 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
                                     <td className="p-3 text-center bg-black/10">
                                         <input type="checkbox" checked={item.IsVatCleaning || false} readOnly disabled className="w-5 h-5 accent-blue-600 cursor-not-allowed opacity-70" />
                                     </td>
+                                    
+                                    <td className="p-3 text-center bg-black/10 border-l border-white/5">
+                                        <input type="checkbox" checked={item.IsPreventiveMaintenance || false} readOnly disabled className="w-5 h-5 accent-purple-600 cursor-not-allowed opacity-70" />
+                                    </td>
                                 </tr>
                             );
                         })}
@@ -476,6 +494,7 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
 
             {isModalOpen && modalItem && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[500] p-4 animate-in fade-in">
+                    {/* ... (Modal stays exactly the same) ... */}
                     <div className="bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95">
                         <div className="bg-red-600 p-5 flex justify-between items-center text-white">
                             <div><h3 className="font-bold uppercase text-sm tracking-wider">Non-Conformance Report</h3><p className="text-xs opacity-80 mt-1">Checkpoint #{modalItem.SlNo}</p></div>
@@ -1051,6 +1070,7 @@ const FourMEditor = ({ date, toast, setToast }) => {
     );
 };
 
+
 /* 7. LPA – Bottom Level Audit */
 const LpaEditor = ({ date, disa, toast, setToast }) => {
     const [data, setData] = useState(null);
@@ -1070,6 +1090,7 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
                     IsDone: item.IsDone === true || item.IsDone === 1,
                     IsHoliday: item.IsHoliday === true || item.IsHoliday === 1,
                     IsVatCleaning: item.IsVatCleaning === true || item.IsVatCleaning === 1,
+                    IsPreventiveMaintenance: item.IsPreventiveMaintenance === true || item.IsPreventiveMaintenance === 1, // Added PM Mapping
                     ReadingValue: item.ReadingValue || ''
                 }));
                 setData({ checklist: cl, originalData: res.data });
@@ -1137,13 +1158,20 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
 
     const handleMasterHolidayToggle = (checked) => {
         setData(prev => ({
-            ...prev, checklist: prev.checklist.map(c => ({ ...c, IsHoliday: checked, IsVatCleaning: checked ? false : c.IsVatCleaning, IsDone: checked ? false : c.IsDone, ReadingValue: checked ? '' : c.ReadingValue }))
+            ...prev, checklist: prev.checklist.map(c => ({ ...c, IsHoliday: checked, IsVatCleaning: checked ? false : c.IsVatCleaning, IsPreventiveMaintenance: checked ? false : c.IsPreventiveMaintenance, IsDone: checked ? false : c.IsDone, ReadingValue: checked ? '' : c.ReadingValue }))
         }));
     };
 
     const handleMasterVatToggle = (checked) => {
         setData(prev => ({
-            ...prev, checklist: prev.checklist.map(c => ({ ...c, IsVatCleaning: checked, IsHoliday: checked ? false : c.IsHoliday, IsDone: checked ? false : c.IsDone, ReadingValue: checked ? '' : c.ReadingValue }))
+            ...prev, checklist: prev.checklist.map(c => ({ ...c, IsVatCleaning: checked, IsHoliday: checked ? false : c.IsHoliday, IsPreventiveMaintenance: checked ? false : c.IsPreventiveMaintenance, IsDone: checked ? false : c.IsDone, ReadingValue: checked ? '' : c.ReadingValue }))
+        }));
+    };
+
+    // Added PM Master Toggle
+    const handleMasterPMToggle = (checked) => {
+        setData(prev => ({
+            ...prev, checklist: prev.checklist.map(c => ({ ...c, IsPreventiveMaintenance: checked, IsHoliday: checked ? false : c.IsHoliday, IsVatCleaning: checked ? false : c.IsVatCleaning, IsDone: checked ? false : c.IsDone, ReadingValue: checked ? '' : c.ReadingValue }))
         }));
     };
 
@@ -1151,7 +1179,7 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
         setToast({ msg: 'Saving…', type: 'loading' });
         try {
             const itemsToSave = data.checklist.map(item => ({
-                MasterId: item.MasterId, IsDone: item.IsDone, IsHoliday: item.IsHoliday, IsVatCleaning: item.IsVatCleaning, ReadingValue: item.ReadingValue || ''
+                MasterId: item.MasterId, IsDone: item.IsDone, IsHoliday: item.IsHoliday, IsVatCleaning: item.IsVatCleaning, IsPreventiveMaintenance: item.IsPreventiveMaintenance, ReadingValue: item.ReadingValue || ''
             }));
             await authAxios.post(`${API}/api/bottom-level-audit/submit-batch`, {
                 items: itemsToSave, sign: data.originalData.checklist[0]?.AssignedHOD || '',
@@ -1166,6 +1194,7 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
 
     const isGlobalHoliday = data.checklist.every(i => i.IsHoliday);
     const isGlobalVatCleaning = data.checklist.every(i => i.IsVatCleaning);
+    const isGlobalPM = data.checklist.every(i => i.IsPreventiveMaintenance); // Added PM Global Boolean
 
     return (
         <div className="space-y-4">
@@ -1186,12 +1215,16 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
                                 VAT Cleaning<br />
                                 <input type="checkbox" checked={isGlobalVatCleaning} onChange={e => handleMasterVatToggle(e.target.checked)} className="w-4 h-4 mt-2 accent-blue-600 cursor-pointer" />
                             </th>
+                            <th className="p-3 text-center text-[10px] uppercase tracking-widest text-white/50 w-24 border-l border-white/5">
+                                Prev. Maint.<br />
+                                <input type="checkbox" checked={isGlobalPM} onChange={e => handleMasterPMToggle(e.target.checked)} className="w-4 h-4 mt-2 accent-purple-600 cursor-pointer" />
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
                         {data.checklist.map((item, i) => {
                             const hasReport = !!reportsMap[item.MasterId];
-                            const isDisabled = item.IsHoliday || item.IsVatCleaning;
+                            const isDisabled = item.IsHoliday || item.IsVatCleaning || item.IsPreventiveMaintenance; // Updated condition
                             const isDecimalRow = item.SlNo === 1 || item.SlNo === 2 || item.SlNo === 17;
 
                             return (
@@ -1224,6 +1257,10 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
                                     <td className="p-3 text-center bg-black/10">
                                         <input type="checkbox" checked={item.IsVatCleaning || false} readOnly disabled className="w-5 h-5 accent-blue-600 cursor-not-allowed opacity-70" />
                                     </td>
+                                    
+                                    <td className="p-3 text-center bg-black/10 border-l border-white/5">
+                                        <input type="checkbox" checked={item.IsPreventiveMaintenance || false} readOnly disabled className="w-5 h-5 accent-purple-600 cursor-not-allowed opacity-70" />
+                                    </td>
                                 </tr>
                             );
                         })}
@@ -1233,6 +1270,7 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
 
             {isModalOpen && modalItem && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[500] p-4 animate-in fade-in">
+                    {/* ... (Modal stays exactly the same) ... */}
                     <div className="bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95">
                         <div className="bg-red-600 p-5 flex justify-between items-center text-white">
                             <div><h3 className="font-bold uppercase text-sm tracking-wider">Non-Conformance Report</h3><p className="text-xs opacity-80 mt-1">Checkpoint #{modalItem.SlNo}</p></div>
