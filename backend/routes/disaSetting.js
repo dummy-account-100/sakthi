@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-// 🔥 BULLETPROOF IMPORT: Handles both `module.exports = sql` AND `module.exports = { sql }`
+// 🔥 BULLETPROOF IMPORT
 const db = require("../db");
 const sql = db.sql || db; 
 
@@ -159,6 +159,7 @@ router.post("/add", async (req, res) => {
     }
 });
 
+// BULK EXPORT ROUTE
 router.get("/records", async (req, res) => {
     try {
         const { fromDate, toDate } = req.query;
@@ -180,7 +181,14 @@ router.get("/records", async (req, res) => {
         const recordsResult = await request.query(query);
         const records = recordsResult.recordset;
 
-        if (records.length === 0) return res.json([]);
+        let qfHistory = [];
+        try {
+            const qfReq = new sql.Request();
+            const qfRes = await qfReq.query(`SELECT qfValue, date FROM DISASettingAdjustmentQFvalues WHERE formName = 'disa-setting-adjustment' ORDER BY date DESC, id DESC`);
+            qfHistory = qfRes.recordset;
+        } catch(e) { console.error("Error fetching DISA Adjustment QF Values", e); }
+
+        if (records.length === 0) return res.json({ records: [], qfHistory });
 
         let valMap = {};
         try {
@@ -205,7 +213,7 @@ router.get("/records", async (req, res) => {
             customValues: valMap[r.id] || {}
         }));
 
-        res.json(merged);
+        res.json({ records: merged, qfHistory });
     } catch (err) {
         console.error("Error fetching records:", err);
         res.status(500).json({ message: "DB error", error: err.message });
@@ -288,7 +296,7 @@ router.delete("/records/:id", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  PDF REPORT (🔥 FIXED HEADER BOXES & LOGO.JPG)
+//  PDF REPORT (OPERATOR VIEW) - UPDATED FOR DYNAMIC QF
 // ══════════════════════════════════════════════════════════════════════════════
 router.get("/report", async (req, res) => {
     try {
@@ -299,6 +307,14 @@ router.get("/report", async (req, res) => {
             FROM DISASettingAdjustmentRecord
             ORDER BY id DESC
         `);
+
+        // 🔥 Fetch QF History
+        let qfHistory = [];
+        try {
+            const qfReq = new sql.Request();
+            const qfRes = await qfReq.query(`SELECT qfValue, date FROM DISASettingAdjustmentQFvalues WHERE formName = 'disa-setting-adjustment' ORDER BY date DESC, id DESC`);
+            qfHistory = qfRes.recordset;
+        } catch(e) {}
 
         let customCols = [];
         let customValMap = {};
@@ -344,21 +360,16 @@ router.get("/report", async (req, res) => {
         const bodyFontSize = headers.length > 8 ? 7 : 9;
 
         const drawHeaders = (y) => {
-            // 🔥 STANDARDIZED HEADER MATCHING YOUR OTHER PDFS
             const logoBoxWidth = 100;
             const titleBoxWidth = pageWidth - logoBoxWidth;
             const headerHeight = 40;
 
             doc.lineWidth(1);
             
-            // Box 1: Logo
             doc.rect(startX, y, logoBoxWidth, headerHeight).stroke();
-            
-            // Pointing directly to logo.jpg inside the current __dirname (/controllers)
             const logoPath = path.join(__dirname, "logo.jpg");
             
             if (fs.existsSync(logoPath)) {
-                // Renders actual image centered in the box
                 doc.image(logoPath, startX + 10, y + 5, {
                     width: 80, height: 30, fit: [80, 30], align: 'center', valign: 'center'
                 });
@@ -366,14 +377,12 @@ router.get("/report", async (req, res) => {
                 doc.font("Helvetica-Bold").fontSize(12).text("SAKTHI\nAUTO", startX, y + 10, { width: logoBoxWidth, align: "center" });
             }
 
-            // Box 2: Title
             doc.rect(startX + logoBoxWidth, y, titleBoxWidth, headerHeight).stroke();
             doc.font("Helvetica-Bold").fontSize(18);
             doc.text("DISA SETTING ADJUSTMENT RECORD", startX + logoBoxWidth, y + 14, {
                 width: titleBoxWidth, align: "center"
             });
 
-            // Table Headers
             const tableHeaderY = y + headerHeight;
             let currentX = startX;
             doc.font("Helvetica-Bold").fontSize(headerFontSize);
@@ -387,11 +396,10 @@ router.get("/report", async (req, res) => {
             return tableHeaderY + minRowHeight;
         };
 
-        const drawFooter = (yPos) => {
+        const drawFooter = (yPos, qfString) => {
             const footerY = doc.page.height - 40; 
             doc.font("Helvetica").fontSize(8);
-            const controlText = "QF/07/FBP-02, Rev. No.01 Dt 14.05.2025";
-            doc.text(controlText, startX, footerY, { align: "left" });
+            doc.text(qfString, startX, footerY, { align: "left" });
         };
 
         const processText = (text) => {
@@ -401,6 +409,11 @@ router.get("/report", async (req, res) => {
             }
             return text;
         };
+
+        // 🔥 FIX: ALWAYS USE THE MOST RECENT QF VALUE REGARDLESS OF DATE
+        const dynamicQfString = (qfHistory && qfHistory.length > 0) 
+            ? qfHistory[0].qfValue 
+            : "QF/07/FBP-02, Rev. No.01 Dt 14.05.2025";
 
         let y = drawHeaders(startY);
 
@@ -425,7 +438,7 @@ router.get("/report", async (req, res) => {
             });
 
             if (y + maxRowHeight > doc.page.height - 70) {
-                drawFooter(y);
+                drawFooter(y, dynamicQfString);
                 doc.addPage({ size: "A4", layout: "landscape", margin: 30 }); 
                 y = drawHeaders(30);
             }
@@ -452,7 +465,7 @@ router.get("/report", async (req, res) => {
             y += maxRowHeight;
         });
 
-        drawFooter(y);
+        drawFooter(y, dynamicQfString);
         doc.end();
     } catch (err) {
         console.error("Error generating DISA report:", err);

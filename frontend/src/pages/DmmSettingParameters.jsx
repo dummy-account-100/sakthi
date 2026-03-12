@@ -117,6 +117,7 @@ const DmmSettingParameters = () => {
 
   const [shiftsData, setShiftsData] = useState({ 1: [], 2: [], 3: [] });
   const [dropdowns, setDropdowns] = useState({ operators: [], supervisors: [] });
+  const [qfHistory, setQfHistory] = useState([]); // 🔥 Added QF History State
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState({ show: false, type: '', message: '' });
 
@@ -142,6 +143,7 @@ const DmmSettingParameters = () => {
       });
 
       setDropdowns({ operators: res.data.operators, supervisors: res.data.supervisors });
+      setQfHistory(res.data.qfHistory || []); // 🔥 Store the fetched QF history
 
       if (res.data.shiftsMeta) {
         const loadedMeta = { ...shiftsMeta };
@@ -228,6 +230,21 @@ const DmmSettingParameters = () => {
     try {
       const doc = new jsPDF('l', 'mm', 'a4');
       
+      // 🔥 DETERMINE THE CORRECT QF VALUE 
+      let currentPageQfValue = "QF/07/FBP-13, Rev.No:06 dt 08.10.2025"; // Fallback
+      const reportDateObj = new Date(headerData.date);
+      reportDateObj.setHours(0, 0, 0, 0);
+
+      for (let qf of qfHistory) {
+          if (!qf.date) continue;
+          const qfDate = new Date(qf.date);
+          qfDate.setHours(0, 0, 0, 0);
+          if (qfDate <= reportDateObj) {
+              currentPageQfValue = qf.qfValue;
+              break;
+          }
+      }
+
       // ==============================================================
       // 🔥 STANDARDIZED HEADER WITH IMAGE LOGO
       // ==============================================================
@@ -315,12 +332,12 @@ const DmmSettingParameters = () => {
 
         currentY = doc.lastAutoTable.finalY + 5;
         if (currentY > 175 && index < 2) {
-          doc.setFontSize(8); doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200);
+          doc.setFontSize(8); doc.text(currentPageQfValue, 10, 200); // 🔥 DYNAMIC QF
           doc.addPage(); currentY = 15;
         }
       });
 
-      doc.setFontSize(8); doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200);
+      doc.setFontSize(8); doc.text(currentPageQfValue, 10, 200); // 🔥 DYNAMIC QF
       doc.save(`DMM_Setting_Parameters_${headerData.date}.pdf`);
       setNotification({ show: false, type: '', message: '' });
 

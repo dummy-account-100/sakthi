@@ -162,28 +162,24 @@ exports.getMonthlyReport = async (req, res) => {
     const checklistResult = await sql.query`
       SELECT MasterId, DAY(LogDate) as DayVal, IsDone, IsHoliday, IsVatCleaning, IsPreventiveMaintenance, ReadingValue, OperatorSignature, AssignedHOD, HODSignature
       FROM MachineChecklist_Trans
-      WHERE MONTH(LogDate) = ${month} 
-        AND YEAR(LogDate) = ${year} 
-        AND DisaMachine = ${disaMachine}
+      WHERE MONTH(LogDate) = ${month} AND YEAR(LogDate) = ${year} AND DisaMachine = ${disaMachine}
     `;
 
     const ncResult = await sql.query`
-      SELECT 
-        ReportId, ReportDate, NonConformityDetails, 
-        Correction, RootCause, CorrectiveAction, 
-        TargetDate, Responsibility, Sign, Status
+      SELECT ReportId, ReportDate, NonConformityDetails, Correction, RootCause, CorrectiveAction, TargetDate, Responsibility, Sign, Status
       FROM DisaNonConformanceReport
-      WHERE MONTH(ReportDate) = ${month} 
-        AND YEAR(ReportDate) = ${year} 
-        AND DisaMachine = ${disaMachine}
+      WHERE MONTH(ReportDate) = ${month} AND YEAR(ReportDate) = ${year} AND DisaMachine = ${disaMachine}
       ORDER BY ReportDate ASC
     `;
 
-    res.json({
-      monthlyLogs: checklistResult.recordset,
-      ncReports: ncResult.recordset
-    });
+    // 🔥 FETCH QF HISTORY
+    let qfHistory = [];
+    try {
+        const qfRes = await sql.query`SELECT qfValue, date FROM MachineChecklistQFvalues WHERE formName = 'disa-operator' ORDER BY date DESC, id DESC`;
+        qfHistory = qfRes.recordset;
+    } catch(e) { console.error("MachineChecklistQFvalues fetch error"); }
 
+    res.json({ monthlyLogs: checklistResult.recordset, ncReports: ncResult.recordset, qfHistory });
   } catch (err) {
     console.error("Monthly Report Error:", err);
     res.status(500).send(err.message);
@@ -235,14 +231,9 @@ exports.getBulkData = async (req, res) => {
     const { fromDate, toDate } = req.query;
     const request = new sql.Request();
 
-    // 🔥 FIX: Hides soft-deleted master columns from the bulk export too
     const masterRes = await request.query(`SELECT * FROM MachineChecklist_Master WHERE IsDeleted = 0 OR IsDeleted IS NULL ORDER BY SlNo ASC`);
 
-    let transQuery = `
-            SELECT T.*, M.CheckPointDesc, M.CheckMethod, M.SlNo 
-            FROM MachineChecklist_Trans T
-            INNER JOIN MachineChecklist_Master M ON T.MasterId = M.MasterId
-        `;
+    let transQuery = `SELECT T.*, M.CheckPointDesc, M.CheckMethod, M.SlNo FROM MachineChecklist_Trans T INNER JOIN MachineChecklist_Master M ON T.MasterId = M.MasterId`;
     let ncrQuery = `SELECT * FROM DisaNonConformanceReport`;
 
     if (fromDate && toDate) {
@@ -255,7 +246,14 @@ exports.getBulkData = async (req, res) => {
     const transRes = await request.query(transQuery);
     const ncrRes = await request.query(ncrQuery);
 
-    res.json({ master: masterRes.recordset, trans: transRes.recordset, ncr: ncrRes.recordset });
+    // 🔥 FETCH QF HISTORY
+    let qfHistory = [];
+    try {
+        const qfRes = await request.query(`SELECT qfValue, date FROM MachineChecklistQFvalues WHERE formName = 'disa-operator' ORDER BY date DESC, id DESC`);
+        qfHistory = qfRes.recordset;
+    } catch(e) { console.error("MachineChecklistQFvalues fetch error"); }
+
+    res.json({ master: masterRes.recordset, trans: transRes.recordset, ncr: ncrRes.recordset, qfHistory });
   } catch (error) {
     console.error("Error fetching bulk data:", error);
     res.status(500).json({ error: error.message });

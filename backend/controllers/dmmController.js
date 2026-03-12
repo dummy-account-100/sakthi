@@ -1,45 +1,35 @@
 const sql = require('../db');
 
-// --- Operator Fetch (FIXED 500 ERROR) ---
-// --- Operator Fetch (FIXED 500 ERROR) ---
 exports.getDetails = async (req, res) => {
   try {
     const { date, disa } = req.query;
 
-    // 🔥 UPDATED: Fetch both operators and supervisors for the Operator dropdown
     const operatorsRes = await sql.query`SELECT username AS OperatorName FROM dbo.Users WHERE role IN ('operator', 'supervisor') ORDER BY username`;
     const supervisorsRes = await sql.query`SELECT username AS supervisorName FROM dbo.Users WHERE role = 'supervisor' ORDER BY username`;
 
-    // 2. Fetch the Base Records
     const recordsRes = await sql.query`
       SELECT * FROM DmmSettingParameters 
       WHERE RecordDate = ${date} AND DisaMachine = ${disa}
       ORDER BY Shift ASC, RowIndex ASC
     `;
 
-    // 3. Fetch Custom Values linked to these records
-    // We extract IDs safely to prevent "map of undefined" or empty string errors
     const records = recordsRes.recordset || [];
     const recordIds = records.map(r => r.id).filter(id => id != null);
 
     let customValuesMap = {};
-
     if (recordIds.length > 0) {
-      // We use a join or a safe IN clause
       const idList = recordIds.join(',');
       const customRes = await sql.query(`
             SELECT rowId, columnId, value 
             FROM DmmCustomColumnValues 
             WHERE rowId IN (${idList})
         `);
-
       customRes.recordset.forEach(cv => {
         if (!customValuesMap[cv.rowId]) customValuesMap[cv.rowId] = {};
         customValuesMap[cv.rowId][cv.columnId] = cv.value;
       });
     }
 
-    // 4. Initialize result structures
     const shiftsData = { 1: [], 2: [], 3: [] };
     const shiftsMeta = {
       1: { operator: '', supervisor: '', supervisorSignature: '', isIdle: false },
@@ -47,9 +37,7 @@ exports.getDetails = async (req, res) => {
       3: { operator: '', supervisor: '', supervisorSignature: '', isIdle: false }
     };
 
-    // 5. Populate Data
     records.forEach(row => {
-      // Safely attach custom values if they exist for this row ID
       const rowId = row.id;
       const mappedRow = {
         ...row,
@@ -58,7 +46,6 @@ exports.getDetails = async (req, res) => {
 
       shiftsData[row.Shift].push(mappedRow);
 
-      // Update Meta (Operator/Supervisor info is usually the same for all rows in a shift)
       shiftsMeta[row.Shift] = {
         operator: row.OperatorName || '',
         supervisor: row.SupervisorName || '',
@@ -67,12 +54,19 @@ exports.getDetails = async (req, res) => {
       };
     });
 
-    // 6. Send Response
+    // 🔥 FETCH QF HISTORY 
+    let qfHistory = [];
+    try {
+       const qfRes = await sql.query`SELECT qfValue, date FROM DmmSettingQFvalues WHERE formName = 'dmm-setting-parameters' ORDER BY date DESC, id DESC`;
+       qfHistory = qfRes.recordset;
+    } catch(e) { console.error("DmmSettingQFvalues fetch error"); }
+
     res.json({
       operators: operatorsRes.recordset,
       supervisors: supervisorsRes.recordset,
       shiftsData,
-      shiftsMeta
+      shiftsMeta,
+      qfHistory // 🔥 Included in response
     });
   } catch (err) {
     console.error('DMM Details Fetch Error:', err);
@@ -154,61 +148,45 @@ exports.saveDetails = async (req, res) => {
   } catch (err) { res.status(500).send('Server Error'); }
 };
 
-// --- Fetch Bulk Data for Admin PDF Export ---
-// --- Fetch Bulk Data for Admin PDF Export ---
-// --- Fetch Bulk Data for Admin PDF Export ---
-// --- Fetch Bulk Data for Admin PDF Export ---
 exports.getBulkData = async (req, res) => {
   try {
-    // 🔥 DEBUG LOG 1: See exactly what the frontend is sending
-
-
-    // Fallbacks just in case the frontend uses different variable names
     const fromDate = req.query.fromDate || req.query.startDate || req.query.from;
     const toDate = req.query.toDate || req.query.endDate || req.query.to;
 
-    // 1. Fetch the Dynamic Master Columns
     const masterRes = await sql.query`
-            SELECT * FROM DmmSetting_Master 
-            WHERE IsDeleted = 0 OR IsDeleted IS NULL 
-            ORDER BY SlNo ASC
-        `;
+            SELECT * FROM DmmSetting_Master 
+            WHERE IsDeleted = 0 OR IsDeleted IS NULL 
+            ORDER BY SlNo ASC
+        `;
 
-    // 2. Fetch the Base Records
     let records = [];
     if (fromDate && toDate) {
-
       const recordsRes = await sql.query`
-                SELECT * FROM DmmSettingParameters
-                WHERE RecordDate >= ${fromDate} AND RecordDate <= ${toDate}
-                ORDER BY RecordDate ASC, Shift ASC, RowIndex ASC
-            `;
+                SELECT * FROM DmmSettingParameters
+                WHERE RecordDate >= ${fromDate} AND RecordDate <= ${toDate}
+                ORDER BY RecordDate ASC, Shift ASC, RowIndex ASC
+            `;
       records = recordsRes.recordset || [];
     } else {
-
       const recordsRes = await sql.query`
-                SELECT * FROM DmmSettingParameters
-                ORDER BY RecordDate ASC, Shift ASC, RowIndex ASC
-            `;
+                SELECT * FROM DmmSettingParameters
+                ORDER BY RecordDate ASC, Shift ASC, RowIndex ASC
+            `;
       records = recordsRes.recordset || [];
     }
 
-    // 🔥 DEBUG LOG 2: See how many base records were found
-
-
     let mergedRecords = [...records];
 
-    // 3. Fetch Custom Column Values
     if (records.length > 0) {
       const recordIds = records.map(r => r.id).filter(id => id != null);
 
       if (recordIds.length > 0) {
         const idList = recordIds.join(',');
         const customRes = await sql.query(`
-                    SELECT rowId, columnId, value 
-                    FROM DmmCustomColumnValues 
-                    WHERE rowId IN (${idList})
-                `);
+                    SELECT rowId, columnId, value 
+                    FROM DmmCustomColumnValues 
+                    WHERE rowId IN (${idList})
+                `);
 
         const customData = customRes.recordset || [];
 
@@ -220,12 +198,17 @@ exports.getBulkData = async (req, res) => {
       }
     }
 
-    // 🔥 DEBUG LOG 3: Verify the final payload structure
-
+    // 🔥 FETCH QF HISTORY FOR BULK EXPORT 
+    let qfHistory = [];
+    try {
+        const qfRes = await sql.query`SELECT qfValue, date FROM DmmSettingQFvalues WHERE formName = 'dmm-setting-parameters' ORDER BY date DESC, id DESC`;
+        qfHistory = qfRes.recordset;
+    } catch(e) { console.error("DmmSettingQFvalues fetch error"); }
 
     res.json({
       master: masterRes.recordset || [],
-      trans: mergedRecords
+      trans: mergedRecords,
+      qfHistory // 🔥 Included in response
     });
 
   } catch (error) {

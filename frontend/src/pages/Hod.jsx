@@ -4,9 +4,28 @@ import Header from "../components/Header";
 import SignatureCanvas from "react-signature-canvas";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { Loader, X } from "lucide-react"; // 🔥 Updated icons
+import { Loader, X } from "lucide-react"; 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import logo from '../Assets/logo.png'; 
+
+// 🔥 Dynamic QF Helpers
+const getSafeDateStr = (val) => {
+  if (!val) return null;
+  if (typeof val === 'string') return val.split('T')[0];
+  try { return val.toISOString().split('T')[0]; } catch (e) { return null; }
+};
+
+const getDynamicQfString = (recordDate, qfHistory, defaultFallback) => {
+  if (!qfHistory || !Array.isArray(qfHistory) || qfHistory.length === 0) return defaultFallback;
+  const targetDateStr = getSafeDateStr(recordDate) || getSafeDateStr(new Date());
+  for (const qf of qfHistory) {
+      const qfDateStr = getSafeDateStr(qf.date);
+      if (!qfDateStr) continue;
+      if (qfDateStr <= targetDateStr) return qf.qfValue;
+  }
+  return qfHistory[qfHistory.length - 1].qfValue || defaultFallback;
+};
 
 const Hod = () => {
   const [reports, setReports] = useState([]);
@@ -71,7 +90,11 @@ const Hod = () => {
           axios.get(`${process.env.REACT_APP_API_URL}/api/disa-checklist/monthly-report`, { params: { month, year, disaMachine } })
       ]);
 
-      const checklist = detailsRes.data.checklist; const monthlyLogs = monthlyRes.data.monthlyLogs || []; const ncReports = monthlyRes.data.ncReports || [];
+      const checklist = detailsRes.data.checklist; 
+      const monthlyLogs = monthlyRes.data.monthlyLogs || []; 
+      const ncReports = monthlyRes.data.ncReports || [];
+      const qfHistory = monthlyRes.data.qfHistory || []; 
+
       const historyMap = {}; const holidayDays = new Set(); const vatDays = new Set(); const pmDays = new Set();
       const opSigMap = {}; const hodSigMap = {};
 
@@ -79,7 +102,6 @@ const Hod = () => {
         const logDay = log.DayVal; const key = String(log.MasterId); 
         if (Number(log.IsHoliday) === 1) holidayDays.add(logDay);
         if (Number(log.IsVatCleaning) === 1) vatDays.add(logDay);
-        // 🔥 FIX: Added Preventive Maintenance tracking
         if (Number(log.IsPreventiveMaintenance) === 1) pmDays.add(logDay);
 
         if (log.OperatorSignature) opSigMap[logDay] = log.OperatorSignature;
@@ -92,7 +114,8 @@ const Hod = () => {
       const monthName = selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' });
 
       doc.setLineWidth(0.3); doc.rect(10, 10, 40, 20); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-      doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' });
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } catch(e){ doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); }
+      
       doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.text("DISA MACHINE OPERATOR CHECK SHEET", 140, 22, { align: 'center' });
       doc.rect(230, 10, 57, 20); doc.setFontSize(11); doc.text(disaMachine, 258, 18, { align: 'center' }); 
       doc.line(230, 22, 287, 22); doc.setFontSize(10); doc.text(`Month: ${monthName}`, 235, 27);
@@ -103,7 +126,6 @@ const Hod = () => {
         for (let i = 1; i <= 31; i++) {
             if (holidayDays.has(i)) { if (rowIndex === 0) row.push({ content: 'H\nO\nL\nI\nD\nA\nY', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [230, 230, 230], fontStyle: 'bold', textColor: [100, 100, 100] } }); } 
             else if (vatDays.has(i)) { if (rowIndex === 0) row.push({ content: 'V\nA\nT\n\nC\nL\nE\nA\nN\nI\nN\nG', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [210, 230, 255], fontStyle: 'bold', textColor: [50, 100, 150] } }); } 
-            // 🔥 FIX: Added Preventive Maintenance cell rendering
             else if (pmDays.has(i)) { if (rowIndex === 0) row.push({ content: 'P\nR\nE\nV\n.\n\nM\nA\nI\nN\nT', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [240, 220, 255], fontStyle: 'bold', textColor: [100, 50, 150] } }); }
             else { row.push(historyMap[String(item.MasterId)]?.[i] || ''); }
         }
@@ -138,19 +160,24 @@ const Hod = () => {
              const rawTextArray = data.cell.text || []; const rawTextString = rawTextArray.join('').replace(/\n/g, ''); const text = rawTextArray[0] ? rawTextArray[0] : '';
              if (text === 'Y') { data.cell.styles.font = 'ZapfDingbats'; data.cell.text = '3'; data.cell.styles.textColor = [0, 100, 0]; } 
              else if (text === 'N') { data.cell.styles.textColor = [255, 0, 0]; data.cell.text = 'X'; data.cell.styles.fontStyle = 'bold'; } 
-             // 🔥 FIX: Added PREV.MAINT to exclusion list
              else if (text && !rawTextString.includes('HOLIDAY') && !rawTextString.includes('VATCLEANING') && !rawTextString.includes('PREV.')) { data.cell.styles.fontSize = 4; data.cell.styles.fontStyle = 'bold'; data.cell.styles.textColor = [0, 0, 0]; data.cell.styles.halign = 'center'; data.cell.styles.cellPadding = 0.2; }
            }
         }
       });
 
-      const finalY = doc.lastAutoTable.finalY + 6;
-      doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text("Note: If any deviation noticed during the verification, corrective actions should be taken and recorded in the NCR (back-side).", 10, finalY);
-      doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200); doc.text("Page 1 of 2", 270, 200);
+      doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.text("Legend:   3 - OK    X - NOT OK    CA - Corrected during Audit    NA - Not Applicable", 10, doc.lastAutoTable.finalY + 6);
+      doc.setFont('helvetica', 'normal'); doc.text("Remarks: If Nonconformity please write on NCR format (back-side)", 10, doc.lastAutoTable.finalY + 12); 
+      
+      // 🔥 DYNAMIC QF VALUE FOR PAGE 1 🔥
+      const dynamicQf = getDynamicQfString(dateStr, qfHistory, "QF/07/FBP-13, Rev.No:06 dt 08.10.2025");
+      doc.text(dynamicQf, 10, 200); 
+      doc.text("Page 1 of 2", 270, 200);
 
       // PAGE 2 (NC Report)
       doc.addPage(); doc.setDrawColor(0); doc.setLineWidth(0.3); doc.rect(10, 10, 40, 20); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-      doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); doc.rect(50, 10, 237, 20); doc.setFontSize(16);
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } catch(e){ doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); }
+      
+      doc.rect(50, 10, 237, 20); doc.setFontSize(16);
       doc.text("DISA MACHINE OPERATOR CHECK SHEET", 168, 18, { align: 'center' }); doc.setFontSize(14); doc.text("Non-Conformance Report", 168, 26, { align: 'center' });
 
       const ncRows = ncReports.map((r, index) => [
@@ -164,7 +191,11 @@ const Hod = () => {
         headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', valign: 'middle' },
         columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 40 }, 3: { cellWidth: 35 }, 4: { cellWidth: 35 }, 5: { cellWidth: 35 }, 6: { cellWidth: 20, halign: 'center' }, 7: { cellWidth: 25 }, 8: { cellWidth: 20 }, 9: { cellWidth: 20, halign: 'center' } }
       });
-      doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200); doc.text("Page 2 of 2", 270, 200);
+
+      // 🔥 DYNAMIC QF VALUE FOR PAGE 2 🔥
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal'); 
+      doc.text(dynamicQf, 10, 200); 
+      doc.text("Page 2 of 2", 270, 200);
 
       const pdfBlobUrl = doc.output('bloburl'); setPdfUrl(pdfBlobUrl);
     } catch (error) { toast.error("Failed to generate PDF preview."); }

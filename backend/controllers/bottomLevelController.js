@@ -121,29 +121,29 @@ exports.getMonthlyReport = async (req, res) => {
       WHERE MONTH(ReportDate) = ${month} AND YEAR(ReportDate) = ${year} AND DisaMachine = ${disaMachine}
       ORDER BY ReportDate ASC
     `;
-    res.json({ monthlyLogs: checklistResult.recordset, ncReports: ncResult.recordset });
+
+    // 🔥 FETCH QF HISTORY
+    let qfHistory = [];
+    try {
+        const qfRes = await sql.query`SELECT qfValue, date FROM BottomLevelAuditQFvalues WHERE formName = 'lpa' ORDER BY date DESC, id DESC`;
+        qfHistory = qfRes.recordset;
+    } catch(e) { console.error("BottomLevelAuditQFvalues fetch error"); }
+
+    res.json({ monthlyLogs: checklistResult.recordset, ncReports: ncResult.recordset, qfHistory });
   } catch (err) {
     console.error("Error in getMonthlyReport:", err);
     res.status(500).send(err.message);
   }
 };
 
-// ==========================================
-//   ADMIN BULK DATA EXPORT
-// ==========================================
 exports.getBulkData = async (req, res) => {
   try {
     const { fromDate, toDate } = req.query;
     const request = new sql.Request();
 
-    // 🔥 FIX: Ensure bulk data export ignores deleted configs
     const masterRes = await request.query(`SELECT * FROM BottomLevelAudit_Master WHERE IsDeleted = 0 OR IsDeleted IS NULL ORDER BY SlNo ASC`);
 
-    let transQuery = `
-            SELECT T.*, M.CheckPointDesc, M.SlNo 
-            FROM BottomLevelAudit_Trans T
-            INNER JOIN BottomLevelAudit_Master M ON T.MasterId = M.MasterId
-        `;
+    let transQuery = `SELECT T.*, M.CheckPointDesc, M.SlNo FROM BottomLevelAudit_Trans T INNER JOIN BottomLevelAudit_Master M ON T.MasterId = M.MasterId`;
     let ncrQuery = `SELECT * FROM BottomLevelAudit_NCR`;
 
     if (fromDate && toDate) {
@@ -156,7 +156,14 @@ exports.getBulkData = async (req, res) => {
     const transRes = await request.query(transQuery);
     const ncrRes = await request.query(ncrQuery);
 
-    res.json({ master: masterRes.recordset, trans: transRes.recordset, ncr: ncrRes.recordset });
+    // 🔥 FETCH QF HISTORY
+    let qfHistory = [];
+    try {
+        const qfRes = await request.query(`SELECT qfValue, date FROM BottomLevelAuditQFvalues WHERE formName = 'lpa' ORDER BY date DESC, id DESC`);
+        qfHistory = qfRes.recordset;
+    } catch(e) { console.error("BottomLevelAuditQFvalues fetch error"); }
+
+    res.json({ master: masterRes.recordset, trans: transRes.recordset, ncr: ncrRes.recordset, qfHistory });
   } catch (error) {
     console.error("Error fetching bulk data:", error);
     res.status(500).json({ error: error.message });

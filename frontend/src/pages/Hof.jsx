@@ -8,6 +8,24 @@ import { Loader, X } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
+// 🔥 Dynamic QF Helpers
+const getSafeDateStr = (val) => {
+  if (!val) return null;
+  if (typeof val === 'string') return val.split('T')[0];
+  try { return val.toISOString().split('T')[0]; } catch (e) { return null; }
+};
+
+const getDynamicQfString = (recordDate, qfHistory, defaultFallback) => {
+  if (!qfHistory || !Array.isArray(qfHistory) || qfHistory.length === 0) return defaultFallback;
+  const targetDateStr = getSafeDateStr(recordDate) || getSafeDateStr(new Date());
+  for (const qf of qfHistory) {
+      const qfDateStr = getSafeDateStr(qf.date);
+      if (!qfDateStr) continue;
+      if (qfDateStr <= targetDateStr) return qf.qfValue;
+  }
+  return qfHistory[qfHistory.length - 1].qfValue || defaultFallback;
+};
+
 const Hof = () => {
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
@@ -118,11 +136,12 @@ const Hof = () => {
       const monthlyRes = await axios.get(`${API_BASE}/monthly-report`, { params: { month, year, disaMachine } });
       const monthlyLogs = monthlyRes.data.monthlyLogs || [];
       const ncReports = monthlyRes.data.ncReports || [];
+      const qfHistory = monthlyRes.data.qfHistory || []; // 🔥 Fetch QF History
+
       const todayStr = new Date().toISOString().split('T')[0];
       const detailsRes = await axios.get(`${API_BASE}/details`, { params: { date: todayStr, disaMachine } });
       const checklist = detailsRes.data.checklist;
       
-      // 🔥 FIX: Added pmDays Set here
       const historyMap = {}; const holidayDays = new Set(); const vatDays = new Set(); const pmDays = new Set();
       const supSigMap = {}; const hofSig = report.hofSignature;
 
@@ -130,7 +149,6 @@ const Hof = () => {
         const logDay = log.DayVal; const key = String(log.MasterId); 
         if (Number(log.IsHoliday) === 1) holidayDays.add(logDay);
         if (Number(log.IsVatCleaning) === 1) vatDays.add(logDay);
-        // 🔥 FIX: Adding Preventive Maintenance tracking
         if (Number(log.IsPreventiveMaintenance) === 1) pmDays.add(logDay);
         
         if (log.SupervisorSignature) supSigMap[logDay] = log.SupervisorSignature;
@@ -155,7 +173,6 @@ const Hof = () => {
         for (let i = 1; i <= daysInMonth; i++) {
             if (holidayDays.has(i)) { if (rowIndex === 0) row.push({ content: 'H\nO\nL\nI\nD\nA\nY', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [230, 230, 230], fontStyle: 'bold', textColor: [100, 100, 100] } }); } 
             else if (vatDays.has(i)) { if (rowIndex === 0) row.push({ content: 'V\nA\nT\n\nC\nL\nE\nA\nN\nI\nN\nG', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [210, 230, 255], fontStyle: 'bold', textColor: [50, 100, 150] } }); } 
-            // 🔥 FIX: Added Preventive Maintenance cell rendering
             else if (pmDays.has(i)) { if (rowIndex === 0) row.push({ content: 'P\nR\nE\nV\n.\n\nM\nA\nI\nN\nT', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [240, 220, 255], fontStyle: 'bold', textColor: [100, 50, 150] } }); }
             else { row.push(historyMap[String(item.MasterId)]?.[i] || ''); }
         }
@@ -194,7 +211,13 @@ const Hof = () => {
       });
 
       doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.text("Legend:   3 - OK    X - NOT OK    CA - Corrected during Audit    NA - Not Applicable", 10, doc.lastAutoTable.finalY + 6);
-      doc.setFont('helvetica', 'normal'); doc.text("Remarks: If Nonconformity please write on NCR format (back-side)", 10, doc.lastAutoTable.finalY + 12); doc.text("QF/08/MRO - 18, Rev No: 02 dt 01.01.2022", 10, 200); doc.text("Page 1 of 2", 270, 200);
+      doc.setFont('helvetica', 'normal'); doc.text("Remarks: If Nonconformity please write on NCR format (back-side)", 10, doc.lastAutoTable.finalY + 12); 
+      
+      // 🔥 DYNAMIC QF VALUE FOR PAGE 1 🔥
+      const reportDateObjStr = `${year}-${String(month).padStart(2, '0')}-01`;
+      const dynamicQf = getDynamicQfString(reportDateObjStr, qfHistory, "QF/08/MRO - 18, Rev No: 02 dt 01.01.2022");
+      doc.text(dynamicQf, 10, 200); 
+      doc.text("Page 1 of 2", 270, 200);
 
       const pdfBlobUrl = doc.output('bloburl'); setPdfUrl(pdfBlobUrl);
     } catch (error) { toast.error("Failed to generate PDF preview."); }

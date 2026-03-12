@@ -5,6 +5,23 @@ const PDFDocument = require("pdfkit");
 const path = require("path");
 const fs = require("fs");
 
+// 🔥 Helper for backend PDF generation
+const getDynamicQfString = (recordDate, qfHistory, defaultFallback) => {
+    if (!qfHistory || qfHistory.length === 0) return defaultFallback;
+    const targetDate = new Date(recordDate || new Date());
+    targetDate.setHours(0, 0, 0, 0);
+
+    for (const qf of qfHistory) {
+        if (!qf.date) continue;
+        const qfDate = new Date(qf.date);
+        qfDate.setHours(0, 0, 0, 0);
+        if (qfDate <= targetDate) {
+            return qf.qfValue;
+        }
+    }
+    return qfHistory[qfHistory.length - 1].qfValue || defaultFallback;
+};
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  DROPDOWN DATA
 // ══════════════════════════════════════════════════════════════════════════════
@@ -70,14 +87,20 @@ router.delete("/custom-columns/:id", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  RECORDS CRUD
+//  RECORDS CRUD (🔥 UPDATED TO INCLUDE qfHistory FOR ADMIN BULK EXPORT)
 // ══════════════════════════════════════════════════════════════════════════════
 router.get("/records", async (req, res) => {
     try {
         const recordsResult = await sql.query(`SELECT * FROM FourMChangeRecord ORDER BY id DESC`);
         const records = recordsResult.recordset;
 
-        if (records.length === 0) return res.json([]);
+        let qfHistory = [];
+        try {
+            const qfRes = await sql.query(`SELECT qfValue, date FROM FourMChangeQFvalues WHERE formName = '4m-change' ORDER BY date DESC, id DESC`);
+            qfHistory = qfRes.recordset;
+        } catch(e) { console.error("QF History fetch failed", e); }
+
+        if (records.length === 0) return res.json({ records: [], qfHistory });
 
         const ids = records.map(r => r.id).join(',');
         const valResult = await sql.query(`SELECT recordId, columnId, value FROM FourMCustomColumnValues WHERE recordId IN (${ids})`);
@@ -88,7 +111,8 @@ router.get("/records", async (req, res) => {
             valMap[v.recordId][v.columnId] = v.value;
         });
 
-        res.json(records.map(r => ({ ...r, customValues: valMap[r.id] || {} })));
+        const merged = records.map(r => ({ ...r, customValues: valMap[r.id] || {} }));
+        res.json({ records: merged, qfHistory });
     } catch (err) { res.status(500).json({ message: "DB error", error: err.message }); }
 });
 
@@ -103,7 +127,13 @@ router.get("/records-by-date", async (req, res) => {
         const recordsResult = await request.query(`SELECT * FROM FourMChangeRecord WHERE recordDate = @date ORDER BY id ASC`);
         const records = recordsResult.recordset;
 
-        if (records.length === 0) return res.json([]);
+        let qfHistory = [];
+        try {
+            const qfRes = await sql.query(`SELECT qfValue, date FROM FourMChangeQFvalues WHERE formName = '4m-change' ORDER BY date DESC, id DESC`);
+            qfHistory = qfRes.recordset;
+        } catch(e) {}
+
+        if (records.length === 0) return res.json({ records: [], customColumns: [], qfHistory });
 
         const ids = records.map(r => r.id).join(',');
         const valResult = await sql.query(`SELECT recordId, columnId, value FROM FourMCustomColumnValues WHERE recordId IN (${ids})`);
@@ -117,7 +147,8 @@ router.get("/records-by-date", async (req, res) => {
 
         res.json({
             records: records.map(r => ({ ...r, customValues: valMap[r.id] || {} })),
-            customColumns: customCols.recordset
+            customColumns: customCols.recordset,
+            qfHistory
         });
     } catch (err) {
         console.error("Error fetching 4M records by date:", err);
@@ -252,16 +283,19 @@ router.post("/sign-hod", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  DYNAMIC PDF REPORT (🔥 FIXED 3-BOX HEADER ALIGNMENT & LOGO.JPG)
+//  DYNAMIC PDF REPORT (🔥 ADDED DYNAMIC QF HISTORY)
 // ══════════════════════════════════════════════════════════════════════════════
 router.get("/report", async (req, res) => {
     try {
-        const { fromDate, toDate } = req.query;
+        const { fromDate, toDate, reportId } = req.query;
 
         const request = new sql.Request();
         let queryStr = `SELECT * FROM FourMChangeRecord`;
 
-        if (fromDate && toDate) {
+        if (reportId) {
+            queryStr += ` WHERE id = @reportId`;
+            request.input('reportId', sql.Int, reportId);
+        } else if (fromDate && toDate) {
             queryStr += ` WHERE recordDate >= @fromDate AND recordDate <= @toDate`;
             request.input('fromDate', sql.Date, fromDate);
             request.input('toDate', sql.Date, toDate);
@@ -284,6 +318,13 @@ router.get("/report", async (req, res) => {
                 });
             }
         } catch (e) { }
+
+        // 🔥 FETCH QF HISTORY 🔥
+        let qfHistory = [];
+        try {
+            const qfRes = await sql.query(`SELECT qfValue, date FROM FourMChangeQFvalues WHERE formName = '4m-change' ORDER BY date DESC, id DESC`);
+            qfHistory = qfRes.recordset;
+        } catch (e) {}
 
         const marginOptions = { top: 30, bottom: 20, left: 30, right: 30 };
         const doc = new PDFDocument({ margins: marginOptions, size: "A4", layout: "landscape" });
@@ -316,7 +357,6 @@ router.get("/report", async (req, res) => {
         const minRowHeight = 40;
 
         const drawHeaders = (y) => {
-            // 🔥 STANDARDIZED 3-BOX HEADER DESIGN
             const logoBoxWidth = 100;
             const metaBoxWidth = 150;
             const titleBoxWidth = pageWidth - logoBoxWidth - metaBoxWidth;
@@ -350,10 +390,12 @@ router.get("/report", async (req, res) => {
                 const fD = new Date(fromDate).toLocaleDateString('en-GB');
                 const tD = new Date(toDate).toLocaleDateString('en-GB');
                 dateText = `${fD} to ${tD}`;
+            } else if (topRecord.recordDate) {
+                dateText = new Date(topRecord.recordDate).toLocaleDateString('en-GB');
             }
             doc.font("Helvetica").fontSize(9).text(dateText, startX + logoBoxWidth + titleBoxWidth, y + 26, { width: metaBoxWidth, align: "center" });
 
-            // PART NAME (Displayed below the boxes to accommodate long lists without breaking layout)
+            // PART NAME 
             let tableHeaderY = y + headerHeight + 5;
             if (headerPart) {
                 doc.font("Helvetica-Bold").fontSize(9).text(`Part Name(s): ${headerPart}`, startX, tableHeaderY);
@@ -373,9 +415,9 @@ router.get("/report", async (req, res) => {
             return tableHeaderY + minRowHeight;
         };
 
-        const drawFooter = () => {
+        const drawFooter = (yPos, dynamicQfString) => {
             const footerY = doc.page.height - 35;
-            doc.font("Helvetica").fontSize(8).text("QF/07/MPD-36, Rev. No: 01, 13.03.2019", startX, footerY, { align: "left" });
+            doc.font("Helvetica").fontSize(8).text(dynamicQfString, startX, footerY, { align: "left" });
             const rightX = doc.page.width - 130;
             doc.text("HOD Sign", rightX, footerY, { align: "right" });
 
@@ -394,7 +436,6 @@ router.get("/report", async (req, res) => {
             const centerX = x + width / 2;
             const centerY = y + (height / 2);
 
-            // 🔥 FIXED: Draws Supervisor Signature perfectly
             if (isSignature && value && value.startsWith('data:image')) {
                 try {
                     const base64Data = value.split('base64,')[1];
@@ -412,6 +453,10 @@ router.get("/report", async (req, res) => {
             }
         };
 
+        // Determine initial QF String using the top record's date
+        const topRecordDate = topRecord.recordDate || new Date();
+        let dynamicQfString = getDynamicQfString(topRecordDate, qfHistory, "QF/07/MPD-36, Rev. No: 01, 13.03.2019");
+
         let y = drawHeaders(30);
 
         if (result.recordset.length === 0) {
@@ -421,7 +466,6 @@ router.get("/report", async (req, res) => {
                 const formattedDate = new Date(row.recordDate).toLocaleDateString("en-GB");
                 const customData = customCols.map(c => customValMap[row.id]?.[c.id] || "");
 
-                // Pass SupervisorSignature if it exists, otherwise pass the text name fallback
                 const signatureCell = row.SupervisorSignature || row.inchargeSign;
 
                 const rowData = [
@@ -434,14 +478,15 @@ router.get("/report", async (req, res) => {
                 doc.font("Helvetica").fontSize(bodyFontSize);
 
                 rowData.forEach((cell, i) => {
-                    if (!["OK", "Not OK"].includes(cell) && i !== 11) { // Skip image height calculation
+                    if (!["OK", "Not OK"].includes(cell) && i !== 11) { 
                         const h = doc.heightOfString(String(cell || ""), { width: colWidths[i] - 4 });
                         if (h + 15 > maxRowHeight) maxRowHeight = h + 15;
                     }
                 });
 
                 if (y + maxRowHeight > doc.page.height - 65) {
-                    drawFooter();
+                    dynamicQfString = getDynamicQfString(row.recordDate, qfHistory, "QF/07/MPD-36, Rev. No: 01, 13.03.2019");
+                    drawFooter(y, dynamicQfString);
                     doc.addPage({ size: "A4", layout: "landscape", margins: marginOptions });
                     y = drawHeaders(30);
                 }
@@ -449,14 +494,14 @@ router.get("/report", async (req, res) => {
                 let x = startX;
                 rowData.forEach((cell, i) => {
                     doc.rect(x, y, colWidths[i], maxRowHeight).stroke();
-                    drawCellContent(cell, x, y, colWidths[i], maxRowHeight, i === 11); // i === 11 is the Signature column
+                    drawCellContent(cell, x, y, colWidths[i], maxRowHeight, i === 11); 
                     x += colWidths[i];
                 });
                 y += maxRowHeight;
             });
         }
 
-        drawFooter();
+        drawFooter(y, dynamicQfString);
         doc.end();
     } catch (err) {
         console.error("Error generating report:", err);

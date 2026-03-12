@@ -3,6 +3,23 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
 
+// 🔥 Helper for backend PDF generation (Fixed for PDFKit)
+const getDynamicQfString = (recordDate, qfHistory, defaultFallback) => {
+    if (!qfHistory || qfHistory.length === 0) return defaultFallback;
+    const targetDate = new Date(recordDate || new Date());
+    targetDate.setHours(0, 0, 0, 0);
+
+    for (const qf of qfHistory) {
+        if (!qf.date) continue;
+        const qfDate = new Date(qf.date);
+        qfDate.setHours(0, 0, 0, 0);
+        if (qfDate <= targetDate) {
+            return qf.qfValue;
+        }
+    }
+    return qfHistory[qfHistory.length - 1].qfValue || defaultFallback;
+};
+
 // --- GET USERS FOR DROPDOWNS ---
 exports.getUsers = async (req, res) => {
   try {
@@ -94,13 +111,12 @@ exports.signSupervisor = async (req, res) => {
   }
 };
 
-// --- PDF GENERATOR (WITH 3-BOX HEADER) ---
+// --- PDF GENERATOR (WITH DYNAMIC QF AND PROPER PDFKIT SYNTAX) ---
 exports.generateReport = async (req, res) => {
   try {
     const { reportId, date, disaMachine } = req.query;
     
     let headerRes;
-    
     if (reportId) {
         headerRes = await sql.query`SELECT * FROM MouldQualityReport WHERE id = ${reportId}`;
     } else if (date && disaMachine) {
@@ -118,9 +134,16 @@ exports.generateReport = async (req, res) => {
     }
 
     const header = headerRes.recordset[0];
-    
     const rowsRes = await sql.query`SELECT * FROM MouldQualityRows WHERE reportId = ${header.id} ORDER BY id ASC`;
     const rows = rowsRes.recordset;
+
+    // 🔥 FETCH QF HISTORY 🔥
+    let qfHistory = [];
+    try {
+        const qfReq = new sql.Request();
+        const qfRes = await qfReq.query(`SELECT qfValue, date FROM MouldQualityQFvalues WHERE formName = 'mould-quality' ORDER BY date DESC, id DESC`);
+        qfHistory = qfRes.recordset;
+    } catch(e) {}
 
     const doc = new PDFDocument({ margin: 20, size: "A4", layout: "landscape", bufferPages: true });
     res.setHeader("Content-Type", "application/pdf");
@@ -137,9 +160,7 @@ exports.generateReport = async (req, res) => {
     
     // BOX 1: LOGO (Width: 100)
     doc.rect(startX, y, 100, 40).stroke();
-    
     const logoPath = path.join(__dirname, 'logo.jpg');
-
     if (fs.existsSync(logoPath)) {
         doc.image(logoPath, startX + 10, y + 5, { width: 80, height: 30, fit: [80, 30], align: 'center', valign: 'center' });
     } else {
@@ -159,27 +180,22 @@ exports.generateReport = async (req, res) => {
     doc.font("Helvetica").fontSize(10).text(`DATE: ${displayDate}`, startX + 600, y + 26, { width: 120, align: "center" });
 
     y += 55; 
-    // ==============================================================
 
     const colWidths = [25, 30, 80, 45, 35, 35, 35, 35, 35, 35, 35, 35, 35, 45, 30, 25, 25, 25, 25, 25, 25];
     
     const drawTableHeaders = (startY) => {
         let cy = startY;
-        
         doc.fontSize(7).font("Helvetica-Bold");
         doc.rect(startX, cy, 25, 55).stroke(); doc.text("S.No", startX, cy + 25, { width: 25, align: "center" });
         doc.rect(startX + 25, cy, 30, 55).stroke(); doc.text("Shift", startX + 25, cy + 25, { width: 30, align: "center" });
         doc.rect(startX + 55, cy, 80, 55).stroke(); doc.text("Part Name", startX + 55, cy + 25, { width: 80, align: "center" });
-        
-        doc.rect(startX + 135, cy, 45, 55).stroke(); 
-        doc.text("Data\nCode", startX + 135, cy + 20, { width: 45, align: "center" });
+        doc.rect(startX + 135, cy, 45, 55).stroke(); doc.text("Data\nCode", startX + 135, cy + 20, { width: 45, align: "center" });
         
         doc.rect(startX + 180, cy, 210, 15).stroke(); doc.text("First Moulding", startX + 180, cy + 5, { width: 210, align: "center" });
         doc.rect(startX + 390, cy, 330, 15).stroke(); doc.text("During Running", startX + 390, cy + 5, { width: 330, align: "center" });
 
         let cy2 = cy + 15;
         let cx = startX + 180;
-        
         doc.fontSize(6);
         
         const l2Single = [
@@ -188,7 +204,6 @@ exports.generateReport = async (req, res) => {
             { label: "Mould\nCrush", w: 35 }, { label: "Loose\nSand", w: 35 }, { label: "Pattern\nSticking", w: 35 },
             { label: "Heat\nCode", w: 45 }, { label: "Filter\nSize", w: 30 }
         ];
-        
         l2Single.forEach(h => {
             doc.rect(cx, cy2, h.w, 40).stroke();
             doc.text(h.label, cx, cy2 + 15, { width: h.w, align: "center" });
@@ -200,7 +215,6 @@ exports.generateReport = async (req, res) => {
             { label: "Inside\nPenetrant\n(Min 20)", w: 50 },
             { label: "Pattern\nTemp\n(Min 45C)", w: 50 }
         ];
-        
         l2Double.forEach(h => {
             doc.rect(cx, cy2, h.w, 25).stroke(); 
             doc.text(h.label, cx, cy2 + 3, { width: h.w, align: "center" });
@@ -238,7 +252,7 @@ exports.generateReport = async (req, res) => {
         let x = startX;
         rowData.forEach((val, i) => {
             doc.rect(x, rowY, colWidths[i], 25).stroke();
-            doc.text(val || "-", x + 2, rowY + 10, { width: colWidths[i] - 4, align: "center" });
+            doc.text(String(val || "-"), x + 2, rowY + 10, { width: colWidths[i] - 4, align: "center" });
             x += colWidths[i];
         });
         rowY += 25;
@@ -247,22 +261,33 @@ exports.generateReport = async (req, res) => {
     const sigY = rowY + 20;
     doc.font("Helvetica-Bold").fontSize(10);
     
-    doc.text(`Verified By: ${header.verifiedBy}`, startX, sigY);
+    doc.text(`Verified By: ${header.verifiedBy || '-'}`, startX, sigY);
     if (header.operatorSignature && header.operatorSignature.startsWith('data:image')) {
         try { doc.image(Buffer.from(header.operatorSignature.split(',')[1], 'base64'), startX, sigY + 15, { fit: [100, 30] }); } catch(e){}
     }
 
-    doc.text(`Approved By: ${header.approvedBy}`, startX + 570, sigY);
+    // PDFKit syntax for getting the page width
+    doc.text(`Approved By: ${header.approvedBy || '-'}`, doc.page.width - 200, sigY);
+    
     if (header.supervisorSignature && header.supervisorSignature.startsWith('data:image')) {
-        try { doc.image(Buffer.from(header.supervisorSignature.split(',')[1], 'base64'), startX + 570, sigY + 15, { fit: [100, 30] }); } catch(e){}
+        try { doc.image(Buffer.from(header.supervisorSignature.split(',')[1], 'base64'), doc.page.width - 200, sigY + 15, { fit: [100, 30] }); } catch(e){}
     } else {
-        doc.fillColor('red').text("Pending", startX + 570, sigY + 20);
+        doc.font('Helvetica').fontSize(10).fillColor('red');
+        doc.text("Pending", doc.page.width - 200, sigY + 15);
     }
+
+    // 🔥 DYNAMIC QF VALUE 🔥
+    const dynamicQfString = getDynamicQfString(header.reportDate, qfHistory, "QF/07/MOU-06, Rev. No.02 Dt 01.01.2023");
+    
+    doc.font('Helvetica').fontSize(8).fillColor('black');
+    doc.text(dynamicQfString, startX, doc.page.height - 30, { align: "left" });
 
     doc.end();
   } catch (err) {
     console.error("PDF Error:", err);
-    res.status(500).json({ message: "PDF generation failed" });
+    if (!res.headersSent) {
+      res.status(500).json({ message: "PDF generation failed" });
+    }
   }
 };
 
@@ -270,7 +295,6 @@ exports.generateReport = async (req, res) => {
 //   ADMIN EDIT & BULK APIS
 // ==========================================
 
-// 1. Fetch by Date & Machine for Admin Edit
 exports.getByDate = async (req, res) => {
   try {
     const { date, disa } = req.query;
@@ -292,7 +316,6 @@ exports.getByDate = async (req, res) => {
   }
 };
 
-// 2. Update Report from Admin Edit
 exports.updateReport = async (req, res) => {
   const { id } = req.params;
   const { verifiedBy, approvedBy, rows } = req.body;
@@ -331,7 +354,7 @@ exports.updateReport = async (req, res) => {
   }
 };
 
-// 3. Get Bulk Data for Admin PDF Export
+// 🔥 UPDATED: RETURN QF HISTORY WITH BULK DATA FOR ADMIN EXPORT
 exports.getBulkData = async (req, res) => {
     const { fromDate, toDate } = req.query;
     try {
@@ -341,13 +364,21 @@ exports.getBulkData = async (req, res) => {
             ORDER BY reportDate ASC, disaMachine ASC
         `;
         const reports = reportsRes.recordset;
-        const result = [];
+        const records = [];
         
         for (let rep of reports) {
             const rowsRes = await sql.query`SELECT * FROM MouldQualityRows WHERE reportId = ${rep.id} ORDER BY id ASC`;
-            result.push({ ...rep, rows: rowsRes.recordset });
+            records.push({ ...rep, rows: rowsRes.recordset });
         }
-        res.json(result);
+
+        // 🔥 FETCH QF HISTORY
+        let qfHistory = [];
+        try {
+            const qfRes = await sql.query`SELECT qfValue, date FROM MouldQualityQFvalues WHERE formName = 'mould-quality' ORDER BY date DESC, id DESC`;
+            qfHistory = qfRes.recordset;
+        } catch(e) { console.error("MouldQualityQFvalues fetch error"); }
+
+        res.json({ records, qfHistory });
     } catch(err) {
         console.error(err);
         res.status(500).json({ message: "Bulk data failed" });

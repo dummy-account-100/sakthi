@@ -153,6 +153,15 @@ const mouldController = {
         const result = await sql.query(query);
         const cResult = await sql.query(cQuery);
 
+        // 🔥 FETCH QF HISTORY FOR BULK EXPORT 🔥
+        let qfHistory = [];
+        try {
+           const qfRes = await sql.query`SELECT qfValue, date FROM UnpouredMouldQFvalues WHERE formName = 'unpoured-mould-details' ORDER BY date DESC, id DESC`;
+           qfHistory = qfRes.recordset;
+        } catch(e) {
+           console.error("UnpouredMouldQFvalues fetch error");
+        }
+
         const mergedRecords = result.recordset.map(r => {
             const cVals = {};
             cResult.recordset
@@ -161,16 +170,14 @@ const mouldController = {
             return { ...r, customValues: cVals };
         });
 
-        res.json({ records: mergedRecords });
+        // Pass the qfHistory along with the records to the frontend
+        res.json({ records: mergedRecords, qfHistory });
     } catch (error) {
         console.error("Error fetching bulk data:", error);
         res.status(500).json({ error: "Failed to fetch bulk data" });
     }
   },
 
-  // =========================================================
-  // 🔥 4. GET SUMMARY DATA (PERFECTED MATH LOGIC)
-  // =========================================================
   getSummaryData: async (req, res) => {
       const { date } = req.query;
       if (!date) return res.status(400).json({ error: "Date is required" });
@@ -229,6 +236,15 @@ const mouldController = {
               LEFT JOIN ShiftCount sc ON d.disa = sc.disa
           `;
 
+          // 🔥 FETCH QF HISTORY FOR SINGLE PDF EXPORT 🔥
+          let qfHistory = [];
+          try {
+             const qfRes = await sql.query`SELECT qfValue, date FROM UnpouredMouldQFvalues WHERE formName = 'unpoured-mould-details' ORDER BY date DESC, id DESC`;
+             qfHistory = qfRes.recordset;
+          } catch(e) {
+             console.error("UnpouredMouldQFvalues fetch error");
+          }
+
           const responseData = result.recordset.map(row => {
               const produced = row.producedMould > 0 ? row.producedMould : 0;
               const poured = row.pouredMould || 0;
@@ -258,10 +274,11 @@ const mouldController = {
               };
           });
 
-          res.status(200).json(responseData);
+          // Attach qfHistory to the response
+          res.status(200).json({ summary: responseData, qfHistory });
       } catch (error) {
           console.error("Error fetching summary data:", error);
-          res.status(500).json([]);
+          res.status(500).json({ summary: [], qfHistory: [] });
       }
   },
 

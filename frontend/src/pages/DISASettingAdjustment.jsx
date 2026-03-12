@@ -28,14 +28,12 @@ const DISASettingAdjustment = () => {
   const [preventiveWorkCarried, setPreventiveWorkCarried] = useState([""]);
   const [remarks, setRemarks] = useState("");
 
-  // 🔥 NEW: State to hold the dynamic columns and the operator's input
   const [customColumns, setCustomColumns] = useState([]);
   const [customValues, setCustomValues] = useState({});
 
   const sigCanvas = useRef({});
 
   useEffect(() => {
-    // Fetch last mould count
     axios
       .get(`${process.env.REACT_APP_API_URL}/api/disa/last-mould-count`)
       .then((res) => {
@@ -43,7 +41,6 @@ const DISASettingAdjustment = () => {
       })
       .catch((err) => console.error("Error fetching last count:", err));
 
-    // 🔥 NEW: Fetch custom dynamic columns added by Admin
     axios
       .get(`${process.env.REACT_APP_API_URL}/api/disa/custom-columns`)
       .then((res) => {
@@ -82,7 +79,6 @@ const DISASettingAdjustment = () => {
     setPreventiveWorkCarried(newFields);
   };
 
-  // 🔥 NEW: Handle typing into the dynamic columns
   const handleCustomValueChange = (columnId, value) => {
     setCustomValues((prev) => ({
       ...prev,
@@ -132,7 +128,7 @@ const DISASettingAdjustment = () => {
         preventiveWorkCarried: finalPreventiveWork,
         operatorSignature: signatureData,
         remarks,
-        customValues, // 🔥 NEW: Send dynamic column data to backend
+        customValues,
       });
 
       toast.success("Record saved successfully!");
@@ -142,7 +138,7 @@ const DISASettingAdjustment = () => {
       setWorkCarriedOut([""]);
       setPreventiveWorkCarried([""]);
       setRemarks("");
-      setCustomValues({}); // Clear custom fields
+      setCustomValues({});
       clearSignature();
 
     } catch (err) {
@@ -204,7 +200,6 @@ const DISASettingAdjustment = () => {
                     </div>
                   </th>
 
-                  {/* 🔥 NEW: Render Custom Column Headers */}
                   {customColumns.map((col) => (
                     <th key={col.id} className="border border-gray-300 p-2 w-40">
                       {col.columnName}
@@ -249,7 +244,6 @@ const DISASettingAdjustment = () => {
                     </div>
                   </td>
 
-                  {/* 🔥 NEW: Render Custom Column Inputs */}
                   {customColumns.map((col) => (
                     <td key={col.id} className="border border-gray-300 p-2 align-top">
                       <textarea

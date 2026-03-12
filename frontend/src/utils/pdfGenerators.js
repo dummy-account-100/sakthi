@@ -13,12 +13,48 @@ const getReportMonthYear = (fromDate) => {
     return d.toLocaleString('default', { month: 'long', year: 'numeric' });
 };
 
+// 🔥 FIX: Bulletproof String-Based Date Extractor 🔥
+const getSafeDateStr = (val) => {
+    if (!val) return null;
+    if (typeof val === 'string') return val.split('T')[0];
+    try {
+        return val.toISOString().split('T')[0];
+    } catch (e) {
+        return null;
+    }
+};
+
+// 🔥 FIX: Smarter Dynamic QF String Helper 🔥
+const getDynamicQfString = (recordDate, qfHistory, defaultFallback) => {
+    if (!qfHistory || !Array.isArray(qfHistory) || qfHistory.length === 0) return defaultFallback;
+
+    const targetDateStr = getSafeDateStr(recordDate);
+    if (!targetDateStr) return defaultFallback;
+
+    // History is expected to be sorted descending by date (newest first)
+    for (const qf of qfHistory) {
+        const qfDateStr = getSafeDateStr(qf.date);
+        if (!qfDateStr) continue;
+
+        // String lexicographical comparison works flawlessly for YYYY-MM-DD
+        if (qfDateStr <= targetDateStr) {
+            return qf.qfValue;
+        }
+    }
+
+    // If the report date is older than ALL records in the DB, 
+    // fall back to the oldest record in the DB instead of the hardcoded string!
+    return qfHistory[qfHistory.length - 1].qfValue || defaultFallback;
+};
+
 // ============================================================================
 // 1. UNPOURED MOULD DETAILS
 // ============================================================================
 export const generateUnPouredMouldPDF = async (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
-    const records = data.records || data || [];
+
+    const records = data.records || [];
+    const qfHistory = data.qfHistory || [];
 
     if (records.length === 0) {
         doc.setFontSize(14);
@@ -27,12 +63,12 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
         return;
     }
 
-   let customCols = [];
+    let customCols = [];
     try {
-        const token = localStorage.getItem('token'); 
+        const token = localStorage.getItem('token');
         const configRes = await fetch(`${process.env.REACT_APP_API_URL}/api/config/unpoured-mould-details/master`, {
             headers: {
-                'Authorization': `Bearer ${token}`, 
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -40,21 +76,21 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
         customCols = (configData.config || []).map(c => ({
             key: `custom_${c.id}`, id: c.id, label: c.reasonName.toUpperCase().replace(' ', '\n'), group: c.department.toUpperCase(), isCustom: true
         }));
-    } catch(e) { console.error("Could not fetch Unpoured custom schema for PDF"); }
+    } catch (e) { console.error("Could not fetch Unpoured custom schema for PDF"); }
 
     const baseColumns = [
-      { key: 'PatternChange', label: 'PATTERN\nCHANGE', group: 'MOULDING' }, { key: 'HeatCodeChange', label: 'HEAT CODE\nCHANGE', group: 'MOULDING' },
-      { key: 'MouldBroken', label: 'MOULD\nBROKEN', group: 'MOULDING' }, { key: 'AmcCleaning', label: 'AMC\nCLEANING', group: 'MOULDING' },
-      { key: 'MouldCrush', label: 'MOULD\nCRUSH', group: 'MOULDING' }, { key: 'CoreFalling', label: 'CORE\nFALLING', group: 'MOULDING' },
-      { key: 'SandDelay', label: 'SAND\nDELAY', group: 'SAND PLANT' }, { key: 'DrySand', label: 'DRY\nSAND', group: 'SAND PLANT' },
-      { key: 'NozzleChange', label: 'NOZZLE\nCHANGE', group: 'PREESPOUR' }, { key: 'NozzleLeakage', label: 'NOZZLE\nLEAKAGE', group: 'PREESPOUR' },
-      { key: 'SpoutPocking', label: 'SPOUT \nPOCKING', group: 'PREESPOUR' }, { key: 'StRod', label: 'S/T ROD\nCHANGE', group: 'PREESPOUR' },
-      { key: 'QcVent', label: 'QC VENT/\nSLAG', group: 'QUALITY CONTROL' }, { key: 'OutMould', label: 'OUT\nMOULD', group: 'QUALITY CONTROL' },
-      { key: 'LowMg', label: 'LOW\nMg', group: 'QUALITY CONTROL' }, { key: 'GradeChange', label: 'GRADE\nCHANGE', group: 'QUALITY CONTROL' },
-      { key: 'MsiProblem', label: 'MSI\nPROBLEM', group: 'QUALITY CONTROL' }, { key: 'BrakeDown', label: 'BRAKE\nDOWN', group: 'MAINTENANCE' },
-      { key: 'Wom', label: 'W/O M', group: 'FURNACE' }, { key: 'DevTrail', label: 'DEV/\nTRAIL', group: 'TOOLING' },
-      { key: 'PowerCut', label: 'POWER\nCUT', group: 'OTHERS' }, { key: 'PlannedOff', label: 'PLANNED\nOFF', group: 'OTHERS' },
-      { key: 'VatCleaning', label: 'VAT\nCLEANING', group: 'OTHERS' }, { key: 'Others', label: 'OTHERS', group: 'OTHERS' }
+        { key: 'PatternChange', label: 'PATTERN\nCHANGE', group: 'MOULDING' }, { key: 'HeatCodeChange', label: 'HEAT CODE\nCHANGE', group: 'MOULDING' },
+        { key: 'MouldBroken', label: 'MOULD\nBROKEN', group: 'MOULDING' }, { key: 'AmcCleaning', label: 'AMC\nCLEANING', group: 'MOULDING' },
+        { key: 'MouldCrush', label: 'MOULD\nCRUSH', group: 'MOULDING' }, { key: 'CoreFalling', label: 'CORE\nFALLING', group: 'MOULDING' },
+        { key: 'SandDelay', label: 'SAND\nDELAY', group: 'SAND PLANT' }, { key: 'DrySand', label: 'DRY\nSAND', group: 'SAND PLANT' },
+        { key: 'NozzleChange', label: 'NOZZLE\nCHANGE', group: 'PREESPOUR' }, { key: 'NozzleLeakage', label: 'NOZZLE\nLEAKAGE', group: 'PREESPOUR' },
+        { key: 'SpoutPocking', label: 'SPOUT \nPOCKING', group: 'PREESPOUR' }, { key: 'StRod', label: 'S/T ROD\nCHANGE', group: 'PREESPOUR' },
+        { key: 'QcVent', label: 'QC VENT/\nSLAG', group: 'QUALITY CONTROL' }, { key: 'OutMould', label: 'OUT\nMOULD', group: 'QUALITY CONTROL' },
+        { key: 'LowMg', label: 'LOW\nMg', group: 'QUALITY CONTROL' }, { key: 'GradeChange', label: 'GRADE\nCHANGE', group: 'QUALITY CONTROL' },
+        { key: 'MsiProblem', label: 'MSI\nPROBLEM', group: 'QUALITY CONTROL' }, { key: 'BrakeDown', label: 'BRAKE\nDOWN', group: 'MAINTENANCE' },
+        { key: 'Wom', label: 'W/O M', group: 'FURNACE' }, { key: 'DevTrail', label: 'DEV/\nTRAIL', group: 'TOOLING' },
+        { key: 'PowerCut', label: 'POWER\nCUT', group: 'OTHERS' }, { key: 'PlannedOff', label: 'PLANNED\nOFF', group: 'OTHERS' },
+        { key: 'VatCleaning', label: 'VAT\nCLEANING', group: 'OTHERS' }, { key: 'Others', label: 'OTHERS', group: 'OTHERS' }
     ];
 
     const allColumns = [...baseColumns, ...customCols];
@@ -66,7 +102,7 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
 
         if (!groupedData[dateKey]) groupedData[dateKey] = {};
         if (!groupedData[dateKey][machine]) groupedData[dateKey][machine] = { 1: {}, 2: {}, 3: {} };
-        
+
         groupedData[dateKey][machine][row.Shift] = row;
     });
 
@@ -86,7 +122,7 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
                 doc.addImage(logo, 'PNG', 12, 11, 36, 18);
             } catch (err) {
                 doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-                doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+                doc.text("SAKTHI", 30, 18, { align: 'center' });
                 doc.text("AUTO", 30, 26, { align: 'center' });
             }
             doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -98,22 +134,22 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
             doc.text(`DATE: ${formatDate(dateKey)}`, 258.5, 26, { align: 'center' });
 
             const headRow1 = [
-              { content: 'SHIFT', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
-              ...(() => {
-                const pdfGroups = [];
-                let currentGroup = null; let groupSpan = 0;
-                allColumns.forEach((col) => {
-                    if (!currentGroup) { currentGroup = col.group; groupSpan = 1; }
-                    else if (currentGroup === col.group) { groupSpan++; }
-                    else {
-                        pdfGroups.push({ content: currentGroup, colSpan: groupSpan, styles: { halign: 'center' } });
-                        currentGroup = col.group; groupSpan = 1;
-                    }
-                });
-                if (currentGroup) pdfGroups.push({ content: currentGroup, colSpan: groupSpan, styles: { halign: 'center' } });
-                return pdfGroups;
-              })(),
-              { content: 'TOTAL', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: [220, 220, 220] } }
+                { content: 'SHIFT', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+                ...(() => {
+                    const pdfGroups = [];
+                    let currentGroup = null; let groupSpan = 0;
+                    allColumns.forEach((col) => {
+                        if (!currentGroup) { currentGroup = col.group; groupSpan = 1; }
+                        else if (currentGroup === col.group) { groupSpan++; }
+                        else {
+                            pdfGroups.push({ content: currentGroup, colSpan: groupSpan, styles: { halign: 'center' } });
+                            currentGroup = col.group; groupSpan = 1;
+                        }
+                    });
+                    if (currentGroup) pdfGroups.push({ content: currentGroup, colSpan: groupSpan, styles: { halign: 'center' } });
+                    return pdfGroups;
+                })(),
+                { content: 'TOTAL', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: [220, 220, 220] } }
             ];
 
             const headRow2 = allColumns.map(col => ({ content: col.label, styles: { halign: 'center', valign: 'middle', fontSize: 5.5 } }));
@@ -147,21 +183,21 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
                 startY: 35, margin: { left: 5, right: 5 }, head: [headRow1, headRow2], body: bodyRows, theme: 'grid',
                 styles: { fontSize: 8, cellPadding: { top: 3.5, right: 1, bottom: 3.5, left: 1 }, lineColor: [0, 0, 0], lineWidth: 0.15, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
                 headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', minCellHeight: 12 }, bodyStyles: { minCellHeight: 10 },
-                didParseCell: function (data) { 
-                    if (data.section === 'body' && data.row.index === bodyRows.length - 1) { 
-                        data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240]; 
-                    } 
+                didParseCell: function (data) {
+                    if (data.section === 'body' && data.row.index === bodyRows.length - 1) {
+                        data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240];
+                    }
                 }
             });
 
             let sigY = doc.lastAutoTable.finalY + 10;
-            if (sigY + 30 > 210) { 
+            if (sigY + 30 > 210) {
                 doc.addPage();
                 sigY = 20;
             }
 
             const shiftLabels = ["1st shift", "2nd shift", "3rd shift"];
-            const xPositions = [50, 148.5, 247]; 
+            const xPositions = [50, 148.5, 247];
 
             doc.setFontSize(10).setFont('helvetica', 'bold');
 
@@ -171,9 +207,15 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
 
                 const sigData = shiftsData[shift]?.OperatorSignature;
                 if (sigData && sigData.startsWith('data:image')) {
-                    try { doc.addImage(sigData, 'PNG', x - 20, sigY, 40, 15); } catch (e) {}
+                    try { doc.addImage(sigData, 'PNG', x - 20, sigY, 40, 15); } catch (e) { }
                 }
             });
+
+            // 🔥 PRINT DYNAMIC QF VALUE ON PAGE 🔥
+            const currentPageQfValue = getDynamicQfString(dateKey, qfHistory, "QF/07/FBP-13, Rev.No:06 dt 08.10.2025");
+            doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+            doc.text(currentPageQfValue, 10, 200);
+
         });
     });
 
@@ -186,10 +228,12 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
 export const generateDmmSettingPDF = async (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
 
+    // 🔥 FIX: Extract qfHistory safely from data payload
+    const qfHistory = data.qfHistory || [];
+
     let metaRecords = [];
     let transRecords = [];
 
-    // Fallback Array Detection to prevent the "No Data Found" bug
     if (Array.isArray(data)) {
         metaRecords = data;
         transRecords = data;
@@ -206,10 +250,10 @@ export const generateDmmSettingPDF = async (data, dateRange) => {
 
     let customCols = [];
     try {
-        const token = localStorage.getItem('token'); 
+        const token = localStorage.getItem('token');
         const configRes = await fetch(`${process.env.REACT_APP_API_URL}/api/config/dmm-setting-parameters/master`, {
             headers: {
-                'Authorization': `Bearer ${token}`, 
+                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -217,7 +261,7 @@ export const generateDmmSettingPDF = async (data, dateRange) => {
         customCols = (configData.config || []).map(c => ({
             key: `custom_${c.id}`, id: c.id, label: c.columnLabel.replace('\\n', '\n'), isCustom: true
         }));
-    } catch(e) { console.error("Could not fetch DMM Custom Schema for PDF"); }
+    } catch (e) { console.error("Could not fetch DMM Custom Schema for PDF"); }
 
     const baseColumns = [
         { key: 'Customer', label: 'CUSTOMER' }, { key: 'ItemDescription', label: 'ITEM DESCRIPTION' }, { key: 'Time', label: 'TIME' },
@@ -241,7 +285,7 @@ export const generateDmmSettingPDF = async (data, dateRange) => {
 
         if (!groupedData[d]) groupedData[d] = {};
         if (!groupedData[d][machine]) groupedData[d][machine] = { shiftsMeta: {}, shiftsData: {} };
-        
+
         if (!groupedData[d][machine].shiftsMeta[shift]) {
             groupedData[d][machine].shiftsMeta[shift] = {
                 operator: m.OperatorName || '',
@@ -269,14 +313,14 @@ export const generateDmmSettingPDF = async (data, dateRange) => {
             isFirstPage = false;
 
             const machineData = groupedData[dateKey][machine];
-            
+
             doc.setLineWidth(0.3);
             doc.rect(10, 10, 40, 20);
             try {
                 doc.addImage(logo, 'PNG', 12, 11, 36, 18);
             } catch (err) {
                 doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-                doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+                doc.text("SAKTHI", 30, 18, { align: 'center' });
                 doc.text("AUTO", 30, 26, { align: 'center' });
             }
             doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -300,13 +344,16 @@ export const generateDmmSettingPDF = async (data, dateRange) => {
                     if (data.section === 'body' && data.column.index === 3) {
                         const m = machineData.shiftsMeta[data.row.index + 1] || {};
                         if (m.supervisorSignature && m.supervisorSignature.startsWith('data:image')) {
-                            try { doc.addImage(m.supervisorSignature, 'PNG', data.cell.x + 2, data.cell.y + 1, data.cell.width - 4, data.cell.height - 2); } catch (e) {}
+                            try { doc.addImage(m.supervisorSignature, 'PNG', data.cell.x + 2, data.cell.y + 1, data.cell.width - 4, data.cell.height - 2); } catch (e) { }
                         }
                     }
                 }
             });
 
             let currentY = doc.lastAutoTable.finalY + 8;
+
+            // 🔥 FIND DYNAMIC QF VALUE 🔥
+            const currentPageQfValue = getDynamicQfString(dateKey, qfHistory, "QF/07/FBP-13, Rev.No:06 dt 08.10.2025");
 
             [1, 2, 3].forEach((shift, index) => {
                 const m = machineData.shiftsMeta[shift] || {};
@@ -328,9 +375,9 @@ export const generateDmmSettingPDF = async (data, dateRange) => {
                         if (!rowsObj[record.RowUUID]) rowsObj[record.RowUUID] = {};
                         rowsObj[record.RowUUID][record.MasterId] = record.Value;
                     });
-                    
+
                     const rowsArr = Object.values(rowsObj);
-                    if(rowsArr.length === 0) rowsArr.push({});
+                    if (rowsArr.length === 0) rowsArr.push({});
 
                     tableBody = rowsArr.map((row, idx) => {
                         const pdfRow = [(idx + 1).toString()];
@@ -350,10 +397,13 @@ export const generateDmmSettingPDF = async (data, dateRange) => {
                 });
 
                 currentY = doc.lastAutoTable.finalY + 5;
-                if (currentY > 175 && index < 2) { doc.setFontSize(8); doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200); doc.addPage(); currentY = 15; }
+                if (currentY > 175 && index < 2) {
+                    doc.setFontSize(8); doc.text(currentPageQfValue, 10, 200);
+                    doc.addPage(); currentY = 15;
+                }
             });
 
-            doc.setFontSize(8); doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200);
+            doc.setFontSize(8); doc.text(currentPageQfValue, 10, 200);
         });
     });
 
@@ -365,7 +415,9 @@ export const generateDmmSettingPDF = async (data, dateRange) => {
 // ============================================================================
 export const generateChecklistPDF = (data, dateRange, title1, title2) => {
     const doc = new jsPDF('l', 'mm', 'a4');
-    const { master, trans, ncr } = data;
+
+    // 🔥 Extract qfHistory 
+    const { master, trans, ncr, qfHistory = [] } = data;
 
     if (!trans || trans.length === 0) {
         doc.setFontSize(14); doc.text("No data found for the selected date range.", 148.5, 40, { align: 'center' });
@@ -374,15 +426,14 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
     }
 
     const isLPA = title1.includes('AUDIT');
-
     const reportGroups = [];
-    
+
     trans.forEach(t => {
         const d = new Date(t.LogDate || t.RecordDate || t.date);
         const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         const machine = t.DisaMachine;
         const groupKey = `${machine}_${monthKey}`;
-        
+
         let group = reportGroups.find(g => g.key === groupKey);
         if (!group) {
             group = { key: groupKey, machine, monthKey, trans: [], ncr: [] };
@@ -397,7 +448,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
             if (isNaN(d.getTime())) return;
             const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
             const groupKey = `${n.DisaMachine}_${monthKey}`;
-            
+
             let group = reportGroups.find(g => g.key === groupKey);
             if (group) {
                 group.ncr.push(n);
@@ -406,7 +457,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
             }
         });
     }
-    
+
     reportGroups.sort((a, b) => a.key.localeCompare(b.key));
     let isFirstPage = true;
 
@@ -418,11 +469,19 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
         const [year, month] = monthKey.split('-');
         const reportMonthDate = new Date(year, parseInt(month) - 1, 1);
 
+        // 🔥 MATCH QF VALUE TO CURRENT FORM DATE 🔥
+        let reportDateStr = monthKey + '-01';
+        if (machineTrans && machineTrans.length > 0) {
+            reportDateStr = machineTrans[0].LogDate || machineTrans[0].RecordDate || machineTrans[0].date;
+        }
+        const dynamicFallback = isLPA ? "QF/08/MRO - 18, Rev No: 02 dt 01.01.2022" : "QF/07/FBP-13, Rev.No:06 dt 08.10.2025";
+        const currentPageQfValue = getDynamicQfString(reportDateStr, qfHistory, dynamicFallback);
+
         const historyMap = {};
         const holidayDays = new Set();
         const vatDays = new Set();
         const prevMaintDays = new Set();
-        const sig1Map = {}; 
+        const sig1Map = {};
         const sig2Map = {};
 
         machineTrans.forEach(log => {
@@ -440,12 +499,12 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
 
             if (log.OperatorSignature) sig1Map[logDay] = log.OperatorSignature;
             if (log.SupervisorSignature) sig1Map[logDay] = log.SupervisorSignature;
-            
+
             if (log.HODSignature) sig2Map[logDay] = log.HODSignature;
             if (log.HOFSignature) sig2Map[logDay] = log.HOFSignature;
 
             if (!historyMap[key]) historyMap[key] = {};
-            
+
             if (isHol || isVat || isPM) {
                 historyMap[key][logDay] = '';
             } else if (Number(log.IsNa) === 1 || log.IsNa === true || Number(log.IsNA) === 1 || log.IsNA === true) {
@@ -464,7 +523,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
             doc.addImage(logo, 'PNG', 12, 11, 36, 18);
         } catch (err) {
             doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-            doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+            doc.text("SAKTHI", 30, 18, { align: 'center' });
             doc.text("AUTO", 30, 26, { align: 'center' });
         }
         doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -502,10 +561,10 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
 
         const sig1Row = ["", sig1Label, ""];
         const sig2Row = ["", sig2Label, ""];
-        
+
         for (let i = 1; i <= 31; i++) {
-           sig1Row.push("");
-           sig2Row.push("");
+            sig1Row.push("");
+            sig2Row.push("");
         }
 
         const footerRows = [sig1Row, sig2Row];
@@ -519,22 +578,22 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
             theme: 'grid', styles: { fontSize: 6, cellPadding: 0.5, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'middle' },
             headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0] },
             columnStyles: { 0: { cellWidth: 8 }, 1: { cellWidth: 60 }, 2: { cellWidth: 25 }, ...dynamicColumnStyles },
-            didDrawCell: function(data) {
+            didDrawCell: function (data) {
                 if (data.row.index >= tableBody.length && data.column.index > 2) {
-                    const dayIndex = data.column.index - 2; 
+                    const dayIndex = data.column.index - 2;
                     const isSig1Row = data.row.index === tableBody.length;
-                    
+
                     const sigData = isSig1Row ? sig1Map[dayIndex] : sig2Map[dayIndex];
                     if (sigData && sigData.startsWith('data:image')) {
                         doc.setFillColor(255, 255, 255);
                         doc.rect(data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1, 'F');
-                        try { doc.addImage(sigData, 'PNG', data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1); } catch(e){}
+                        try { doc.addImage(sigData, 'PNG', data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1); } catch (e) { }
                     }
                 }
             },
             didParseCell: function (data) {
                 if (data.row.index >= tableBody.length && data.column.index === 1) data.cell.styles.fontStyle = 'bold';
-                
+
                 if (data.row.index >= tableBody.length && data.column.index > 2) {
                     data.cell.text = [];
                 }
@@ -548,13 +607,15 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
             }
         });
 
-        doc.setFontSize(8); 
-        if(isLPA) {
+        doc.setFontSize(8);
+        if (isLPA) {
             doc.setFont('helvetica', 'bold');
             doc.text("Legend:   3 - OK     X - NOT OK     CA - Corrected during Audit     NA - Not Applicable", 10, doc.lastAutoTable.finalY + 5);
             doc.setFont('helvetica', 'normal');
         }
-        doc.text(isLPA ? "QF/08/MRO - 18, Rev No: 02 dt 01.01.2022" : "QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200);
+
+        // 🔥 PRINT DYNAMIC QF VALUE ON PAGE 1
+        doc.text(currentPageQfValue, 10, 200);
 
         if (machineNc.length > 0) {
             doc.addPage();
@@ -565,7 +626,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
                 doc.addImage(logo, 'PNG', 12, 11, 36, 18);
             } catch (err) {
                 doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-                doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+                doc.text("SAKTHI", 30, 18, { align: 'center' });
                 doc.text("AUTO", 30, 26, { align: 'center' });
             }
             doc.rect(50, 10, 237, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -583,15 +644,15 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
                 body: ncRows, theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'top', overflow: 'linebreak' },
                 headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', valign: 'middle' },
                 columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 40 }, 3: { cellWidth: 35 }, 4: { cellWidth: 35 }, 5: { cellWidth: 35 }, 6: { cellWidth: 20, halign: 'center' }, 7: { cellWidth: 25 }, 8: { cellWidth: 20, halign: 'center' }, 9: { cellWidth: 20, halign: 'center' } },
-                didDrawCell: function(data) {
+                didDrawCell: function (data) {
                     if (isLPA && data.section === 'body' && data.column.index === 8) {
                         const rowData = machineNc[data.row.index];
                         if (rowData && rowData.SupervisorSignature && rowData.SupervisorSignature.startsWith('data:image')) {
-                            try { doc.addImage(rowData.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch(e){}
+                            try { doc.addImage(rowData.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { }
                         }
                     }
                 },
-                didParseCell: function(data) {
+                didParseCell: function (data) {
                     if (isLPA && data.section === 'body' && data.column.index === 8) {
                         data.cell.text = [];
                     }
@@ -602,7 +663,15 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
                     }
                 }
             });
-            doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text(isLPA ? "QF/08/MRO - 18, Rev No: 02 dt 01.01.2022" : "QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200);
+
+            // 🔥 PRINT DYNAMIC QF VALUE ON PAGE 2
+            doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+            let ncrDateStr = monthKey + '-01';
+            if (machineNc && machineNc.length > 0) {
+                ncrDateStr = machineNc[0].ReportDate || machineNc[0].RecordDate || machineNc[0].date;
+            }
+            const ncrDynamicQf = getDynamicQfString(ncrDateStr, qfHistory, dynamicFallback);
+            doc.text(ncrDynamicQf, 10, 200);
         }
     });
 
@@ -615,7 +684,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
 // ============================================================================
 export const generateErrorProofPDF = (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
-    const { verifications, plans } = data;
+    const { verifications, plans, qfHistory = [] } = data;
 
     if (!verifications || verifications.length === 0) {
         doc.setFontSize(14); doc.text("No data found for the selected date range.", 148.5, 40, { align: 'center' });
@@ -643,7 +712,7 @@ export const generateErrorProofPDF = (data, dateRange) => {
     }
 
     let isFirstPage = true;
-    const PAGE_HEIGHT = 210; 
+    const PAGE_HEIGHT = 210;
 
     Object.keys(groupedByDateAndMachine).sort().forEach(dateKey => {
         Object.keys(groupedByDateAndMachine[dateKey]).sort().forEach(machine => {
@@ -659,7 +728,7 @@ export const generateErrorProofPDF = (data, dateRange) => {
                 doc.addImage(logo, 'PNG', 12, 11, 36, 18);
             } catch (err) {
                 doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-                doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+                doc.text("SAKTHI", 30, 18, { align: 'center' });
                 doc.text("AUTO", 30, 26, { align: 'center' });
             }
             doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -667,7 +736,7 @@ export const generateErrorProofPDF = (data, dateRange) => {
             doc.rect(230, 10, 57, 20); doc.setFontSize(11);
             doc.text(`${machine}`, 258.5, 16, { align: 'center' });
             doc.line(230, 20, 287, 20);
-            doc.setFontSize(10); doc.setFont('helvetica', 'normal'); 
+            doc.setFontSize(10); doc.setFont('helvetica', 'normal');
             doc.text(`DATE: ${formatDate(dateKey)}`, 258.5, 26, { align: 'center' });
 
             const vRows = records.v.map((item, index) => [
@@ -685,7 +754,7 @@ export const generateErrorProofPDF = (data, dateRange) => {
             });
 
             let currentY = doc.lastAutoTable.finalY + 10;
-            
+
             if (records.r && records.r.length > 0) {
                 doc.setFontSize(14); doc.setFont('helvetica', 'bold');
                 doc.text("Reaction Plan", 148.5, currentY, { align: 'center' });
@@ -709,7 +778,9 @@ export const generateErrorProofPDF = (data, dateRange) => {
                 styles: { fontSize: 10, cellPadding: 4, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', minCellHeight: 15 }, headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
             });
 
-            doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200);
+            // 🔥 DYNAMIC QF VALUE 🔥
+            const dynamicQf = getDynamicQfString(dateKey, qfHistory, "QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023");
+            doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text(dynamicQf, 10, 200);
         });
     });
 
@@ -723,6 +794,7 @@ export const generateErrorProofV1PDF = (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
     const verifications = data.verifications || [];
     const plans = data.plans || [];
+    const qfHistory = data.qfHistory || [];
 
     if (verifications.length === 0) {
         doc.setFontSize(14);
@@ -759,7 +831,7 @@ export const generateErrorProofV1PDF = (data, dateRange) => {
             doc.addImage(logo, 'PNG', 12, 11, 36, 18);
         } catch (err) {
             doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-            doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+            doc.text("SAKTHI", 30, 18, { align: 'center' });
             doc.text("AUTO", 30, 26, { align: 'center' });
         }
         doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -779,7 +851,7 @@ export const generateErrorProofV1PDF = (data, dateRange) => {
             ]),
             theme: 'grid',
             styles: { fontSize: 8, halign: 'center', valign: 'middle' },
-            headStyles: { fillColor: [220, 220, 220], textColor: [0,0,0] }
+            headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0] }
         });
 
         let finalY = doc.lastAutoTable.finalY + 10;
@@ -790,13 +862,13 @@ export const generateErrorProofV1PDF = (data, dateRange) => {
         doc.text("Operator Signature:", 14, finalY);
         doc.rect(14, finalY + 2, 45, 18).stroke();
         if (opSig && opSig.startsWith('data:image')) {
-            try { doc.addImage(opSig, 'PNG', 15, finalY + 3, 43, 16); } catch(e){}
+            try { doc.addImage(opSig, 'PNG', 15, finalY + 3, 43, 16); } catch (e) { }
         }
 
         doc.text("HOF Signature:", 148.5, finalY);
         doc.rect(148.5, finalY + 2, 45, 18).stroke();
         if (hofSig && hofSig.startsWith('data:image')) {
-            try { doc.addImage(hofSig, 'PNG', 149.5, finalY + 3, 43, 16); } catch(e){}
+            try { doc.addImage(hofSig, 'PNG', 149.5, finalY + 3, 43, 16); } catch (e) { }
         }
 
         finalY += 30;
@@ -813,20 +885,24 @@ export const generateErrorProofV1PDF = (data, dateRange) => {
                 ]),
                 theme: 'grid',
                 styles: { fontSize: 7, halign: 'center', valign: 'middle' },
-                headStyles: { fillColor: [220, 220, 220], textColor: [0,0,0] },
-                didDrawCell: function(data) {
+                headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0] },
+                didDrawCell: function (data) {
                     if (data.section === 'body' && data.column.index === 8) {
                         const p = group.plans[data.row.index];
                         if (p.SupervisorSignature && p.SupervisorSignature.startsWith('data:image')) {
-                            try { doc.addImage(p.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch(e){}
+                            try { doc.addImage(p.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { }
                         }
                     }
                 },
-                didParseCell: function(data) {
+                didParseCell: function (data) {
                     if (data.section === 'body' && data.column.index === 8 && data.cell.raw === 'SIG') data.cell.text = '';
                 }
             });
         }
+
+        // 🔥 DYNAMIC QF VALUE 🔥
+        const dynamicQf = getDynamicQfString(group.date, qfHistory, "QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023");
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text(dynamicQf, 10, 200);
     });
 
     doc.save(`ErrorProof_V1_Bulk_${dateRange.from}_to_${dateRange.to}.pdf`);
@@ -839,6 +915,7 @@ export const generateErrorProofV2PDF = (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
     const verifications = data.verifications || [];
     const plans = data.plans || [];
+    const qfHistory = data.qfHistory || [];
 
     if (verifications.length === 0) {
         doc.setFontSize(14);
@@ -875,7 +952,7 @@ export const generateErrorProofV2PDF = (data, dateRange) => {
             doc.addImage(logo, 'PNG', 12, 11, 36, 18);
         } catch (err) {
             doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-            doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+            doc.text("SAKTHI", 30, 18, { align: 'center' });
             doc.text("AUTO", 30, 26, { align: 'center' });
         }
         doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -895,7 +972,7 @@ export const generateErrorProofV2PDF = (data, dateRange) => {
             ]),
             theme: 'grid',
             styles: { fontSize: 8, halign: 'center', valign: 'middle' },
-            headStyles: { fillColor: [220, 220, 220], textColor: [0,0,0] }
+            headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0] }
         });
 
         let finalY = doc.lastAutoTable.finalY + 10;
@@ -906,13 +983,13 @@ export const generateErrorProofV2PDF = (data, dateRange) => {
         doc.text("Operator Signature:", 14, finalY);
         doc.rect(14, finalY + 2, 45, 18).stroke();
         if (opSig && opSig.startsWith('data:image')) {
-            try { doc.addImage(opSig, 'PNG', 15, finalY + 3, 43, 16); } catch(e){}
+            try { doc.addImage(opSig, 'PNG', 15, finalY + 3, 43, 16); } catch (e) { }
         }
 
         doc.text("HOF Signature:", 148.5, finalY);
         doc.rect(148.5, finalY + 2, 45, 18).stroke();
         if (hofSig && hofSig.startsWith('data:image')) {
-            try { doc.addImage(hofSig, 'PNG', 149.5, finalY + 3, 43, 16); } catch(e){}
+            try { doc.addImage(hofSig, 'PNG', 149.5, finalY + 3, 43, 16); } catch (e) { }
         }
 
         finalY += 30;
@@ -929,20 +1006,24 @@ export const generateErrorProofV2PDF = (data, dateRange) => {
                 ]),
                 theme: 'grid',
                 styles: { fontSize: 7, halign: 'center', valign: 'middle' },
-                headStyles: { fillColor: [220, 220, 220], textColor: [0,0,0] },
-                didDrawCell: function(data) {
+                headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0] },
+                didDrawCell: function (data) {
                     if (data.section === 'body' && data.column.index === 9) {
                         const p = group.plans[data.row.index];
                         if (p.SupervisorSignature && p.SupervisorSignature.startsWith('data:image')) {
-                            try { doc.addImage(p.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch(e){}
+                            try { doc.addImage(p.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { }
                         }
                     }
                 },
-                didParseCell: function(data) {
+                didParseCell: function (data) {
                     if (data.section === 'body' && data.column.index === 9 && data.cell.raw === 'SIG') data.cell.text = '';
                 }
             });
         }
+
+        // 🔥 DYNAMIC QF VALUE 🔥
+        const dynamicQf = getDynamicQfString(group.date, qfHistory, "QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023");
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text(dynamicQf, 10, 200);
     });
 
     doc.save(`ErrorProof_V2_Bulk_${dateRange.from}_to_${dateRange.to}.pdf`);
@@ -954,7 +1035,10 @@ export const generateErrorProofV2PDF = (data, dateRange) => {
 export const generateDisaSettingAdjustmentPDF = (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
 
-    if (!data || data.length === 0) {
+    const records = data.records || data || [];
+    const qfHistory = data.qfHistory || [];
+
+    if (!records || records.length === 0) {
         doc.setFontSize(14);
         doc.text("No data found for the selected date range.", 148.5, 40, { align: 'center' });
         doc.save(`DISA_SettingAdjustment_${dateRange.from}_to_${dateRange.to}.pdf`);
@@ -975,7 +1059,7 @@ export const generateDisaSettingAdjustmentPDF = (data, dateRange) => {
         doc.addImage(logo, 'PNG', 12, 11, 36, 18);
     } catch (err) {
         doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-        doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+        doc.text("SAKTHI", 30, 18, { align: 'center' });
         doc.text("AUTO", 30, 26, { align: 'center' });
     }
     doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -985,9 +1069,9 @@ export const generateDisaSettingAdjustmentPDF = (data, dateRange) => {
     doc.line(230, 20, 287, 20);
     doc.text(`To:   ${formatDate(dateRange.to)}`, 258.5, 26, { align: 'center' });
 
-    const tableRows = data.map((row, index) => {
+    const tableRows = records.map((row, index) => {
         const customValues = Object.values(row.customValues || {});
-        
+
         return [
             index + 1,
             formatDate(row.recordDate),
@@ -995,15 +1079,15 @@ export const generateDisaSettingAdjustmentPDF = (data, dateRange) => {
             row.noOfMoulds != null ? row.noOfMoulds.toString() : '-',
             processText(row.workCarriedOut) || '-',
             processText(row.preventiveWorkCarried) || '-',
-            row.operatorSignature || '', 
+            row.operatorSignature || '',
             row.remarks || '-',
             ...customValues
         ];
     });
 
-    const hasCustomCols = data[0] && data[0].customValues && Object.keys(data[0].customValues).length > 0;
+    const hasCustomCols = records[0] && records[0].customValues && Object.keys(records[0].customValues).length > 0;
     const baseHeaders = ['S.No', 'Date', 'Mould Count No.', 'No. of\nMoulds', 'Work Carried Out', 'Preventive Work\nCarried', 'Operator\nSignature', 'Remarks'];
-    const customHeaders = hasCustomCols ? Object.keys(data[0].customValues).map((_, i) => `Custom ${i+1}`) : [];
+    const customHeaders = hasCustomCols ? Object.keys(records[0].customValues).map((_, i) => `Custom ${i + 1}`) : [];
     const allHeaders = [...baseHeaders, ...customHeaders];
 
     autoTable(doc, {
@@ -1019,7 +1103,7 @@ export const generateDisaSettingAdjustmentPDF = (data, dateRange) => {
             if (data.section === 'body' && data.column.index === 6) {
                 const sigData = data.row.raw[6];
                 if (sigData && sigData.startsWith('data:image')) {
-                    try { doc.addImage(sigData, 'PNG', data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4); } catch(e) {}
+                    try { doc.addImage(sigData, 'PNG', data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4); } catch (e) { }
                 }
             }
         },
@@ -1028,8 +1112,11 @@ export const generateDisaSettingAdjustmentPDF = (data, dateRange) => {
         }
     });
 
+    // 🔥 DYNAMIC QF VALUE FOR SINGLE PAGE REPORT (Uses newest QF regardless of report date) 🔥
+    const dynamicQf = (qfHistory && qfHistory.length > 0) ? qfHistory[0].qfValue : "QF/07/FBP-02, Rev. No.01 Dt 14.05.2025";
+
     doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-    doc.text("QF/07/FBP-02, Rev. No.01 Dt 14.05.2025", 10, 200);
+    doc.text(dynamicQf, 10, 200);
 
     doc.save(`DISA_SettingAdjustment_Bulk_${dateRange.from}_to_${dateRange.to}.pdf`);
 };
@@ -1039,7 +1126,9 @@ export const generateDisaSettingAdjustmentPDF = (data, dateRange) => {
 // ============================================================================
 export const generateFourMChangePDF = (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
+
     const records = data.records || data || [];
+    const qfHistory = data.qfHistory || [];
 
     if (records.length === 0) {
         doc.setFontSize(14);
@@ -1052,9 +1141,9 @@ export const generateFourMChangePDF = (data, dateRange) => {
     const pageWidth = doc.internal.pageSize.getWidth() - 20;
 
     const baseHeaders = ["Date /\nShift", "M/c.\nNo", "Type of\n4M", "Description", "First\nPart", "Last\nPart", "Insp.\nFreq", "Retro\nChecking", "Quarantine", "Part\nIdent.", "Internal\nComm.", "Supervisor\nSign"];
-    
+
     const customKeys = records[0] && records[0].customValues ? Object.keys(records[0].customValues) : [];
-    const customHeaders = customKeys.map((_, i) => `Custom ${i+1}`);
+    const customHeaders = customKeys.map((_, i) => `Custom ${i + 1}`);
     const headers = [...baseHeaders, ...customHeaders];
 
     const baseWeights = [1.5, 1, 1, 3.5, 1, 1, 1, 1.2, 1.5, 1, 1.2, 2.5];
@@ -1072,7 +1161,7 @@ export const generateFourMChangePDF = (data, dateRange) => {
             doc.addImage(logo, 'PNG', 12, 11, 36, 18);
         } catch (err) {
             doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-            doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+            doc.text("SAKTHI", 30, 18, { align: 'center' });
             doc.text("AUTO", 30, 26, { align: 'center' });
         }
         doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -1091,23 +1180,31 @@ export const generateFourMChangePDF = (data, dateRange) => {
         doc.setFontSize(7);
         headers.forEach((header, i) => {
             doc.rect(currentX, tableHeaderY, colWidths[i], 25).stroke();
-            doc.text(header, currentX + colWidths[i]/2, tableHeaderY + 8, { align: "center" });
+            doc.text(header, currentX + colWidths[i] / 2, tableHeaderY + 8, { align: "center" });
             currentX += colWidths[i];
         });
         return tableHeaderY + 25;
     };
 
-    const drawFooter = () => {
+    const drawFooter = (lineRecords) => {
         const footerY = doc.internal.pageSize.getHeight() - 15;
         doc.setFont("helvetica", "normal");
         doc.setFontSize(8);
-        doc.text("QF/07/MPD-36, Rev. No: 01, 13.03.2019", startX, footerY, { align: "left" });
+
+        let reportDateStr = dateRange.from;
+        if (lineRecords && lineRecords.length > 0) {
+            reportDateStr = lineRecords[0].recordDate || reportDateStr;
+        }
+
+        // 🔥 DYNAMIC QF VALUE 🔥
+        const dynamicQf = getDynamicQfString(reportDateStr, qfHistory, "QF/07/MPD-36, Rev. No: 01, 13.03.2019");
+        doc.text(dynamicQf, startX, footerY, { align: "left" });
     };
 
     const groupedRecords = {};
     records.forEach(r => {
         const line = r.line || r.disa || 'DISA - I';
-        if(!groupedRecords[line]) groupedRecords[line] = [];
+        if (!groupedRecords[line]) groupedRecords[line] = [];
         groupedRecords[line].push(r);
     });
 
@@ -1119,7 +1216,7 @@ export const generateFourMChangePDF = (data, dateRange) => {
 
         const lineRecords = groupedRecords[line];
         const uniquePartNames = [...new Set(lineRecords.map(r => r.partName).filter(Boolean))].join(', ');
-        
+
         let y = drawHeaders(20, line, uniquePartNames);
 
         lineRecords.forEach((row) => {
@@ -1138,7 +1235,7 @@ export const generateFourMChangePDF = (data, dateRange) => {
             doc.setFontSize(7);
 
             rowData.forEach((cell, i) => {
-                if (i !== 11) { 
+                if (i !== 11) {
                     const lines = doc.splitTextToSize(String(cell || ""), colWidths[i] - 4);
                     const h = lines.length * 3.5;
                     if (h + 10 > maxRowHeight) maxRowHeight = h + 10;
@@ -1146,7 +1243,7 @@ export const generateFourMChangePDF = (data, dateRange) => {
             });
 
             if (y + maxRowHeight > doc.internal.pageSize.getHeight() - 25) {
-                drawFooter();
+                drawFooter(lineRecords);
                 doc.addPage();
                 y = drawHeaders(20, line, uniquePartNames);
             }
@@ -1154,23 +1251,23 @@ export const generateFourMChangePDF = (data, dateRange) => {
             let x = startX;
             rowData.forEach((cell, i) => {
                 doc.rect(x, y, colWidths[i], maxRowHeight).stroke();
-                
+
                 if (i === 11 && cell && cell.startsWith('data:image')) {
-                    try { doc.addImage(cell, 'PNG', x + 2, y + 2, colWidths[i] - 4, maxRowHeight - 4); } catch (e) {}
+                    try { doc.addImage(cell, 'PNG', x + 2, y + 2, colWidths[i] - 4, maxRowHeight - 4); } catch (e) { }
                 } else if (cell === "OK") {
-                    doc.save().setLineWidth(1).moveTo(x + colWidths[i]/2 - 3, y + maxRowHeight/2 + 1).lineTo(x + colWidths[i]/2 - 1, y + maxRowHeight/2 + 4).lineTo(x + colWidths[i]/2 + 4, y + maxRowHeight/2 - 3).stroke().restore();
+                    doc.save().setLineWidth(1).moveTo(x + colWidths[i] / 2 - 3, y + maxRowHeight / 2 + 1).lineTo(x + colWidths[i] / 2 - 1, y + maxRowHeight / 2 + 4).lineTo(x + colWidths[i] / 2 + 4, y + maxRowHeight / 2 - 3).stroke().restore();
                 } else if (cell === "Not OK") {
-                    doc.save().setLineWidth(1).moveTo(x + colWidths[i]/2 - 3, y + maxRowHeight/2 - 3).lineTo(x + colWidths[i]/2 + 3, y + maxRowHeight/2 + 3).moveTo(x + colWidths[i]/2 + 3, y + maxRowHeight/2 - 3).lineTo(x + colWidths[i]/2 - 3, y + maxRowHeight/2 + 3).stroke().restore();
+                    doc.save().setLineWidth(1).moveTo(x + colWidths[i] / 2 - 3, y + maxRowHeight / 2 - 3).lineTo(x + colWidths[i] / 2 + 3, y + maxRowHeight / 2 + 3).moveTo(x + colWidths[i] / 2 + 3, y + maxRowHeight / 2 - 3).lineTo(x + colWidths[i] / 2 - 3, y + maxRowHeight / 2 + 3).stroke().restore();
                 } else {
                     const lines = doc.splitTextToSize(String(cell || ""), colWidths[i] - 4);
-                    doc.text(lines, x + colWidths[i]/2, y + 5, { align: "center" });
+                    doc.text(lines, x + colWidths[i] / 2, y + 5, { align: "center" });
                 }
                 x += colWidths[i];
             });
             y += maxRowHeight;
         });
 
-        drawFooter();
+        drawFooter(lineRecords);
     });
 
     doc.save(`4M_Change_Bulk_${dateRange.from}_to_${dateRange.to}.pdf`);
@@ -1182,6 +1279,7 @@ export const generateFourMChangePDF = (data, dateRange) => {
 export const generateMouldQualityPDF = (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
     const records = data.records || data || [];
+    const qfHistory = data.qfHistory || [];
 
     if (records.length === 0) {
         doc.setFontSize(14);
@@ -1209,7 +1307,7 @@ export const generateMouldQualityPDF = (data, dateRange) => {
             doc.addImage(logo, 'PNG', 12, 11, 36, 18);
         } catch (err) {
             doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-            doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+            doc.text("SAKTHI", 30, 18, { align: 'center' });
             doc.text("AUTO", 30, 26, { align: 'center' });
         }
         doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -1274,20 +1372,25 @@ export const generateMouldQualityPDF = (data, dateRange) => {
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
-        
+
         doc.text(`Verified By: ${header.verifiedBy || '-'}`, startX, sigY);
         if (header.operatorSignature && header.operatorSignature.startsWith('data:image')) {
-            try { doc.addImage(header.operatorSignature, 'PNG', startX, sigY + 5, 60, 20); } catch(e){}
+            try { doc.addImage(header.operatorSignature, 'PNG', startX, sigY + 5, 60, 20); } catch (e) { }
         }
 
         doc.text(`Approved By: ${header.approvedBy || '-'}`, doc.internal.pageSize.getWidth() - 100, sigY);
         if (header.supervisorSignature && header.supervisorSignature.startsWith('data:image')) {
-            try { doc.addImage(header.supervisorSignature, 'PNG', doc.internal.pageSize.getWidth() - 100, sigY + 5, 60, 20); } catch(e){}
+            try { doc.addImage(header.supervisorSignature, 'PNG', doc.internal.pageSize.getWidth() - 100, sigY + 5, 60, 20); } catch (e) { }
         } else {
             doc.setFont('helvetica', 'normal');
-            doc.setTextColor(0, 0, 0); 
+            doc.setTextColor(0, 0, 0);
             doc.text("Pending", doc.internal.pageSize.getWidth() - 100, sigY + 15);
         }
+
+        // 🔥 DYNAMIC QF VALUE 🔥
+        const dynamicQf = getDynamicQfString(header.reportDate || dateRange.from, qfHistory, "QF/07/MOU-06, Rev. No.02 Dt 01.01.2023");
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+        doc.text(dynamicQf, 10, 200);
     });
 
     doc.save(`Moulding_Quality_Bulk_${dateRange.from}_to_${dateRange.to}.pdf`);

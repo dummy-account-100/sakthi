@@ -5,7 +5,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import SignatureCanvas from 'react-signature-canvas';
 import Header from '../components/Header';
-import logo from '../Assets/logo.png'; // Make sure the path is correct
+import logo from '../Assets/logo.png'; 
 
 const NotificationModal = ({ data, onClose }) => {
   if (!data.show) return null;
@@ -77,6 +77,7 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
     3: { ...emptyShift, customValues: {}, operatorSignature: '' }
   });
   const [unpouredSummary, setUnpouredSummary] = useState([]);
+  const [qfHistory, setQfHistory] = useState([]); // 🔥 State to store QF History
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState({ show: false, type: '', message: '' });
 
@@ -155,7 +156,9 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
       const summaryRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/unpoured-moulds/summary`, {
         params: { date: headerData.date }
       });
-      setUnpouredSummary(summaryRes.data || []);
+      // Extract the new response struct
+      setUnpouredSummary(summaryRes.data.summary || []);
+      setQfHistory(summaryRes.data.qfHistory || []); // Store QF History
     } catch (e) {
       setUnpouredSummary([]);
     }
@@ -204,7 +207,6 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
   const getDisaData = (disaName) => unpouredSummary.find(d => d.disa === disaName) || {};
 
   const handleSave = async () => {
-    // --- Empty field validation ---
     let hasEmpty = false;
     [1, 2, 3].forEach(s => {
       columns.forEach(col => {
@@ -246,9 +248,23 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
     try {
       const doc = new jsPDF('l', 'mm', 'a4');
 
+      // 🔥 MATCH QF VALUE TO CURRENT FORM DATE 🔥
+      let currentPageQfValue = "QF/07/FBP-13, Rev.No:06 dt 08.10.2025";
+      const reportDate = new Date(headerData.date);
+      reportDate.setHours(0, 0, 0, 0);
+
+      for (let qf of qfHistory) {
+          if (!qf.date) continue;
+          const qfDate = new Date(qf.date);
+          qfDate.setHours(0, 0, 0, 0);
+          if (qfDate <= reportDate) {
+              currentPageQfValue = qf.qfValue;
+              break; 
+          }
+      }
+
       doc.setLineWidth(0.3);
       
-      // Box 1: SAKTHI AUTO (Logo Area)
       doc.rect(10, 10, 40, 20);
       try {
         doc.addImage(logo, 'PNG', 12, 11, 36, 18);
@@ -258,13 +274,11 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
         doc.text("AUTO", 30, 26, { align: 'center' });
       }
 
-      // Box 2: Title
       doc.rect(50, 10, 197, 20);
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
       doc.text("UN POURED MOULD DETAILS", 148.5, 22, { align: 'center' });
 
-      // Box 3: Meta (DISA & Date)
       doc.rect(247, 10, 40, 20);
       doc.setFontSize(11);
       doc.text(headerData.disaMachine, 267, 16, { align: 'center' });
@@ -353,7 +367,6 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
       });
       summaryBodyRows.push(['TOTAL', '-', '-', totalProduced, totalPoured, totalUnpoured, `${totalPercentage}%`, totalDelays, '-', '-', totalRunningHours]);
 
-      // --- 1. Main summary table spanning full width
       autoTable(doc, {
         startY: summaryStartY, margin: { right: 5, left: 5 },
         head: [['DISA', 'MOULD\nCLOSE', 'MOULD\nOPEN', 'PRODUCED', 'POURED', 'UNPOURED', '%', 'DELAYS', 'PROD\nM/HR', 'POURED\nM/HR', 'RUN HRS']],
@@ -363,20 +376,17 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
         didParseCell: function (data) { if (data.section === 'body' && data.row.index === summaryBodyRows.length - 1) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240]; } }
       });
 
-      // --- 2. Calculate safe Y position for bottom parallel tables ---
       let bottomTablesStartY = doc.lastAutoTable.finalY + 10;
       
-      // Safety check: if there is not enough space for the bottom tables (approx 40mm needed), push them together to a new page
       if (bottomTablesStartY + 40 > 210) { 
           doc.addPage();
           bottomTablesStartY = 20; 
       }
 
-      // --- 3. Render NO. OF MOULDS/DAY strictly on the Left ---
       autoTable(doc, {
         startY: bottomTablesStartY, 
         margin: { left: 5 }, 
-        tableWidth: 140, // EXPLICIT WIDTH to force parallel
+        tableWidth: 140, 
         pageBreak: 'avoid',
         head: [[{ content: 'NO. OF MOULDS/DAY', colSpan: 7, styles: { halign: 'left' } }], ['', 'DISA 1', 'DISA 2', 'DISA 3', 'DISA 4', 'DISA 5', 'DISA 6']],
         body: [
@@ -391,11 +401,10 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
         }
       });
 
-      // --- 4. Render NO. OF QUANTITY/DAY strictly on the Right ---
       autoTable(doc, {
-        startY: bottomTablesStartY, // MUST match the left table's startY
-        margin: { left: 152 },      // Start drawing at 152mm from the left edge
-        tableWidth: 140,            // EXPLICIT WIDTH
+        startY: bottomTablesStartY, 
+        margin: { left: 152 },      
+        tableWidth: 140,            
         pageBreak: 'avoid',
         head: [[{ content: 'NO. OF QUANTITY/DAY', colSpan: 7, styles: { halign: 'left' } }], ['', 'DISA 1', 'DISA 2', 'DISA 3', 'DISA 4', 'DISA 5', 'DISA 6']],
         body: [
@@ -410,8 +419,9 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
         }
       });
 
+      // 🔥 PRINT DYNAMIC QF VALUE 🔥
       doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-      doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200);
+      doc.text(currentPageQfValue, 10, 200);
 
       doc.save(`UnPoured_Mould_Details_${headerData.date}.pdf`);
       setNotification({ show: false, type: '', message: '' });

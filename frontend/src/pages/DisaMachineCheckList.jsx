@@ -7,22 +7,25 @@ import SignatureCanvas from 'react-signature-canvas';
 import Header from '../components/Header';
 import logo from '../Assets/logo.png'; // Make sure this path is correct
 
-const NotificationModal = ({ data, onClose }) => {
+// --- Upgraded to Toast Notification ---
+const ToastNotification = ({ data, onClose }) => {
+  useEffect(() => {
+    if (data.show && data.type !== 'loading') {
+      const timer = setTimeout(onClose, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [data, onClose]);
+
   if (!data.show) return null;
+
   const isError = data.type === 'error';
   const isLoading = data.type === 'loading';
+
   return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className={`border-2 w-full max-w-md p-6 rounded-2xl shadow-2xl bg-white ${isError ? 'border-red-200' : 'border-green-200'}`}>
-        <div className="flex items-center gap-4">
-          {isLoading ? <Loader className="animate-spin text-blue-600" /> : isError ? <AlertTriangle className="text-red-600" /> : <CheckCircle className="text-green-600" />}
-          <div>
-            <h3 className="font-bold text-lg">{isLoading ? 'Processing...' : isError ? 'Error' : 'Success'}</h3>
-            <p className="text-sm text-gray-600">{data.message}</p>
-          </div>
-        </div>
-        {!isLoading && <button onClick={onClose} className="mt-4 px-4 py-2 bg-gray-900 text-white rounded text-sm font-bold float-right">Close</button>}
-      </div>
+    <div className={`fixed top-6 right-6 z-[200] flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl transition-all duration-300 animate-in slide-in-from-right-8 ${isLoading ? 'bg-blue-50 border-l-4 border-blue-600 text-blue-800' : isError ? 'bg-red-50 border-l-4 border-red-600 text-red-800' : 'bg-green-50 border-l-4 border-green-600 text-green-800'}`}>
+      {isLoading ? <Loader className="animate-spin" size={20} /> : isError ? <AlertTriangle size={20} /> : <CheckCircle size={20} />}
+      <p className="font-bold text-sm">{data.message}</p>
+      {!isLoading && <button onClick={onClose} className="ml-4 opacity-50 hover:opacity-100"><X size={16} /></button>}
     </div>
   );
 };
@@ -229,6 +232,7 @@ const DisaMachineCheckList = () => {
 
       let monthlyLogs = [];
       let ncReports = [];
+      let qfHistory = []; 
 
       try {
         const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/disa-checklist/monthly-report`, {
@@ -236,7 +240,21 @@ const DisaMachineCheckList = () => {
         });
         monthlyLogs = res.data.monthlyLogs || [];
         ncReports = res.data.ncReports || [];
+        qfHistory = res.data.qfHistory || []; 
       } catch (backendErr) { console.warn(backendErr); }
+
+      // 🔥 FIND CORRECT QF VALUE BASED ON HISTORY 🔥
+      let currentPageQfValue = "QF/07/FBP-13, Rev.No:06 dt 08.10.2025";
+      const reportDateObj = new Date(year, month - 1, 1);
+      for (let qf of qfHistory) {
+          if (!qf.date) continue;
+          const qfDate = new Date(qf.date);
+          qfDate.setHours(0, 0, 0, 0);
+          if (qfDate <= reportDateObj) {
+              currentPageQfValue = qf.qfValue;
+              break;
+          }
+      }
 
       const historyMap = {};
       const holidayDays = new Set();
@@ -410,7 +428,9 @@ const DisaMachineCheckList = () => {
       const finalY = doc.lastAutoTable.finalY + 6;
       doc.setFontSize(8); doc.setFont('helvetica', 'normal');
       doc.text("Note: If any deviation noticed during the verification, corrective actions should be taken and recorded in the NCR (back-side).", 10, finalY);
-      doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200);
+      
+      // 🔥 RENDER DYNAMIC QF VALUE ON PAGE 1 🔥
+      doc.text(currentPageQfValue, 10, 200);
       doc.text("Page 1 of 2", 270, 200);
 
       // ==============================================================
@@ -466,7 +486,9 @@ const DisaMachineCheckList = () => {
       });
 
       doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-      doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200);
+      
+      // 🔥 RENDER DYNAMIC QF VALUE ON PAGE 2 🔥
+      doc.text(currentPageQfValue, 10, 200);
       doc.text("Page 2 of 2", 270, 200);
 
       doc.save(`Disa_Checklist_Report_${headerData.date}.pdf`);
@@ -484,7 +506,7 @@ const DisaMachineCheckList = () => {
     <>
       <Header />
       <div className="min-h-screen bg-[#2d2d2d] py-10 px-4 flex justify-center pb-24">
-        <NotificationModal data={notification} onClose={() => setNotification({ ...notification, show: false })} />
+        <ToastNotification data={notification} onClose={() => setNotification({ ...notification, show: false })} />
 
         <div className="w-full max-w-6xl bg-white shadow-xl rounded-2xl flex flex-col p-8">
           

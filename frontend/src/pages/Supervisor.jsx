@@ -8,6 +8,25 @@ import "react-toastify/dist/ReactToastify.css";
 import { Loader, X } from "lucide-react"; 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import logo from '../Assets/logo.png'; 
+
+// 🔥 Dynamic QF Helpers
+const getSafeDateStr = (val) => {
+  if (!val) return null;
+  if (typeof val === 'string') return val.split('T')[0];
+  try { return val.toISOString().split('T')[0]; } catch (e) { return null; }
+};
+
+const getDynamicQfString = (recordDate, qfHistory, defaultFallback) => {
+  if (!qfHistory || !Array.isArray(qfHistory) || qfHistory.length === 0) return defaultFallback;
+  const targetDateStr = getSafeDateStr(recordDate) || getSafeDateStr(new Date());
+  for (const qf of qfHistory) {
+      const qfDateStr = getSafeDateStr(qf.date);
+      if (!qfDateStr) continue;
+      if (qfDateStr <= targetDateStr) return qf.qfValue;
+  }
+  return qfHistory[qfHistory.length - 1].qfValue || defaultFallback;
+};
 
 const Supervisor = () => {
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
@@ -17,8 +36,8 @@ const Supervisor = () => {
   // --- States for Disamatic Report ---
   const [disaReports, setDisaReports] = useState([]);
   const [selectedDisaReport, setSelectedDisaReport] = useState(null);
-  const [disaPdfUrl, setDisaPdfUrl] = useState(null); // 🔥 Added State
-  const [isDisaPdfLoading, setIsDisaPdfLoading] = useState(false); // 🔥 Added State
+  const [disaPdfUrl, setDisaPdfUrl] = useState(null); 
+  const [isDisaPdfLoading, setIsDisaPdfLoading] = useState(false); 
   const disaSigCanvas = useRef({});
 
   // --- States for Bottom Level Audit ---
@@ -68,6 +87,7 @@ const Supervisor = () => {
     fetchFourMReports();
     fetchErrorReports(); 
     fetchMouldQualityReports();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const formatDate = (dateString) => { 
@@ -80,7 +100,6 @@ const Supervisor = () => {
       return new Date(dateString).toLocaleTimeString("en-GB", { hour: '2-digit', minute: '2-digit' });
   };
 
-  // 🔥 HELPER: Filters duplicates based on Date, Shift, and Disa Machine
   const filterUniqueReports = (data) => {
     const uniqueMap = {};
     data.forEach((item) => {
@@ -111,7 +130,6 @@ const Supervisor = () => {
     } catch (err) { toast.error("Failed to load Disamatic reports."); }
   };
 
-  // 🔥 FIX: Added fetching logic for Disamatic PDF to include Bearer token
   const handleOpenDisaModal = async (report) => {
     setSelectedDisaReport(report);
     setDisaPdfUrl(null);
@@ -163,7 +181,10 @@ const Supervisor = () => {
         axios.get(`${process.env.REACT_APP_API_URL}/api/bottom-level-audit/monthly-report`, { params: { month, year, disaMachine } })
       ]);
 
-      const checklist = detailsRes.data.checklist; const monthlyLogs = monthlyRes.data.monthlyLogs || []; 
+      const checklist = detailsRes.data.checklist; 
+      const monthlyLogs = monthlyRes.data.monthlyLogs || []; 
+      const qfHistory = monthlyRes.data.qfHistory || []; // 🔥 Fetch QF History
+
       const historyMap = {}; const holidayDays = new Set(); const vatDays = new Set(); const pmDays = new Set();
       const supSigMap = {}; const hofSig = monthlyLogs.find(l => l.HOFSignature)?.HOFSignature;
 
@@ -171,7 +192,7 @@ const Supervisor = () => {
         const logDay = log.DayVal; const key = String(log.MasterId);
         if (Number(log.IsHoliday) === 1) holidayDays.add(logDay);
         if (Number(log.IsVatCleaning) === 1) vatDays.add(logDay);
-        if (Number(log.IsPreventiveMaintenance) === 1) pmDays.add(logDay); // 🔥 Added Preventative Maintenance
+        if (Number(log.IsPreventiveMaintenance) === 1) pmDays.add(logDay); 
         if (log.SupervisorSignature) supSigMap[logDay] = log.SupervisorSignature;
         if (!historyMap[key]) historyMap[key] = {};
         if (log.IsNA === 1) { historyMap[key][logDay] = 'NA'; } else if (log.IsDone === 1) { historyMap[key][logDay] = 'Y'; } else { historyMap[key][logDay] = 'N'; }
@@ -182,7 +203,8 @@ const Supervisor = () => {
       const daysInMonth = new Date(year, month, 0).getDate();
 
       doc.setLineWidth(0.3); doc.rect(10, 10, 40, 20); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-      doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' });
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } catch(e){ doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); }
+      
       doc.rect(50, 10, 237, 20); doc.setFontSize(16); doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 168, 22, { align: 'center' });
       doc.setFontSize(10); doc.text(`${disaMachine}`, 12, 35); doc.text(`MONTH : ${monthName}`, 235, 35);
 
@@ -192,7 +214,7 @@ const Supervisor = () => {
         for (let i = 1; i <= daysInMonth; i++) {
           if (holidayDays.has(i)) { if (rowIndex === 0) row.push({ content: 'H\nO\nL\nI\nD\nA\nY', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [230, 230, 230], fontStyle: 'bold', textColor: [100, 100, 100] } }); }
           else if (vatDays.has(i)) { if (rowIndex === 0) row.push({ content: 'V\nA\nT\n\nC\nL\nE\nA\nN\nI\nN\nG', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [210, 230, 255], fontStyle: 'bold', textColor: [50, 100, 150] } }); }
-          else if (pmDays.has(i)) { if (rowIndex === 0) row.push({ content: 'P\nR\nE\nV\n.\n\nM\nA\nI\nN\nT', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [240, 220, 255], fontStyle: 'bold', textColor: [100, 50, 150] } }); } // 🔥 Added Preventive Maintenance column
+          else if (pmDays.has(i)) { if (rowIndex === 0) row.push({ content: 'P\nR\nE\nV\n.\n\nM\nA\nI\nN\nT', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [240, 220, 255], fontStyle: 'bold', textColor: [100, 50, 150] } }); } 
           else { row.push(historyMap[String(item.MasterId)]?.[i] || ''); }
         }
         return row;
@@ -231,7 +253,11 @@ const Supervisor = () => {
 
       doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.text("Legend:   3 - OK     X - NOT OK     CA - Corrected during Audit     NA - Not Applicable", 10, doc.lastAutoTable.finalY + 6);
       doc.setFont('helvetica', 'normal'); doc.text("Remarks: If Nonconformity please write on NCR format (back-side)", 10, doc.lastAutoTable.finalY + 12);
-      doc.text("QF/08/MRO - 18, Rev No: 02 dt 01.01.2022", 10, 200); doc.text("Page 1 of 2", 270, 200);
+      
+      // 🔥 DYNAMIC QF VALUE FOR PAGE 1 🔥
+      const dynamicQf = getDynamicQfString(dateStr, qfHistory, "QF/08/MRO - 18, Rev No: 02 dt 01.01.2022");
+      doc.text(dynamicQf, 10, 200); 
+      doc.text("Page 1 of 2", 270, 200);
 
       const pdfBlobUrl = doc.output('bloburl'); setBottomPdfUrl(pdfBlobUrl);
     } catch (error) { toast.error("Failed to generate PDF preview."); }
@@ -291,14 +317,21 @@ const Supervisor = () => {
 
       const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/dmm-settings/details`, { params: { date: dateStr, disa: disaMachine } });
       const { shiftsData, shiftsMeta } = res.data;
+      const qfHistory = res.data.qfHistory || []; // 🔥 Fetch QF History
+
+      // 🔥 DYNAMIC QF VALUE 🔥
+      const dynamicQf = getDynamicQfString(dateStr, qfHistory, "QF/07/FBP-13, Rev.No:06 dt 08.10.2025");
 
       const doc = new jsPDF('l', 'mm', 'a4'); 
-      doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.text("SAKTHI AUTO COMPONENT LIMITED", 148.5, 10, { align: 'center' });
-      doc.setFontSize(16); doc.text("DMM SETTING PARAMETERS CHECK SHEET", 148.5, 18, { align: 'center' });
-      doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(` ${disaMachine}`, 10, 28); doc.text(`DATE: ${localDate.toLocaleDateString('en-GB')}`, 280, 28, { align: 'right' });
+      doc.setLineWidth(0.3); doc.rect(10, 10, 40, 20); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } catch(e){ doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); }
+      
+      doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.text("DMM SETTING PARAMETERS CHECK SHEET", 140, 22, { align: 'center' });
+      doc.rect(230, 10, 57, 20); doc.setFontSize(11); doc.text(`${disaMachine}`, 258.5, 16, { align: 'center' });
+      doc.line(230, 20, 287, 20); doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(`DATE: ${formatDate(dateStr)}`, 258.5, 26, { align: 'center' });
 
       autoTable(doc, {
-        startY: 32, margin: { left: 10, right: 10 }, 
+        startY: 35, margin: { left: 10, right: 10 }, 
         head: [['SHIFT', 'OPERATOR NAME', 'VERIFIED BY', 'SIGNATURE']],
         body: [
             ['SHIFT I', shiftsMeta[1].operator || '-', shiftsMeta[1].supervisor || '-', ''],
@@ -343,9 +376,12 @@ const Supervisor = () => {
          });
 
          currentY = doc.lastAutoTable.finalY + 5; 
-         if (currentY > 175 && index < 2) { doc.setFontSize(8); doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200); doc.addPage(); currentY = 15; }
+         if (currentY > 175 && index < 2) { 
+             doc.setFontSize(8); doc.text(dynamicQf, 10, 200); 
+             doc.addPage(); currentY = 15; 
+         }
       });
-      doc.setFontSize(8); doc.text("QF/07/FBP-13, Rev.No:06 dt 08.10.2025", 10, 200);
+      doc.setFontSize(8); doc.text(dynamicQf, 10, 200);
 
       const pdfBlobUrl = doc.output('bloburl'); setDmmPdfUrl(pdfBlobUrl);
     } catch (error) { toast.error("Failed to generate PDF preview."); }
@@ -491,7 +527,6 @@ const Supervisor = () => {
       <div className="max-w-6xl mx-auto flex justify-end items-center mb-[-20px]">
           <button 
             onClick={() => {
-              // We pass the supervisor's name in the route state so the operator forms can read it
               navigate("/operator", { state: { actingOperator: currentSupervisor } });
             }}
             className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-black uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1 flex items-center gap-2"

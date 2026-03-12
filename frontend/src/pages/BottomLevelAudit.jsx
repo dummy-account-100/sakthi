@@ -165,20 +165,36 @@ const BottomLevelAudit = () => {
     setLoading(false);
   };
 
-  const generatePDF = async () => {
+ const generatePDF = async () => {
     setNotification({ show: true, type: 'loading', message: 'Generating PDF...' });
     try {
       const selectedDate = new Date(headerData.date);
       const year = selectedDate.getFullYear(); const month = selectedDate.getMonth() + 1;
       let monthlyLogs = []; let ncReports = [];
+      let qfHistory = []; // 🔥
 
       try {
         const res = await axios.get(`${API_BASE}/monthly-report`, { params: { month, year, disaMachine: headerData.disaMachine } });
-        monthlyLogs = res.data.monthlyLogs || []; ncReports = res.data.ncReports || [];
+        monthlyLogs = res.data.monthlyLogs || []; 
+        ncReports = res.data.ncReports || [];
+        qfHistory = res.data.qfHistory || []; // 🔥 Fetch History
       } catch (backendErr) {
         console.error("Backend Error:", backendErr);
         setNotification({ show: true, type: 'error', message: 'Database Error: Check backend console.' });
         return;
+      }
+
+      // 🔥 FIND CORRECT QF VALUE
+      let currentPageQfValue = "QF/08/MRO - 18, Rev No: 02 dt 01.01.2022";
+      const reportDateObj = new Date(year, month - 1, 1);
+      for (let qf of qfHistory) {
+          if (!qf.date) continue;
+          const qfDate = new Date(qf.date);
+          qfDate.setHours(0, 0, 0, 0);
+          if (qfDate <= reportDateObj) {
+              currentPageQfValue = qf.qfValue;
+              break;
+          }
       }
 
       const historyMap = {}; const holidayDays = new Set(); const vatDays = new Set(); const prevMaintDays = new Set();
@@ -211,56 +227,21 @@ const BottomLevelAudit = () => {
       const monthName = selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' });
       const daysInMonth = new Date(year, month, 0).getDate();
 
-      // ==============================================================
-      // 🔥 STANDARDIZED HEADER WITH LOGO BOX (PAGE 1)
-      // ==============================================================
       doc.setLineWidth(0.3);
-      
-      // Box 1: SAKTHI AUTO (Logo Area)
       doc.rect(10, 10, 40, 20);
-      try {
-        doc.addImage(logo, 'PNG', 12, 11, 36, 18);
-      } catch (err) {
-        doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-        doc.text("SAKTHI", 30, 18, { align: 'center' }); 
-        doc.text("AUTO", 30, 26, { align: 'center' });
-      }
-
-      // Box 2: Title
-      doc.rect(50, 10, 180, 20);
-      doc.setFontSize(16);
-      doc.setFont('helvetica', 'bold');
-      doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 140, 22, { align: 'center' });
-
-      // Box 3: Meta (DISA & Month)
-      doc.rect(230, 10, 57, 20);
-      doc.setFontSize(11);
-      doc.text(headerData.disaMachine, 258.5, 16, { align: 'center' });
-      doc.line(230, 20, 287, 20);
-      doc.setFontSize(10);
-      doc.text(`Month: ${monthName}`, 258.5, 26, { align: 'center' });
-      // ==============================================================
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } 
+      catch (err) { doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); }
+      doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 140, 22, { align: 'center' });
+      doc.rect(230, 10, 57, 20); doc.setFontSize(11); doc.text(headerData.disaMachine, 258.5, 16, { align: 'center' }); doc.line(230, 20, 287, 20); doc.setFontSize(10); doc.text(`Month: ${monthName}`, 258.5, 26, { align: 'center' });
 
       const days = Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
       const tableBody = checklist.map((item, rowIndex) => {
         const row = [String(item.SlNo), item.CheckPointDesc];
         for (let i = 1; i <= daysInMonth; i++) {
-          if (holidayDays.has(i)) {
-            if (rowIndex === 0) row.push({ content: 'H\nO\nL\nI\nD\nA\nY', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [230, 230, 230], fontStyle: 'bold', textColor: [100, 100, 100] } });
-          }
-          else if (vatDays.has(i)) {
-            if (rowIndex === 0) row.push({ content: 'V\nA\nT\n\nC\nL\nE\nA\nN\nI\nN\nG', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [210, 230, 255], fontStyle: 'bold', textColor: [50, 100, 150] } });
-          }
-          else if (prevMaintDays.has(i)) {
-            if (rowIndex === 0) row.push({
-              content: 'P\nR\nE\nV\nE\nN\nT\nI\nV\nE\n\nM\nA\nI\nN\nT\nE\nN\nA\nN\nC\nE',
-              rowSpan: checklist.length,
-              styles: { halign: 'center', valign: 'middle', fillColor: [243, 232, 255], fontStyle: 'bold', textColor: [126, 34, 206], fontSize: 4.5 }
-            });
-          }
-          else {
-            row.push(historyMap[String(item.MasterId)]?.[i] || '');
-          }
+          if (holidayDays.has(i)) { if (rowIndex === 0) row.push({ content: 'H\nO\nL\nI\nD\nA\nY', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [230, 230, 230], fontStyle: 'bold', textColor: [100, 100, 100] } }); }
+          else if (vatDays.has(i)) { if (rowIndex === 0) row.push({ content: 'V\nA\nT\n\nC\nL\nE\nA\nN\nI\nN\nG', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [210, 230, 255], fontStyle: 'bold', textColor: [50, 100, 150] } }); }
+          else if (prevMaintDays.has(i)) { if (rowIndex === 0) row.push({ content: 'P\nR\nE\nV\nE\nN\nT\nI\nV\nE\n\nM\nA\nI\nN\nT\nE\nN\nA\nN\nC\nE', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [243, 232, 255], fontStyle: 'bold', textColor: [126, 34, 206], fontSize: 4.5 } }); }
+          else { row.push(historyMap[String(item.MasterId)]?.[i] || ''); }
         }
         return row;
       });
@@ -276,24 +257,17 @@ const BottomLevelAudit = () => {
       for (let i = 2; i < daysInMonth + 2; i++) { dynamicColumnStyles[i] = { cellWidth: 5, halign: 'center' }; }
 
       autoTable(doc, {
-        startY: 38,
-        head: [[{ content: 'S.No', styles: { halign: 'center', valign: 'middle' } }, { content: 'Check Points', styles: { halign: 'center', valign: 'middle' } }, ...days.map(d => ({ content: d, styles: { halign: 'center' } }))]],
-        body: [...tableBody, ...footerRows],
-        theme: 'grid', styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'middle' },
+        startY: 38, head: [[{ content: 'S.No', styles: { halign: 'center', valign: 'middle' } }, { content: 'Check Points', styles: { halign: 'center', valign: 'middle' } }, ...days.map(d => ({ content: d, styles: { halign: 'center' } }))]],
+        body: [...tableBody, ...footerRows], theme: 'grid', styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'middle' },
         headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0] },
         columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 105 }, ...dynamicColumnStyles },
-
         didDrawCell: function (data) {
           if (data.row.index === tableBody.length && data.column.index > 1) {
             const sigData = supSigMap[data.column.index - 1];
-            if (sigData && sigData.startsWith('data:image')) {
-              try { doc.addImage(sigData, 'PNG', data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1); } catch (e) { }
-            }
+            if (sigData && sigData.startsWith('data:image')) { try { doc.addImage(sigData, 'PNG', data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1); } catch (e) { } }
           }
           if (data.row.index === tableBody.length + 1 && data.cell.colSpan === 5) {
-            if (hofSig && hofSig.startsWith('data:image')) {
-              try { doc.addImage(hofSig, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { }
-            }
+            if (hofSig && hofSig.startsWith('data:image')) { try { doc.addImage(hofSig, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { } }
           }
         },
         didParseCell: function (data) {
@@ -312,66 +286,45 @@ const BottomLevelAudit = () => {
       doc.text("Legend:   3 - OK     X - NOT OK     CA - Corrected during Audit     NA - Not Applicable", 10, finalY);
       doc.setFont('helvetica', 'normal');
       doc.text("Remarks: If Nonconformity please write on NCR format (back-side)", 10, finalY + 6);
-      doc.text("QF/08/MRO - 18, Rev No: 02 dt 01.01.2022", 10, 200); doc.text("Page 1 of 2", 270, 200);
-
-      // ==============================================================
-      // 🔥 PAGE 2 HEADER (NCR)
-      // ==============================================================
-      doc.addPage(); doc.setDrawColor(0); doc.setLineWidth(0.3); 
       
-      // Box 1: Logo
+      // 🔥 DYNAMIC QF VALUE 🔥
+      doc.text(currentPageQfValue, 10, 200); 
+      doc.text("Page 1 of 2", 270, 200);
+
+      doc.addPage(); doc.setDrawColor(0); doc.setLineWidth(0.3); 
       doc.rect(10, 10, 40, 20); 
-      try {
-        doc.addImage(logo, 'PNG', 12, 11, 36, 18);
-      } catch (err) {
-        doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-        doc.text("SAKTHI", 30, 18, { align: 'center' }); 
-        doc.text("AUTO", 30, 26, { align: 'center' }); 
-      }
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } 
+      catch (err) { doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); }
+      doc.rect(50, 10, 237, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+      doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 168.5, 18, { align: 'center' }); doc.setFontSize(14); doc.text("Non-Conformance Report", 168.5, 26, { align: 'center' });
 
-      // Box 2: Title (Full width till end of page margin)
-      doc.rect(50, 10, 237, 20); 
-      doc.setFontSize(16); doc.setFont('helvetica', 'bold');
-      doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 168.5, 18, { align: 'center' }); 
-      doc.setFontSize(14); 
-      doc.text("Non-Conformance Report", 168.5, 26, { align: 'center' });
-      // ==============================================================
-
-      const ncRows = ncReports.map((r, index) => [
-        index + 1, new Date(r.ReportDate).toLocaleDateString('en-GB'), r.NonConformityDetails || '', r.Correction || '', r.RootCause || '', r.CorrectiveAction || '',
-        r.TargetDate ? new Date(r.TargetDate).toLocaleDateString('en-GB') : '', r.Responsibility || '', '', r.Status || ''
-      ]);
+      const ncRows = ncReports.map((r, index) => [ index + 1, new Date(r.ReportDate).toLocaleDateString('en-GB'), r.NonConformityDetails || '', r.Correction || '', r.RootCause || '', r.CorrectiveAction || '', r.TargetDate ? new Date(r.TargetDate).toLocaleDateString('en-GB') : '', r.Responsibility || '', '', r.Status || '' ]);
       if (ncRows.length === 0) { for (let i = 0; i < 5; i++) ncRows.push(['', '', '', '', '', '', '', '', '', '']); }
 
       autoTable(doc, {
-        startY: 35,
-        head: [['S.No', 'Date', 'Non-Conformities Details', 'Correction', 'Root Cause', 'Corrective Action', 'Target Date', 'Responsibility', 'Signature', 'Status']],
+        startY: 35, head: [['S.No', 'Date', 'Non-Conformities Details', 'Correction', 'Root Cause', 'Corrective Action', 'Target Date', 'Responsibility', 'Signature', 'Status']],
         body: ncRows, theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'middle', overflow: 'linebreak' },
         headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', valign: 'middle' },
         columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 40 }, 3: { cellWidth: 35 }, 4: { cellWidth: 35 }, 5: { cellWidth: 35 }, 6: { cellWidth: 20, halign: 'center' }, 7: { cellWidth: 25 }, 8: { cellWidth: 20, halign: 'center' }, 9: { cellWidth: 20, halign: 'center' } },
-
         didDrawCell: function (data) {
           if (data.section === 'body' && data.column.index === 8) {
             const rowData = ncReports[data.row.index];
-            if (rowData && rowData.SupervisorSignature && rowData.SupervisorSignature.startsWith('data:image')) {
-              try { doc.addImage(rowData.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { }
-            }
+            if (rowData && rowData.SupervisorSignature && rowData.SupervisorSignature.startsWith('data:image')) { try { doc.addImage(rowData.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { } }
           }
         },
         didParseCell: function (data) {
           if (data.section === 'body' && data.column.index === 9) {
             const statusText = (data.cell.text || [])[0] || '';
-            if (statusText === 'Completed') {
-              data.cell.styles.textColor = [0, 150, 0];
-              data.cell.styles.fontStyle = 'bold';
-            } else if (statusText === 'Pending') {
-              data.cell.styles.textColor = [200, 0, 0];
-              data.cell.styles.fontStyle = 'bold';
-            }
+            if (statusText === 'Completed') { data.cell.styles.textColor = [0, 150, 0]; data.cell.styles.fontStyle = 'bold'; } 
+            else if (statusText === 'Pending') { data.cell.styles.textColor = [200, 0, 0]; data.cell.styles.fontStyle = 'bold'; }
           }
         }
       });
-      doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text("QF/08/MRO - 18, Rev No: 02 dt 01.01.2022", 10, 200); doc.text("Page 2 of 2", 270, 200);
+      
+      // 🔥 DYNAMIC QF VALUE FOR PAGE 2 🔥
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal'); 
+      doc.text(currentPageQfValue, 10, 200); 
+      doc.text("Page 2 of 2", 270, 200);
 
       doc.save(`Bottom_Level_Audit_${headerData.date}.pdf`); setNotification({ show: false });
     } catch (error) { setNotification({ show: true, type: 'error', message: `PDF Generation Failed: ${error.message}` }); }
