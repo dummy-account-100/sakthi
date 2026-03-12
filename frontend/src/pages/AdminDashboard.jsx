@@ -128,9 +128,8 @@ const AdminDashboard = () => {
         }
     };
 
-    // 🔥 FIXED: Changed to axios.put to match the router
     const handleSaveSingleQfSetting = async (setting) => {
-        setSavingId(setting.id);
+        setSavingId(setting.formName);
         try {
             await axios.put(`${process.env.REACT_APP_API_URL}/api/settings/qf-values`, { setting });
             setNotification({ show: true, type: 'success', message: `${setting.formName.replace('-', ' ')} QF updated!` });
@@ -141,12 +140,12 @@ const AdminDashboard = () => {
         setSavingId(null);
     };
 
-    const handleQfChange = (id, newValue) => {
-        setQfSettings(prev => prev.map(s => s.id === id ? { ...s, qfValue: newValue } : s));
+    const handleQfChange = (formName, newValue) => {
+        setQfSettings(prev => prev.map(s => s.formName === formName ? { ...s, qfValue: newValue } : s));
     };
 
-    const handleQfDateChange = (id, newDate) => {
-        setQfSettings(prev => prev.map(s => s.id === id ? { ...s, date: newDate } : s));
+    const handleQfDateChange = (formName, newDate) => {
+        setQfSettings(prev => prev.map(s => s.formName === formName ? { ...s, date: newDate } : s));
     };
 
     const handleAddUser = async (e) => {
@@ -456,13 +455,13 @@ const AdminDashboard = () => {
                         ) : (
                             <div className="grid grid-cols-1 gap-6">
                                 {qfSettings.map((setting) => (
-                                    <div key={setting.id} className="bg-[#2a2a2a] p-6 rounded-xl border border-white/10 shadow-inner flex flex-col md:flex-row gap-6 items-end">
+                                    <div key={setting.formName} className="bg-[#2a2a2a] p-6 rounded-xl border border-white/10 shadow-inner flex flex-col md:flex-row gap-6 items-end">
                                         <div className="flex-1 w-full">
                                             <label className="block text-xs font-black uppercase tracking-widest text-[#ff9100] mb-2">{setting.formName.replace('-', ' ')} - QF Value</label>
                                             <input 
                                                 type="text" 
                                                 value={setting.qfValue} 
-                                                onChange={(e) => handleQfChange(setting.id, e.target.value)}
+                                                onChange={(e) => handleQfChange(setting.formName, e.target.value)}
                                                 className="w-full bg-[#1a1a1a] border border-white/20 p-3 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-[#ff9100] transition-colors"
                                                 placeholder="e.g. QF/07/FBP-03, Rev.No: 02"
                                             />
@@ -472,17 +471,17 @@ const AdminDashboard = () => {
                                             <input 
                                                 type="date" 
                                                 value={setting.date ? setting.date.split('T')[0] : ''} 
-                                                onChange={(e) => handleQfDateChange(setting.id, e.target.value)}
+                                                onChange={(e) => handleQfDateChange(setting.formName, e.target.value)}
                                                 className="w-full bg-[#1a1a1a] border border-white/20 p-3 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-[#ff9100] transition-colors [color-scheme:dark]"
                                             />
                                         </div>
                                         <div className="w-full md:w-auto">
                                             <button 
                                                 onClick={() => handleSaveSingleQfSetting(setting)} 
-                                                disabled={savingId === setting.id}
+                                                disabled={savingId === setting.formName}
                                                 className="w-full md:w-auto bg-[#ff9100] hover:bg-orange-500 text-white font-bold uppercase tracking-wider px-6 py-3 rounded-xl transition-all shadow-lg flex justify-center items-center gap-2 disabled:opacity-50"
                                             >
-                                                {savingId === setting.id ? <Loader className="w-5 h-5 animate-spin" /> : <Settings className="w-5 h-5" />}
+                                                {savingId === setting.formName ? <Loader className="w-5 h-5 animate-spin" /> : <Settings className="w-5 h-5" />}
                                                 Save
                                             </button>
                                         </div>

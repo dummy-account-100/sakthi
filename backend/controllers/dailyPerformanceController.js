@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 // ==========================================
-//          BULLETPROOF HELPERS
+//           BULLETPROOF HELPERS
 // ==========================================
 const safeNum = (val) => {
   if (val === null || val === undefined || String(val).trim() === "" || String(val).trim() === "-") return 0;
@@ -125,8 +125,7 @@ exports.getDelaysByDateAndDisa = async (req, res) => {
 // ==========================================
 exports.getFormUsers = async (req, res) => {
   try {
-    // 🔥 UPDATED: Now fetches both operators and supervisors
-    const incharges = await sql.query`SELECT username as name FROM dbo.Users WHERE role IN ('operator', 'supervisor') ORDER BY username ASC`;
+    const incharges = await sql.query`SELECT username as name FROM dbo.Users WHERE role = 'operator' ORDER BY username ASC`;
     const hofs = await sql.query`SELECT username as name FROM dbo.Users WHERE role = 'hof' ORDER BY username ASC`;
     const hods = await sql.query`SELECT username as name FROM dbo.Users WHERE role = 'hod' ORDER BY username ASC`;
 
@@ -222,6 +221,113 @@ exports.getComponentTotals = async (req, res) => {
 };
 
 // ==========================================
+//   ADMIN: FETCH REPORT BY EXACT DATE & DISA
+// ==========================================
+exports.getByDate = async (req, res) => {
+  const { date, disa } = req.query;
+  if (!date) return res.status(400).json({ error: "date is required" });
+
+  try {
+    let reportsRes;
+    if (disa) {
+      const safeDisa = disa.replace('DISA - ', '').trim();
+      reportsRes = await sql.query`
+                SELECT * FROM DailyPerformanceReport 
+                WHERE CAST(productionDate AS DATE) = CAST(${date} AS DATE) 
+                AND (disa = ${safeDisa} OR disa = 'DISA - ' + ${safeDisa} OR disa = ${disa})
+                ORDER BY id ASC`;
+    } else {
+      reportsRes = await sql.query`
+                SELECT * FROM DailyPerformanceReport 
+                WHERE CAST(productionDate AS DATE) = CAST(${date} AS DATE)
+                ORDER BY id ASC`;
+    }
+
+    const reports = reportsRes.recordset;
+    const result = [];
+    for (const rep of reports) {
+      const summary = (await sql.query`SELECT * FROM DailyPerformanceSummary WHERE reportId = ${rep.id}`).recordset;
+      const details = (await sql.query`SELECT * FROM DailyPerformanceDetails WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const delays = (await sql.query`SELECT * FROM Productiondelays WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      result.push({ ...rep, summary, details, delays });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("getByDate error:", err);
+    res.status(500).json({ error: "Failed to fetch report by date", details: err.message });
+  }
+};
+
+// ==========================================
+//  ADMIN: UPDATE PERFORMANCE REPORT
+// ==========================================
+exports.updateReport = async (req, res) => {
+  const { id } = req.params;
+  const { summary, details, delays, unplannedReasons, incharge, hof, hod } = req.body;
+
+  try {
+    await sql.query`
+            UPDATE DailyPerformanceReport 
+            SET unplannedReasons = ${safeStr(unplannedReasons)},
+                incharge = ${safeStr(incharge)},
+                hof = ${safeStr(hof)},
+                hod = ${safeStr(hod)}
+            WHERE id = ${Number(id)}`;
+
+    if (summary) {
+      for (const shift of Object.keys(summary)) {
+        const s = summary[shift];
+        const existing = await sql.query`SELECT id FROM DailyPerformanceSummary WHERE reportId = ${Number(id)} AND shiftName = ${shift}`;
+        if (existing.recordset.length > 0) {
+          await sql.query`UPDATE DailyPerformanceSummary SET 
+                        pouredMoulds = ${safeNum(s.pouredMoulds)},
+                        tonnage = ${safeNum(s.tonnage)},
+                        casted = ${safeNum(s.casted)},
+                        shiftValue = ${safeNum(s.value || s.shiftValue)}
+                        WHERE reportId = ${Number(id)} AND shiftName = ${shift}`;
+        }
+      }
+    }
+
+    if (details && details.length > 0) {
+      for (const d of details) {
+        if (d.id) {
+          await sql.query`UPDATE DailyPerformanceDetails SET
+                        patternCode = ${safeStr(d.patternCode)},
+                        itemDescription = ${safeStr(d.itemDescription)},
+                        planned = ${safeNum(d.planned)},
+                        unplanned = ${safeNum(d.unplanned)},
+                        mouldsProd = ${safeNum(d.mouldsProd)},
+                        mouldsPour = ${safeNum(d.mouldsPour)},
+                        cavity = ${safeNum(d.cavity)},
+                        unitWeight = ${safeNum(d.unitWeight)},
+                        totalWeight = ${safeNum(d.totalWeight)}
+                        WHERE id = ${Number(d.id)}`;
+        }
+      }
+    }
+
+    if (delays && delays.length > 0) {
+      for (const d of delays) {
+        if (d.id) {
+          await sql.query`UPDATE Productiondelays SET
+                        shift = ${safeStr(d.shift)},
+                        duration = ${safeNum(d.duration)},
+                        reason = ${safeStr(d.reason)}
+                        WHERE id = ${Number(d.id)}`;
+        }
+      }
+    }
+
+    res.json({ message: "Report updated successfully" });
+  } catch (err) {
+    console.error("updateReport error:", err);
+    res.status(500).json({ error: "Failed to update report", details: err.message });
+  }
+};
+
+
+// ==========================================
 //   🔥 BULK MULTI-PAGE PDF GENERATOR
 // ==========================================
 exports.downloadPDF = async (req, res) => {
@@ -232,6 +338,20 @@ exports.downloadPDF = async (req, res) => {
   }
 
   try {
+    // 🔥 1. FETCH FULL QF VALUE HISTORY FOR PERFORMANCE REPORT 🔥
+    let qfHistory = [];
+    try {
+      const qfRes = await sql.query`
+        SELECT qfValue, date 
+        FROM PerformanceReportQFvalues 
+        WHERE formName = 'performance' 
+        ORDER BY date DESC, id DESC
+      `;
+      qfHistory = qfRes.recordset;
+    } catch (e) {
+      console.error("PerformanceReportQFvalues table error or not found.");
+    }
+
     let reports = [];
 
     if (fromDate && toDate) {
@@ -307,8 +427,23 @@ exports.downloadPDF = async (req, res) => {
     for (let rIndex = 0; rIndex < reports.length; rIndex++) {
       const report = reports[rIndex];
       const reportId = report.id;
-      
       const reportDateStr = new Date(report.productionDate).toISOString().split('T')[0];
+
+      // 🔥 FIND CORRECT QF VALUE FOR THIS SPECIFIC PAGE DATE 🔥
+      let currentPageQfValue = "QF/07/FBP-15, Rev.No:01 dt 10.06.2019"; // System Default
+      const currentReportDate = new Date(report.productionDate);
+      currentReportDate.setHours(0, 0, 0, 0); 
+
+      for (let qf of qfHistory) {
+          if (!qf.date) continue;
+          const qfDate = new Date(qf.date);
+          qfDate.setHours(0, 0, 0, 0);
+
+          if (qfDate <= currentReportDate) {
+              currentPageQfValue = qf.qfValue;
+              break; 
+          }
+      }
 
       const summaryData = (await sql.query`SELECT * FROM DailyPerformanceSummary WHERE reportId = ${reportId}`).recordset;
       const detailsData = (await sql.query`SELECT * FROM DailyPerformanceDetails WHERE reportId = ${reportId} ORDER BY id ASC`).recordset;
@@ -332,7 +467,7 @@ exports.downloadPDF = async (req, res) => {
       currentY += 40;
 
       doc.rect(startX, currentY, tableWidth, 20).stroke();
-      doc.font('Helvetica-Bold').fontSize(10).text(`DATE OF PRODUCTION : ${reportDateStr.split('-').reverse().join('-')}           DISA: ${report.disa}`, startX + 5, currentY + 6);
+      doc.font('Helvetica-Bold').fontSize(10).text(`DATE OF PRODUCTION : ${reportDateStr.split('-').reverse().join('-')}            DISA: ${report.disa}`, startX + 5, currentY + 6);
       currentY += 20;
 
       const sumCols = [{ w: 60, l: 'SHIFT' }, { w: 115, l: 'POURED MOULDS' }, { w: 120, l: 'TONNAGE' }, { w: 120, l: 'CASTED' }, { w: 120, l: 'VALUE' }];
@@ -501,7 +636,9 @@ exports.downloadPDF = async (req, res) => {
       currentY += 15;
       checkPageBreak(20);
       doc.font('Helvetica').fontSize(8).fillColor('black');
-      doc.text("QF/07/FBP-15, Rev.No:01 dt 10.06.2019", startX, currentY);
+      
+      // 🔥 PRINT DYNAMIC QF VALUE INSTEAD OF HARDCODED STRING 🔥
+      doc.text(currentPageQfValue, startX, currentY);
 
       doc.addPage();
       currentY = 30;
@@ -596,7 +733,9 @@ exports.downloadPDF = async (req, res) => {
       currentY += 15;
       checkPageBreak(20);
       doc.font('Helvetica').fontSize(8).fillColor('black');
-      doc.text("QF/07/FBP-15, Rev.No:01 dt 10.06.2019", startX, currentY);
+      
+      // 🔥 PRINT DYNAMIC QF VALUE ON PAGE 2 INSTEAD OF HARDCODED STRING 🔥
+      doc.text(currentPageQfValue, startX, currentY);
     }
 
     doc.end();
@@ -604,137 +743,5 @@ exports.downloadPDF = async (req, res) => {
   } catch (error) {
     console.error("PDF Generation Error:", error);
     if (!res.headersSent) res.status(500).json({ error: "Failed to generate PDF" });
-  }
-};
-
-// ==========================================
-//   ADMIN: BULK DATA FOR DATE RANGE (API)
-// ==========================================
-exports.getBulkData = async (req, res) => {
-  const { fromDate, toDate } = req.query;
-  try {
-    const reportsRes = await sql.query`
-      SELECT * FROM DailyPerformanceReport 
-      WHERE CAST(productionDate AS DATE) BETWEEN CAST(${fromDate} AS DATE) AND CAST(${toDate} AS DATE)
-      ORDER BY productionDate ASC, id ASC`;
-    const reports = reportsRes.recordset;
-
-    const result = [];
-    for (const rep of reports) {
-      const summary = (await sql.query`SELECT * FROM DailyPerformanceSummary WHERE reportId = ${rep.id}`).recordset;
-      const details = (await sql.query`SELECT * FROM DailyPerformanceDetails WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      const delays = (await sql.query`SELECT * FROM Productiondelays WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      result.push({ ...rep, summary, details, delays });
-    }
-    res.json(result);
-  } catch (err) {
-    console.error("getBulkData error:", err);
-    res.status(500).json({ error: "Failed to fetch bulk data", details: err.message });
-  }
-};
-
-// ==========================================
-//   ADMIN: FETCH REPORT BY EXACT DATE & DISA
-// ==========================================
-exports.getByDate = async (req, res) => {
-  const { date, disa } = req.query;
-  if (!date) return res.status(400).json({ error: "date is required" });
-
-  try {
-    let reportsRes;
-    if (disa) {
-      const safeDisa = disa.replace('DISA - ', '').trim();
-      reportsRes = await sql.query`
-                SELECT * FROM DailyPerformanceReport 
-                WHERE CAST(productionDate AS DATE) = CAST(${date} AS DATE) 
-                AND (disa = ${safeDisa} OR disa = 'DISA - ' + ${safeDisa} OR disa = ${disa})
-                ORDER BY id ASC`;
-    } else {
-      reportsRes = await sql.query`
-                SELECT * FROM DailyPerformanceReport 
-                WHERE CAST(productionDate AS DATE) = CAST(${date} AS DATE)
-                ORDER BY id ASC`;
-    }
-
-    const reports = reportsRes.recordset;
-    const result = [];
-    for (const rep of reports) {
-      const summary = (await sql.query`SELECT * FROM DailyPerformanceSummary WHERE reportId = ${rep.id}`).recordset;
-      const details = (await sql.query`SELECT * FROM DailyPerformanceDetails WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      const delays = (await sql.query`SELECT * FROM Productiondelays WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      result.push({ ...rep, summary, details, delays });
-    }
-    res.json(result);
-  } catch (err) {
-    console.error("getByDate error:", err);
-    res.status(500).json({ error: "Failed to fetch report by date", details: err.message });
-  }
-};
-
-// ==========================================
-//   ADMIN: UPDATE PERFORMANCE REPORT
-// ==========================================
-exports.updateReport = async (req, res) => {
-  const { id } = req.params;
-  const { summary, details, delays, unplannedReasons, incharge, hof, hod } = req.body;
-
-  try {
-    await sql.query`
-            UPDATE DailyPerformanceReport 
-            SET unplannedReasons = ${safeStr(unplannedReasons)},
-                incharge = ${safeStr(incharge)},
-                hof = ${safeStr(hof)},
-                hod = ${safeStr(hod)}
-            WHERE id = ${Number(id)}`;
-
-    if (summary) {
-      for (const shift of Object.keys(summary)) {
-        const s = summary[shift];
-        const existing = await sql.query`SELECT id FROM DailyPerformanceSummary WHERE reportId = ${Number(id)} AND shiftName = ${shift}`;
-        if (existing.recordset.length > 0) {
-          await sql.query`UPDATE DailyPerformanceSummary SET 
-                        pouredMoulds = ${safeNum(s.pouredMoulds)},
-                        tonnage = ${safeNum(s.tonnage)},
-                        casted = ${safeNum(s.casted)},
-                        shiftValue = ${safeNum(s.value || s.shiftValue)}
-                        WHERE reportId = ${Number(id)} AND shiftName = ${shift}`;
-        }
-      }
-    }
-
-    if (details && details.length > 0) {
-      for (const d of details) {
-        if (d.id) {
-          await sql.query`UPDATE DailyPerformanceDetails SET
-                        patternCode = ${safeStr(d.patternCode)},
-                        itemDescription = ${safeStr(d.itemDescription)},
-                        planned = ${safeNum(d.planned)},
-                        unplanned = ${safeNum(d.unplanned)},
-                        mouldsProd = ${safeNum(d.mouldsProd)},
-                        mouldsPour = ${safeNum(d.mouldsPour)},
-                        cavity = ${safeNum(d.cavity)},
-                        unitWeight = ${safeNum(d.unitWeight)},
-                        totalWeight = ${safeNum(d.totalWeight)}
-                        WHERE id = ${Number(d.id)}`;
-        }
-      }
-    }
-
-    if (delays && delays.length > 0) {
-      for (const d of delays) {
-        if (d.id) {
-          await sql.query`UPDATE Productiondelays SET
-                        shift = ${safeStr(d.shift)},
-                        duration = ${safeNum(d.duration)},
-                        reason = ${safeStr(d.reason)}
-                        WHERE id = ${Number(d.id)}`;
-        }
-      }
-    }
-
-    res.json({ message: "Report updated successfully" });
-  } catch (err) {
-    console.error("updateReport error:", err);
-    res.status(500).json({ error: "Failed to update report", details: err.message });
   }
 };

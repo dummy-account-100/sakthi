@@ -34,7 +34,7 @@ router.post("/daily-performance/sign-hod", dailyPerformanceController.signHod);
 //  ADMIN / MANAGEMENT ROUTES
 // ==========================================
 // Admin: Bulk Data Fetch for Date Range (Export)
-router.get("/daily-performance/bulk-data", dailyPerformanceController.getBulkData);
+//router.get("/daily-performance/bulk-data", dailyPerformanceController.getBulkData);
 
 // Admin: Fetch report by exact date & DISA (for Edit/View)
 router.get("/daily-performance/by-date", dailyPerformanceController.getByDate);
