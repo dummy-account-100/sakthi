@@ -174,6 +174,26 @@ const MouldingQualityInspection = () => {
   };
 
   const handleSubmit = async () => {
+    // --- Empty field validation ---
+    let hasEmpty = false;
+    rows.forEach(row => {
+      const keysToCheck = [
+        "partName", "dataCode", "fmSoftRamming", "fmMouldBreakage", "fmMouldCrack", "fmLooseSand", 
+        "fmPatternSticking", "fmCoreSetting", "drMouldCrush", "drLooseSand", "drPatternSticking", 
+        "drDateHeatCode", "drFilterSize", "drSurfaceHardnessPP", "drSurfaceHardnessSP", 
+        "drInsideMouldPP", "drInsideMouldSP", "drPatternTempPP", "drPatternTempSP"
+      ];
+      keysToCheck.forEach(key => {
+        if (!row[key] || String(row[key]).trim() === '') {
+          hasEmpty = true;
+        }
+      });
+    });
+
+    if (hasEmpty) {
+      return toast.error("Please fill all input fields. Type '-' if empty.");
+    }
+
     if (!verifiedBy || !approvedBy) return toast.error("Operator and Supervisor names are required!");
     if (opSigCanvas.current.isEmpty()) return toast.error("Operator Signature is required!");
 
@@ -196,7 +216,7 @@ const MouldingQualityInspection = () => {
   };
 
   // Increased row height (h-16) and minimum width (min-w-[90px]), bumped font size to text-base
-  const inputStyle = "w-full h-16 bg-transparent outline-none text-center px-3 min-w-[90px] focus:bg-orange-100 text-base font-bold text-gray-800";
+  const inputStyle = "w-full h-16 bg-transparent outline-none text-center px-3 min-w-[90px] focus:bg-orange-100 placeholder:text-[10px] placeholder:text-gray-400 text-base font-bold text-gray-800";
 
   const renderThresholdInput = (index, field, value, minVal) => {
     const isBelow = value !== "" && !isNaN(value) && Number(value) < minVal;
@@ -205,7 +225,8 @@ const MouldingQualityInspection = () => {
       <div className={`w-full h-16 flex flex-col items-center justify-center ${isBelow ? 'bg-red-50' : ''}`}>
         <input
           type="text"
-          className={`w-full h-full bg-transparent outline-none text-center px-2 focus:bg-orange-100 text-base font-bold transition-colors ${isBelow ? 'text-red-600' : 'text-gray-800'
+          placeholder="Type '-' if empty"
+          className={`w-full h-full bg-transparent outline-none text-center px-2 focus:bg-orange-100 placeholder:text-[10px] placeholder:text-gray-400 text-base font-bold transition-colors ${isBelow ? 'text-red-600' : 'text-gray-800'
             }`}
           value={value}
           onChange={e => updateRow(index, field, e.target.value)}
@@ -311,22 +332,22 @@ const MouldingQualityInspection = () => {
                         placeholder="Search Part..."
                       />
                     </td>
-                    <td className="border border-gray-300 p-0 min-w-[120px]"><input className={inputStyle} value={row.dataCode} onChange={e => updateRow(index, 'dataCode', e.target.value)} /></td>
+                    <td className="border border-gray-300 p-0 min-w-[120px]"><input className={inputStyle} placeholder="Type '-' if empty" value={row.dataCode} onChange={e => updateRow(index, 'dataCode', e.target.value)} /></td>
 
                     {/* First Moulding */}
-                    <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.fmSoftRamming} onChange={e => updateRow(index, 'fmSoftRamming', e.target.value)} /></td>
-                    <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.fmMouldBreakage} onChange={e => updateRow(index, 'fmMouldBreakage', e.target.value)} /></td>
-                    <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.fmMouldCrack} onChange={e => updateRow(index, 'fmMouldCrack', e.target.value)} /></td>
-                    <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.fmLooseSand} onChange={e => updateRow(index, 'fmLooseSand', e.target.value)} /></td>
-                    <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.fmPatternSticking} onChange={e => updateRow(index, 'fmPatternSticking', e.target.value)} /></td>
-                    <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.fmCoreSetting} onChange={e => updateRow(index, 'fmCoreSetting', e.target.value)} /></td>
+                    <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.fmSoftRamming} onChange={e => updateRow(index, 'fmSoftRamming', e.target.value)} /></td>
+                    <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.fmMouldBreakage} onChange={e => updateRow(index, 'fmMouldBreakage', e.target.value)} /></td>
+                    <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.fmMouldCrack} onChange={e => updateRow(index, 'fmMouldCrack', e.target.value)} /></td>
+                    <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.fmLooseSand} onChange={e => updateRow(index, 'fmLooseSand', e.target.value)} /></td>
+                    <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.fmPatternSticking} onChange={e => updateRow(index, 'fmPatternSticking', e.target.value)} /></td>
+                    <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.fmCoreSetting} onChange={e => updateRow(index, 'fmCoreSetting', e.target.value)} /></td>
 
                     {/* During Running */}
-                    <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.drMouldCrush} onChange={e => updateRow(index, 'drMouldCrush', e.target.value)} /></td>
-                    <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.drLooseSand} onChange={e => updateRow(index, 'drLooseSand', e.target.value)} /></td>
-                    <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.drPatternSticking} onChange={e => updateRow(index, 'drPatternSticking', e.target.value)} /></td>
-                    <td className="border border-gray-300 p-0 min-w-[140px]"><input className={inputStyle} value={row.drDateHeatCode} onChange={e => updateRow(index, 'drDateHeatCode', e.target.value)} /></td>
-                    <td className="border border-gray-300 p-0"><input className={inputStyle} value={row.drFilterSize} onChange={e => updateRow(index, 'drFilterSize', e.target.value)} /></td>
+                    <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.drMouldCrush} onChange={e => updateRow(index, 'drMouldCrush', e.target.value)} /></td>
+                    <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.drLooseSand} onChange={e => updateRow(index, 'drLooseSand', e.target.value)} /></td>
+                    <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.drPatternSticking} onChange={e => updateRow(index, 'drPatternSticking', e.target.value)} /></td>
+                    <td className="border border-gray-300 p-0 min-w-[140px]"><input className={inputStyle} placeholder="Type '-' if empty" value={row.drDateHeatCode} onChange={e => updateRow(index, 'drDateHeatCode', e.target.value)} /></td>
+                    <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.drFilterSize} onChange={e => updateRow(index, 'drFilterSize', e.target.value)} /></td>
 
                     {/* Values with MIN thresholds */}
                     <td className="border border-gray-300 p-0 align-top">{renderThresholdInput(index, 'drSurfaceHardnessPP', row.drSurfaceHardnessPP, 85)}</td>

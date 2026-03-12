@@ -18,6 +18,7 @@ const dailyPerformanceRoutes = require("./routes/dailyPerformanceRoutes");
 const configRoutes = require("./routes/configRoutes");
 const mouldQualityRoutes = require('./routes/mouldQualityRoutes');
 const verifyToken = require('./middleware/authMiddleware');
+const qfRoutes = require("./routes/QFRoutes"); // 🔥 ADDED IMPORT
 
 const app = express();
 
@@ -51,6 +52,8 @@ app.use("/api/users", userRoutes);
 app.use("/api", dailyPerformanceRoutes);
 app.use("/api/config", configRoutes);
 app.use('/api/mould-quality', mouldQualityRoutes);
+// 🔥 ADDED QF ROUTES ENDPOINT
+app.use('/api/settings', qfRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

@@ -163,7 +163,9 @@ const DisaMachineCheckList = () => {
   };
 
   const submitReport = async () => {
-    if (!ncForm.ncDetails || !ncForm.responsibility) return setNotification({ show: true, type: 'error', message: 'Details and Responsibility are mandatory.' });
+    if (!ncForm.ncDetails || !ncForm.correction || !ncForm.rootCause || !ncForm.correctiveAction || !ncForm.responsibility || String(ncForm.ncDetails).trim() === '' || String(ncForm.correction).trim() === '' || String(ncForm.rootCause).trim() === '' || String(ncForm.correctiveAction).trim() === '') {
+      return setNotification({ show: true, type: 'error', message: "Please fill all input fields. Type '-' if empty." });
+    }
     try {
       await axios.post(`${process.env.REACT_APP_API_URL}/api/disa-checklist/report-nc`, {
         checklistId: modalItem.MasterId, slNo: modalItem.SlNo, reportDate: headerData.date, disaMachine: headerData.disaMachine, ...ncForm
@@ -558,7 +560,7 @@ const DisaMachineCheckList = () => {
 
                       <td className="py-4 text-center">
                         {isDecimalRow ? (
-                          <input type="number" step="0.01" value={item.ReadingValue || ''} onChange={(e) => handleReadingChange(item.MasterId, e.target.value)} disabled={isDisabled || hasReport} placeholder="0.00" className={`w-16 mx-auto text-center border-2 rounded text-xs font-bold py-1 outline-none transition-colors ${isDisabled || hasReport ? 'bg-gray-100 border-gray-200 cursor-not-allowed text-gray-400' : 'bg-white border-gray-300 focus:border-orange-500 text-gray-900 shadow-inner'}`} />
+                          <input type="text" value={item.ReadingValue || ''} onChange={(e) => handleReadingChange(item.MasterId, e.target.value)} disabled={isDisabled || hasReport} placeholder="Type '-' if empty" className={`w-32 mx-auto text-center border-2 rounded text-xs font-bold py-1 outline-none placeholder:text-[9px] placeholder:font-normal transition-colors ${isDisabled || hasReport ? 'bg-gray-100 border-gray-200 cursor-not-allowed text-gray-400' : 'bg-white border-gray-300 focus:border-orange-500 text-gray-900 shadow-inner'}`} />
                         ) : (
                           <div onClick={() => !isDisabled && !hasReport && handleOkClick(item)} className={`w-6 h-6 mx-auto rounded border-2 flex items-center justify-center transition-all ${isDisabled ? 'cursor-not-allowed border-gray-200 bg-gray-100' : 'cursor-pointer'} ${item.IsDone && !hasReport && !isDisabled ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white'} ${hasReport ? 'opacity-20 cursor-not-allowed' : ''}`}>{item.IsDone && !hasReport && !isDisabled && "✓"}</div>
                         )}
@@ -636,10 +638,10 @@ const DisaMachineCheckList = () => {
               <div className="p-8 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
                 <div className="bg-red-50 p-4 rounded-lg border border-red-100 flex justify-between"><p className="font-bold text-gray-800">{modalItem.CheckPointDesc}</p><span className="text-[10px] bg-orange-200 text-orange-800 px-2 py-1 rounded font-bold">{ncForm.status}</span></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="col-span-2"><label className="text-xs font-bold text-gray-500 block mb-1">NC Details</label><textarea rows="2" className={inputStyle} value={ncForm.ncDetails} onChange={e => setNcForm({ ...ncForm, ncDetails: e.target.value })} /></div>
-                  <div><label className="text-xs font-bold text-gray-500 block mb-1">Correction</label><input className={inputStyle} value={ncForm.correction} onChange={e => setNcForm({ ...ncForm, correction: e.target.value })} /></div>
-                  <div><label className="text-xs font-bold text-gray-500 block mb-1">Root Cause</label><input className={inputStyle} value={ncForm.rootCause} onChange={e => setNcForm({ ...ncForm, rootCause: e.target.value })} /></div>
-                  <div className="col-span-2"><label className="text-xs font-bold text-gray-500 block mb-1">Corrective Action</label><textarea rows="2" className={inputStyle} value={ncForm.correctiveAction} onChange={e => setNcForm({ ...ncForm, correctiveAction: e.target.value })} /></div>
+                  <div className="col-span-2"><label className="text-xs font-bold text-gray-500 block mb-1">NC Details</label><textarea rows="2" className={inputStyle} placeholder="Type '-' if empty" value={ncForm.ncDetails} onChange={e => setNcForm({ ...ncForm, ncDetails: e.target.value })} /></div>
+                  <div><label className="text-xs font-bold text-gray-500 block mb-1">Correction</label><input className={inputStyle} placeholder="Type '-' if empty" value={ncForm.correction} onChange={e => setNcForm({ ...ncForm, correction: e.target.value })} /></div>
+                  <div><label className="text-xs font-bold text-gray-500 block mb-1">Root Cause</label><input className={inputStyle} placeholder="Type '-' if empty" value={ncForm.rootCause} onChange={e => setNcForm({ ...ncForm, rootCause: e.target.value })} /></div>
+                  <div className="col-span-2"><label className="text-xs font-bold text-gray-500 block mb-1">Corrective Action</label><textarea rows="2" className={inputStyle} placeholder="Type '-' if empty" value={ncForm.correctiveAction} onChange={e => setNcForm({ ...ncForm, correctiveAction: e.target.value })} /></div>
                   <div className="col-span-1">
                     <SearchableSelect label="Responsibility" options={[{ OperatorName: "Maintenance" }, { OperatorName: "Production" }, { OperatorName: "Quality" }]} displayKey="OperatorName" value={ncForm.responsibility} onSelect={(op) => setNcForm(prev => ({ ...prev, responsibility: op.OperatorName }))} />
                   </div>

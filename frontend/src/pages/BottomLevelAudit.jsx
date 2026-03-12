@@ -131,7 +131,9 @@ const BottomLevelAudit = () => {
   const handleMasterPrevMaintToggle = (checked) => { setChecklist(prev => prev.map(c => ({ ...c, IsPreventiveMaintenance: checked, IsHoliday: false, IsVatCleaning: false, IsDone: false, IsNA: false }))); };
 
   const submitReport = async () => {
-    if (!ncForm.ncDetails || !ncForm.responsibility) return setNotification({ show: true, type: 'error', message: 'Details and Responsibility are mandatory.' });
+    if (!ncForm.ncDetails || !ncForm.correction || !ncForm.rootCause || !ncForm.correctiveAction || !ncForm.responsibility || String(ncForm.ncDetails).trim() === '' || String(ncForm.correction).trim() === '' || String(ncForm.rootCause).trim() === '' || String(ncForm.correctiveAction).trim() === '') {
+      return setNotification({ show: true, type: 'error', message: "Please fill all input fields. Type '-' if empty." });
+    }
     try {
       await axios.post(`${API_BASE}/report-nc`, { checklistId: modalItem.MasterId, slNo: modalItem.SlNo, reportDate: headerData.date, disaMachine: headerData.disaMachine, ...ncForm });
       setNotification({ show: true, type: 'success', message: 'Report Logged Successfully.' });
@@ -486,10 +488,10 @@ const BottomLevelAudit = () => {
               <div className="p-8 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
                 <div className="bg-red-50 p-4 rounded-lg border border-red-100 flex justify-between"><p className="font-bold text-gray-800">{modalItem.CheckPointDesc}</p><span className="text-[10px] bg-orange-200 text-orange-800 px-2 py-1 rounded font-bold">{ncForm.status}</span></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="col-span-2"><label className="text-xs font-bold text-gray-500 block mb-1">NC Details</label><textarea rows="2" className={inputStyle} value={ncForm.ncDetails} onChange={e => setNcForm({ ...ncForm, ncDetails: e.target.value })} /></div>
-                  <div><label className="text-xs font-bold text-gray-500 block mb-1">Correction</label><input className={inputStyle} value={ncForm.correction} onChange={e => setNcForm({ ...ncForm, correction: e.target.value })} /></div>
-                  <div><label className="text-xs font-bold text-gray-500 block mb-1">Root Cause</label><input className={inputStyle} value={ncForm.rootCause} onChange={e => setNcForm({ ...ncForm, rootCause: e.target.value })} /></div>
-                  <div className="col-span-2"><label className="text-xs font-bold text-gray-500 block mb-1">Corrective Action</label><textarea rows="2" className={inputStyle} value={ncForm.correctiveAction} onChange={e => setNcForm({ ...ncForm, correctiveAction: e.target.value })} /></div>
+                  <div className="col-span-2"><label className="text-xs font-bold text-gray-500 block mb-1">NC Details</label><textarea rows="2" className={inputStyle} placeholder="Type '-' if empty" value={ncForm.ncDetails} onChange={e => setNcForm({ ...ncForm, ncDetails: e.target.value })} /></div>
+                  <div><label className="text-xs font-bold text-gray-500 block mb-1">Correction</label><input className={inputStyle} placeholder="Type '-' if empty" value={ncForm.correction} onChange={e => setNcForm({ ...ncForm, correction: e.target.value })} /></div>
+                  <div><label className="text-xs font-bold text-gray-500 block mb-1">Root Cause</label><input className={inputStyle} placeholder="Type '-' if empty" value={ncForm.rootCause} onChange={e => setNcForm({ ...ncForm, rootCause: e.target.value })} /></div>
+                  <div className="col-span-2"><label className="text-xs font-bold text-gray-500 block mb-1">Corrective Action</label><textarea rows="2" className={inputStyle} placeholder="Type '-' if empty" value={ncForm.correctiveAction} onChange={e => setNcForm({ ...ncForm, correctiveAction: e.target.value })} /></div>
                   <div className="col-span-1">
                     <SearchableSelect label="Responsibility" options={supervisors} displayKey="OperatorName" value={ncForm.responsibility} onSelect={(op) => setNcForm(prev => ({ ...prev, responsibility: op.OperatorName }))} />
                   </div>

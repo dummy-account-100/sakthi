@@ -93,8 +93,9 @@ const FourMChangeMonitoring = () => {
   };
 
   const handleSubmit = async () => {
-    if (!partName || !mcNo || !description || !type4M) {
-      toast.warning("Please fill in Part Name, M/c No, Type of 4M, and Description.");
+    const missingCustom = customColumns.some(col => !customValues[col.id] || String(customValues[col.id]).trim() === "");
+    if (!partName || !mcNo || !description || !type4M || missingCustom) {
+      toast.warning("Please fill all input fields. Type '-' if empty.");
       return;
     }
     if (!inchargeSign) {
@@ -194,7 +195,7 @@ const FourMChangeMonitoring = () => {
               <input
                 type="text"
                 className="w-full border border-gray-400 bg-white text-gray-900 p-2 rounded focus:outline-blue-500 focus:border-blue-500 text-sm placeholder-gray-500"
-                placeholder="Enter Part Name..."
+                placeholder="Type '-' if empty"
                 value={partName}
                 onChange={(e) => setPartName(e.target.value)}
               />
@@ -237,7 +238,7 @@ const FourMChangeMonitoring = () => {
                   </td>
 
                   <td className="border border-gray-300 p-2 align-top">
-                    <input type="text" className="w-full border border-gray-400 bg-white text-gray-900 p-2 rounded focus:outline-blue-500 focus:border-blue-500 text-sm placeholder-gray-500" placeholder="M/c No" value={mcNo} onChange={(e) => setMcNo(e.target.value)} />
+                    <input type="text" className="w-full border border-gray-400 bg-white text-gray-900 p-2 rounded focus:outline-blue-500 focus:border-blue-500 text-sm placeholder-[10px] placeholder-gray-500" placeholder="Type '-' if empty" value={mcNo} onChange={(e) => setMcNo(e.target.value)} />
                   </td>
 
                   <td className="border border-gray-300 p-2 align-top">
@@ -255,7 +256,7 @@ const FourMChangeMonitoring = () => {
                   </td>
 
                   <td className="border border-gray-300 p-2 align-top">
-                    <textarea className="w-full border border-gray-400 bg-white text-gray-900 p-2 rounded focus:outline-blue-500 focus:border-blue-500 text-sm resize-y min-h-[40px] h-full placeholder-gray-500" placeholder="Description..." value={description} onChange={(e) => setDescription(e.target.value)} />
+                    <textarea className="w-full border border-gray-400 bg-white text-gray-900 p-2 rounded focus:outline-blue-500 focus:border-blue-500 text-sm resize-y min-h-[40px] h-full placeholder-[10px] placeholder-gray-500" placeholder="Type '-' if empty" value={description} onChange={(e) => setDescription(e.target.value)} />
                   </td>
 
                   <td className="border border-gray-300 p-2 align-top"><StatusSelect value={firstPart} onChange={setFirstPart} /></td>
@@ -317,8 +318,8 @@ const FourMChangeMonitoring = () => {
                     <td key={col.id} className="border border-gray-300 p-2 align-top">
                       <input
                         type="text"
-                        className="w-full border border-gray-400 bg-white text-gray-900 p-2 rounded focus:outline-blue-500 focus:border-blue-500 text-sm placeholder-gray-500"
-                        placeholder="Enter value..."
+                        className="w-full border border-gray-400 bg-white text-gray-900 p-2 rounded focus:outline-blue-500 focus:border-blue-500 text-sm placeholder-[10px] placeholder-gray-500"
+                        placeholder="Type '-' if empty"
                         value={customValues[col.id] || ""}
                         onChange={(e) => handleCustomValueChange(col.id, e.target.value)}
                       />

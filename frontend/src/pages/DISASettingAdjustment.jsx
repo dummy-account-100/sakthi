@@ -95,8 +95,13 @@ const DISASettingAdjustment = () => {
   };
 
   const handleSubmit = async () => {
-    if (!mouldCountNo) {
-      toast.warning("Please enter a Current Mould Counter value.");
+    const missingWork = workCarriedOut.some(w => !w || String(w).trim() === "");
+    const missingPrev = preventiveWorkCarried.some(p => !p || String(p).trim() === "");
+    const missingRemarks = !remarks || String(remarks).trim() === "";
+    const missingCustom = customColumns.some(col => !customValues[col.id] || String(customValues[col.id]).trim() === "");
+
+    if (!mouldCountNo || missingWork || missingPrev || missingRemarks || missingCustom) {
+      toast.warning("Please fill all input fields. Type '-' if empty.");
       return;
     }
 
@@ -231,7 +236,7 @@ const DISASettingAdjustment = () => {
                   <td className="border border-gray-300 p-2 align-top">
                     <div className="flex flex-col gap-2">
                       {workCarriedOut.map((work, index) => (
-                        <input key={`work-${index}`} type="text" className="w-full border p-2 rounded focus:outline-blue-500 text-sm" placeholder={`Task ${index + 1}`} value={work} onChange={(e) => handleWorkCarriedOutChange(index, e.target.value)} />
+                        <input key={`work-${index}`} type="text" className="w-full border p-2 rounded focus:outline-blue-500 text-sm placeholder-[10px] placeholder-gray-500" placeholder="Type '-' if empty" value={work} onChange={(e) => handleWorkCarriedOutChange(index, e.target.value)} />
                       ))}
                     </div>
                   </td>
@@ -239,7 +244,7 @@ const DISASettingAdjustment = () => {
                   <td className="border border-gray-300 p-2 align-top">
                     <div className="flex flex-col gap-2">
                       {preventiveWorkCarried.map((preventive, index) => (
-                        <input key={`prev-${index}`} type="text" className="w-full border p-2 rounded focus:outline-blue-500 text-sm" placeholder={`Action ${index + 1}`} value={preventive} onChange={(e) => handlePreventiveWorkChange(index, e.target.value)} />
+                        <input key={`prev-${index}`} type="text" className="w-full border p-2 rounded focus:outline-blue-500 text-sm placeholder-[10px] placeholder-gray-500" placeholder="Type '-' if empty" value={preventive} onChange={(e) => handlePreventiveWorkChange(index, e.target.value)} />
                       ))}
                     </div>
                   </td>
@@ -248,8 +253,8 @@ const DISASettingAdjustment = () => {
                   {customColumns.map((col) => (
                     <td key={col.id} className="border border-gray-300 p-2 align-top">
                       <textarea
-                        className="w-full border p-2 rounded focus:outline-blue-500 text-sm resize-y min-h-[40px] h-full"
-                        placeholder={col.columnName}
+                        className="w-full border p-2 rounded focus:outline-blue-500 text-sm resize-y min-h-[40px] h-full placeholder-[10px] placeholder-gray-500"
+                        placeholder="Type '-' if empty"
                         value={customValues[col.id] || ""}
                         onChange={(e) => handleCustomValueChange(col.id, e.target.value)}
                       />
@@ -272,7 +277,7 @@ const DISASettingAdjustment = () => {
                   </td>
 
                   <td className="border border-gray-300 p-2 align-top">
-                    <textarea className="w-full border p-2 rounded focus:outline-blue-500 text-sm resize-y min-h-[40px] h-full" placeholder="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
+                    <textarea className="w-full border p-2 rounded focus:outline-blue-500 text-sm resize-y min-h-[40px] h-full placeholder-[10px] placeholder-gray-500" placeholder="Type '-' if empty" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
                   </td>
                 </tr>
               </tbody>

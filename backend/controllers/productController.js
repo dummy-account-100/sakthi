@@ -293,19 +293,205 @@ exports.createReport = async (req, res) => {
 };
 
 // ==========================================
+//     ADMIN: BULK DATA FOR DATE RANGE (RETAINED)
+// ==========================================
+exports.getBulkData = async (req, res) => {
+  const { fromDate, toDate } = req.query;
+  try {
+    const reportsRes = await sql.query`
+      SELECT * FROM DisamaticProductReport
+      WHERE CAST(reportDate AS DATE) BETWEEN CAST(${fromDate} AS DATE) AND CAST(${toDate} AS DATE)
+      ORDER BY reportDate ASC, shift ASC, disa ASC, id ASC`;
+    const reports = reportsRes.recordset;
+
+    const result = [];
+    for (const rep of reports) {
+      const productions = (await sql.query`SELECT * FROM DisamaticProduction WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const delays = (await sql.query`SELECT * FROM DisamaticDelays WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const nextShiftPlans = (await sql.query`SELECT * FROM DisamaticNextShiftPlan WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const mouldHardness = (await sql.query`SELECT * FROM DisamaticMouldHardness WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const patternTemps = (await sql.query`SELECT * FROM DisamaticPatternTemp WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      result.push({ ...rep, productions, delays, nextShiftPlans, mouldHardness, patternTemps });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("getBulkData error:", err);
+    res.status(500).json({ error: "Failed to fetch bulk data", details: err.message });
+  }
+};
+
+// ==========================================
+//     ADMIN: FETCH REPORT BY EXACT DATE (RETAINED)
+// ==========================================
+exports.getByDate = async (req, res) => {
+  const { date, disa, shift } = req.query;
+  if (!date) return res.status(400).json({ error: "date is required" });
+
+  try {
+    let reportsRes;
+    if (disa && shift) {
+      reportsRes = await sql.query`
+        SELECT * FROM DisamaticProductReport
+        WHERE CAST(reportDate AS DATE) = CAST(${date} AS DATE) AND disa = ${disa} AND shift = ${shift}
+        ORDER BY id ASC`;
+    } else if (disa) {
+      reportsRes = await sql.query`
+        SELECT * FROM DisamaticProductReport
+        WHERE CAST(reportDate AS DATE) = CAST(${date} AS DATE) AND disa = ${disa}
+        ORDER BY shift ASC, id ASC`;
+    } else {
+      reportsRes = await sql.query`
+        SELECT * FROM DisamaticProductReport
+        WHERE CAST(reportDate AS DATE) = CAST(${date} AS DATE)
+        ORDER BY shift ASC, disa ASC, id ASC`;
+    }
+
+    const reports = reportsRes.recordset;
+    const result = [];
+    for (const rep of reports) {
+      const productions = (await sql.query`SELECT * FROM DisamaticProduction WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const delays = (await sql.query`SELECT * FROM DisamaticDelays WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const nextShiftPlans = (await sql.query`SELECT * FROM DisamaticNextShiftPlan WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const mouldHardness = (await sql.query`SELECT * FROM DisamaticMouldHardness WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      const patternTemps = (await sql.query`SELECT * FROM DisamaticPatternTemp WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
+      result.push({ ...rep, productions, delays, nextShiftPlans, mouldHardness, patternTemps });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("getByDate error:", err);
+    res.status(500).json({ error: "Failed to fetch report by date", details: err.message });
+  }
+};
+
+// ==========================================
+//     ADMIN: UPDATE DISAMATIC REPORT
+// ==========================================
+exports.updateDisamaticReport = async (req, res) => {
+  const { id } = req.params;
+  const { incharge, member, ppOperator, supervisorName, significantEvent, maintenance,
+    productions, delays, nextShiftPlans, mouldHardness, patternTemps } = req.body;
+
+  try {
+    // 1. Update the Main Report Table
+    await sql.query`
+      UPDATE DisamaticProductReport SET
+        incharge = ${safeStr(incharge)},
+        member = ${safeStr(member)},
+        ppOperator = ${safeStr(ppOperator)},
+        supervisorName = ${safeStr(supervisorName)},
+        significantEvent = ${safeStr(significantEvent)},
+        maintenance = ${safeStr(maintenance)}
+      WHERE id = ${Number(id)}`;
+
+    // 2. Update the Productions Array
+    if (productions && productions.length > 0) {
+      for (const p of productions) {
+        if (p.id) {
+          await sql.query`UPDATE DisamaticProduction SET
+            componentName = ${safeStr(p.componentName)},
+            mouldCounterNo = ${safeNum(p.mouldCounterNo)},
+            produced = ${safeNum(p.produced)},
+            poured = ${safeNum(p.poured)},
+            cycleTime = ${safeNum(p.cycleTime)},
+            mouldsPerHour = ${safeNum(p.mouldsPerHour)},
+            remarks = ${safeStr(p.remarks)}
+            WHERE id = ${Number(p.id)}`;
+        }
+      }
+    }
+
+    // 3. Update the Next Shift Plans Array 
+    if (nextShiftPlans && nextShiftPlans.length > 0) {
+      for (const np of nextShiftPlans) {
+        if (np.id) {
+          await sql.query`UPDATE DisamaticNextShiftPlan SET
+            componentName = ${safeStr(np.componentName)},
+            plannedMoulds = ${safeNum(np.plannedMoulds)},
+            remarks = ${safeStr(np.remarks)}
+            WHERE id = ${Number(np.id)}`;
+        }
+      }
+    }
+
+    // 4. Update the Delays Array
+    if (delays && delays.length > 0) {
+      for (const d of delays) {
+        if (d.id) {
+          await sql.query`UPDATE DisamaticDelays SET
+            delay = ${safeStr(d.delay || d.delayType)},
+            durationMinutes = ${safeNum(d.durationMinutes || d.duration)},
+            durationTime = ${safeStr(d.durationTime)}
+            WHERE id = ${Number(d.id)}`;
+        }
+      }
+    }
+
+    // 5. Update Mould Hardness Array
+    if (mouldHardness && mouldHardness.length > 0) {
+      for (const h of mouldHardness) {
+        if (h.id) {
+          await sql.query`UPDATE DisamaticMouldHardness SET
+            componentName = ${safeStr(h.componentName)},
+            penetrationPP = ${safeStr(h.penetrationPP)},
+            penetrationSP = ${safeStr(h.penetrationSP)},
+            bScalePP = ${safeStr(h.bScalePP)},
+            bScaleSP = ${safeStr(h.bScaleSP)},
+            remarks = ${safeStr(h.remarks)}
+            WHERE id = ${Number(h.id)}`;
+        }
+      }
+    }
+
+    // 6. Update Pattern Temps Array
+    if (patternTemps && patternTemps.length > 0) {
+      for (const pt of patternTemps) {
+        if (pt.id) {
+          await sql.query`UPDATE DisamaticPatternTemp SET
+            componentName = ${safeStr(pt.componentName)},
+            pp = ${safeStr(pt.pp)},
+            sp = ${safeStr(pt.sp)},
+            remarks = ${safeStr(pt.remarks)}
+            WHERE id = ${Number(pt.id)}`;
+        }
+      }
+    }
+
+    res.json({ message: "Report updated successfully" });
+  } catch (err) {
+    console.error("updateDisamaticReport error:", err);
+    res.status(500).json({ error: "Failed to update report", details: err.message });
+  }
+};
+
+// ==========================================
 //          DOWNLOAD ALL REPORTS (PDF)
 // ==========================================
 exports.downloadAllReports = async (req, res) => {
   try {
     const { reportId, date, disa, fromDate, toDate } = req.query;
 
+    // 🔥 1. FETCH FULL QF VALUE HISTORY FROM DATABASE 🔥
+    let qfHistory = [];
+    try {
+      const qfRes = await sql.query`
+        SELECT qfValue, date 
+        FROM DisamaticReportQFvalues 
+        WHERE formName = 'disamatic-report' 
+        ORDER BY date DESC, id DESC
+      `;
+      qfHistory = qfRes.recordset;
+    } catch (e) {
+      console.error("DisamaticReportQFvalues table error or not found.");
+    }
+
     let reportResult;
     
-    // 🔥 UPDATED LOGIC TO HANDLE DATE RANGE (FROM/TO DATES) 🔥
+    // 🔥 2. PROPER DATE RANGE FILTERING LOGIC 🔥
     if (fromDate && toDate) {
       reportResult = await sql.query`
         SELECT * FROM DisamaticProductReport 
-        WHERE CAST(reportDate AS DATE) BETWEEN CAST(${fromDate} AS DATE) AND CAST(${toDate} AS DATE)
+        WHERE CAST(reportDate AS DATE) >= CAST(${fromDate} AS DATE) 
+          AND CAST(reportDate AS DATE) <= CAST(${toDate} AS DATE)
         ORDER BY reportDate ASC, shift ASC, disa ASC, id ASC
       `;
     } else if (date && disa) {
@@ -436,6 +622,23 @@ exports.downloadAllReports = async (req, res) => {
     for (let i = 0; i < reportGroups.length; i++) {
       const g = reportGroups[i];
       if (i > 0) doc.addPage(); 
+
+      // 🔥 FIND CORRECT QF VALUE FOR THIS SPECIFIC PAGE DATE 🔥
+      let currentPageQfValue = "QF/07/FBP-03, Rev.No: 02 dt 01.10.2024"; // System Default
+      const currentReportDate = new Date(g.date);
+      currentReportDate.setHours(0, 0, 0, 0); // Strip time for fair date comparison
+
+      for (let qf of qfHistory) {
+          if (!qf.date) continue;
+          const qfDate = new Date(qf.date);
+          qfDate.setHours(0, 0, 0, 0);
+
+          // Because it's ordered DESC, the FIRST one that is <= reportDate is the matching active QF
+          if (qfDate <= currentReportDate) {
+              currentPageQfValue = qf.qfValue;
+              break; 
+          }
+      }
 
       let currentY = 30;
       doc.rect(startX, currentY, tableWidth, 60).stroke();
@@ -705,7 +908,8 @@ exports.downloadAllReports = async (req, res) => {
         doc.text("Pending", startX + 390, currentY + 30);
       }
 
-      doc.fontSize(7).font('Helvetica').text("QF/07/FBP-03, Rev.No: 02 dt 01.10.2024", startX + 5, currentY + 35);
+      // 🔥 3. PRINT THE DYNAMIC QF VALUE FOR THIS SPECIFIC REPORT DATE 🔥
+      doc.fontSize(7).font('Helvetica').text(currentPageQfValue, startX + 5, currentY + 35);
     }
     
     doc.end();
@@ -713,176 +917,5 @@ exports.downloadAllReports = async (req, res) => {
   } catch (error) {
     console.error("PDF Generation Error:", error);
     if (!res.headersSent) res.status(500).json({ error: "Failed to generate PDF" });
-  }
-};
-
-// ==========================================
-//    ADMIN: BULK DATA FOR DATE RANGE (RETAINED)
-// ==========================================
-exports.getBulkData = async (req, res) => {
-  const { fromDate, toDate } = req.query;
-  try {
-    const reportsRes = await sql.query`
-      SELECT * FROM DisamaticProductReport
-      WHERE CAST(reportDate AS DATE) BETWEEN CAST(${fromDate} AS DATE) AND CAST(${toDate} AS DATE)
-      ORDER BY reportDate ASC, shift ASC, disa ASC, id ASC`;
-    const reports = reportsRes.recordset;
-
-    const result = [];
-    for (const rep of reports) {
-      const productions = (await sql.query`SELECT * FROM DisamaticProduction WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      const delays = (await sql.query`SELECT * FROM DisamaticDelays WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      const nextShiftPlans = (await sql.query`SELECT * FROM DisamaticNextShiftPlan WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      const mouldHardness = (await sql.query`SELECT * FROM DisamaticMouldHardness WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      const patternTemps = (await sql.query`SELECT * FROM DisamaticPatternTemp WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      result.push({ ...rep, productions, delays, nextShiftPlans, mouldHardness, patternTemps });
-    }
-    res.json(result);
-  } catch (err) {
-    console.error("getBulkData error:", err);
-    res.status(500).json({ error: "Failed to fetch bulk data", details: err.message });
-  }
-};
-
-// ==========================================
-//     ADMIN: FETCH REPORT BY EXACT DATE (RETAINED)
-// ==========================================
-exports.getByDate = async (req, res) => {
-  const { date, disa, shift } = req.query;
-  if (!date) return res.status(400).json({ error: "date is required" });
-
-  try {
-    let reportsRes;
-    if (disa && shift) {
-      reportsRes = await sql.query`
-        SELECT * FROM DisamaticProductReport
-        WHERE CAST(reportDate AS DATE) = CAST(${date} AS DATE) AND disa = ${disa} AND shift = ${shift}
-        ORDER BY id ASC`;
-    } else if (disa) {
-      reportsRes = await sql.query`
-        SELECT * FROM DisamaticProductReport
-        WHERE CAST(reportDate AS DATE) = CAST(${date} AS DATE) AND disa = ${disa}
-        ORDER BY shift ASC, id ASC`;
-    } else {
-      reportsRes = await sql.query`
-        SELECT * FROM DisamaticProductReport
-        WHERE CAST(reportDate AS DATE) = CAST(${date} AS DATE)
-        ORDER BY shift ASC, disa ASC, id ASC`;
-    }
-
-    const reports = reportsRes.recordset;
-    const result = [];
-    for (const rep of reports) {
-      const productions = (await sql.query`SELECT * FROM DisamaticProduction WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      const delays = (await sql.query`SELECT * FROM DisamaticDelays WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      const nextShiftPlans = (await sql.query`SELECT * FROM DisamaticNextShiftPlan WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      const mouldHardness = (await sql.query`SELECT * FROM DisamaticMouldHardness WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      const patternTemps = (await sql.query`SELECT * FROM DisamaticPatternTemp WHERE reportId = ${rep.id} ORDER BY id ASC`).recordset;
-      result.push({ ...rep, productions, delays, nextShiftPlans, mouldHardness, patternTemps });
-    }
-    res.json(result);
-  } catch (err) {
-    console.error("getByDate error:", err);
-    res.status(500).json({ error: "Failed to fetch report by date", details: err.message });
-  }
-};
-
-// ==========================================
-//     ADMIN: UPDATE DISAMATIC REPORT
-// ==========================================
-exports.updateDisamaticReport = async (req, res) => {
-  const { id } = req.params;
-  const { incharge, member, ppOperator, supervisorName, significantEvent, maintenance,
-    productions, delays, nextShiftPlans, mouldHardness, patternTemps } = req.body;
-
-  try {
-    // 1. Update the Main Report Table
-    await sql.query`
-      UPDATE DisamaticProductReport SET
-        incharge = ${safeStr(incharge)},
-        member = ${safeStr(member)},
-        ppOperator = ${safeStr(ppOperator)},
-        supervisorName = ${safeStr(supervisorName)},
-        significantEvent = ${safeStr(significantEvent)},
-        maintenance = ${safeStr(maintenance)}
-      WHERE id = ${Number(id)}`;
-
-    // 2. Update the Productions Array
-    if (productions && productions.length > 0) {
-      for (const p of productions) {
-        if (p.id) {
-          await sql.query`UPDATE DisamaticProduction SET
-            componentName = ${safeStr(p.componentName)},
-            mouldCounterNo = ${safeNum(p.mouldCounterNo)},
-            produced = ${safeNum(p.produced)},
-            poured = ${safeNum(p.poured)},
-            cycleTime = ${safeNum(p.cycleTime)},
-            mouldsPerHour = ${safeNum(p.mouldsPerHour)},
-            remarks = ${safeStr(p.remarks)}
-            WHERE id = ${Number(p.id)}`;
-        }
-      }
-    }
-
-    // 3. Update the Next Shift Plans Array 
-    if (nextShiftPlans && nextShiftPlans.length > 0) {
-      for (const np of nextShiftPlans) {
-        if (np.id) {
-          await sql.query`UPDATE DisamaticNextShiftPlan SET
-            componentName = ${safeStr(np.componentName)},
-            plannedMoulds = ${safeNum(np.plannedMoulds)},
-            remarks = ${safeStr(np.remarks)}
-            WHERE id = ${Number(np.id)}`;
-        }
-      }
-    }
-
-    // 4. Update the Delays Array
-    if (delays && delays.length > 0) {
-      for (const d of delays) {
-        if (d.id) {
-          await sql.query`UPDATE DisamaticDelays SET
-            delay = ${safeStr(d.delay || d.delayType)},
-            durationMinutes = ${safeNum(d.durationMinutes || d.duration)},
-            durationTime = ${safeStr(d.durationTime)}
-            WHERE id = ${Number(d.id)}`;
-        }
-      }
-    }
-
-    // 5. Update Mould Hardness Array
-    if (mouldHardness && mouldHardness.length > 0) {
-      for (const h of mouldHardness) {
-        if (h.id) {
-          await sql.query`UPDATE DisamaticMouldHardness SET
-            componentName = ${safeStr(h.componentName)},
-            penetrationPP = ${safeStr(h.penetrationPP)},
-            penetrationSP = ${safeStr(h.penetrationSP)},
-            bScalePP = ${safeStr(h.bScalePP)},
-            bScaleSP = ${safeStr(h.bScaleSP)},
-            remarks = ${safeStr(h.remarks)}
-            WHERE id = ${Number(h.id)}`;
-        }
-      }
-    }
-
-    // 6. Update Pattern Temps Array
-    if (patternTemps && patternTemps.length > 0) {
-      for (const pt of patternTemps) {
-        if (pt.id) {
-          await sql.query`UPDATE DisamaticPatternTemp SET
-            componentName = ${safeStr(pt.componentName)},
-            pp = ${safeStr(pt.pp)},
-            sp = ${safeStr(pt.sp)},
-            remarks = ${safeStr(pt.remarks)}
-            WHERE id = ${Number(pt.id)}`;
-        }
-      }
-    }
-
-    res.json({ message: "Report updated successfully" });
-  } catch (err) {
-    console.error("updateDisamaticReport error:", err);
-    res.status(500).json({ error: "Failed to update report", details: err.message });
   }
 };

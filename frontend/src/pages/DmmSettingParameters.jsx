@@ -193,6 +193,24 @@ const DmmSettingParameters = () => {
   };
 
   const handleSave = async () => {
+    let hasEmpty = false;
+    [1, 2, 3].forEach(shift => {
+      if (shiftsMeta[shift].isIdle) return; // Skip idle shifts
+      shiftsData[shift].forEach(row => {
+        allColumns.forEach(col => {
+          const val = col.isCustom ? row.customValues[col.id] : row[col.key];
+          if (val === undefined || val === null || String(val).trim() === '') {
+            hasEmpty = true;
+          }
+        });
+      });
+    });
+
+    if (hasEmpty) {
+      setNotification({ show: true, type: 'error', message: "Please fill all input fields. Type '-' if empty." });
+      return;
+    }
+
     setLoading(true);
     try {
       await axios.post(`${process.env.REACT_APP_API_URL}/api/dmm-settings/save`, {
@@ -419,10 +437,11 @@ const DmmSettingParameters = () => {
                             return (
                               <td key={col.key} className="border border-gray-300 p-0 relative">
                                 <input
-                                  type={col.inputType} step={col.step || undefined} disabled={isIdle}
+                                  type={col.inputType === 'number' ? 'text' : col.inputType} step={col.step || undefined} disabled={isIdle}
+                                  placeholder={col.inputType === 'number' || col.inputType === 'text' ? "Type '-' if empty" : undefined}
                                   value={isIdle ? '' : (val || '')}
                                   onChange={(e) => handleInputChange(shift, row.id, col.key, e.target.value, col.isCustom, col.id)}
-                                  className={`absolute inset-0 w-full h-full text-center text-sm font-bold text-gray-800 outline-none px-1 ${isIdle ? 'bg-transparent cursor-not-allowed' : 'bg-transparent focus:bg-orange-100 focus:ring-inset focus:ring-2 focus:ring-orange-500'}`}
+                                  className={`absolute inset-0 w-full h-full text-center text-sm font-bold text-gray-800 outline-none px-1 placeholder:text-[8px] placeholder:text-gray-400 ${isIdle ? 'bg-transparent cursor-not-allowed' : 'bg-transparent focus:bg-orange-100 focus:ring-inset focus:ring-2 focus:ring-orange-500'}`}
                                 />
                               </td>
                             )

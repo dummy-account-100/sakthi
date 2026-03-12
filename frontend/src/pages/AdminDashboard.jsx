@@ -3,13 +3,12 @@ import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import {
     FileDown, Calendar, Users, X, Loader, AlertTriangle, CheckCircle,
-    Settings, FileText, LogOut, Edit, Trash2, UserPlus, Eye
+    Settings, FileText, LogOut, Edit, Trash2, UserPlus, Eye, BookOpen
 } from 'lucide-react';
 
 import {
     generateUnPouredMouldPDF, generateDmmSettingPDF, generateChecklistPDF,
-    generateErrorProofV1PDF, generateErrorProofV2PDF, generateDisaSettingAdjustmentPDF,
-    generateMouldQualityPDF
+    generateErrorProofPDF, generateDisaSettingAdjustmentPDF, generateMouldQualityPDF
 } from '../utils/pdfGenerators';
 
 import { removeToken, getUser } from '../utils/auth';
@@ -77,10 +76,14 @@ const AdminDashboard = () => {
     const [loadingUsers, setLoadingUsers] = useState(false);
 
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [editUser, setEditUser] = useState({ id: "", username: "", employeeId: "", role: "" });
+    const [editUser, setEditUser] = useState({ id: "", username: "", role: "" });
 
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [newUser, setNewUser] = useState({ username: "", employeeId: "", password: "", role: "" });
+    const [newUser, setNewUser] = useState({ username: "", password: "", role: "" });
+
+    // 🔥 State for QF Settings Manager
+    const [qfSettings, setQfSettings] = useState([]);
+    const [savingId, setSavingId] = useState(null);
 
     const forms = [
         { name: "Performance", id: "performance" },
@@ -94,14 +97,15 @@ const AdminDashboard = () => {
         { name: "DISA Setting Adjustment Record", id: "disa-setting-adjustment" },
         { name: "4M Monitoring", id: "4m-change" },
         { name: "Mould Quality Inspection", id: "mould-quality" },
-        { name: "Add / Manage Users", id: "users", isSpecial: true }
+        { name: "Manage QF Values", id: "qf-settings", isSpecial: true, icon: BookOpen },
+        { name: "Add / Manage Users", id: "users", isSpecial: true, icon: Users }
     ];
 
-    // Array of forms that should NOT show the "Manage Form" button
     const hideManageFormIds = ['disamatic-report', 'performance', 'error-proof', 'mould-quality'];
 
     useEffect(() => {
         if (activeView === 'users') fetchUsers();
+        if (activeView === 'qf-settings') fetchQfSettings();
     }, [activeView]);
 
     const fetchUsers = async () => {
@@ -115,13 +119,43 @@ const AdminDashboard = () => {
         setLoadingUsers(false);
     };
 
+    const fetchQfSettings = async () => {
+        try {
+            const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/settings/qf-values`);
+            setQfSettings(res.data);
+        } catch (error) {
+            setNotification({ show: true, type: 'error', message: 'Failed to load QF values.' });
+        }
+    };
+
+    // 🔥 FIXED: Changed to axios.put to match the router
+    const handleSaveSingleQfSetting = async (setting) => {
+        setSavingId(setting.id);
+        try {
+            await axios.put(`${process.env.REACT_APP_API_URL}/api/settings/qf-values`, { setting });
+            setNotification({ show: true, type: 'success', message: `${setting.formName.replace('-', ' ')} QF updated!` });
+            fetchQfSettings(); // Refresh to get the new latest record
+        } catch (error) {
+            setNotification({ show: true, type: 'error', message: 'Failed to save QF value.' });
+        }
+        setSavingId(null);
+    };
+
+    const handleQfChange = (id, newValue) => {
+        setQfSettings(prev => prev.map(s => s.id === id ? { ...s, qfValue: newValue } : s));
+    };
+
+    const handleQfDateChange = (id, newDate) => {
+        setQfSettings(prev => prev.map(s => s.id === id ? { ...s, date: newDate } : s));
+    };
+
     const handleAddUser = async (e) => {
         e.preventDefault();
         try {
             await axios.post(`${process.env.REACT_APP_API_URL}/api/users/add`, newUser);
             setNotification({ show: true, type: 'success', message: 'User added successfully!' });
             setIsAddModalOpen(false);
-            setNewUser({ username: "", employeeId: "", password: "", role: "" });
+            setNewUser({ username: "", password: "", role: "" });
             fetchUsers();
         } catch (error) {
             const errorMsg = error.response?.data?.error || 'Failed to add user';
@@ -134,7 +168,6 @@ const AdminDashboard = () => {
         try {
             await axios.put(`${process.env.REACT_APP_API_URL}/api/users/${editUser.id}`, {
                 username: editUser.username,
-                employeeId: editUser.employeeId,
                 role: editUser.role,
             });
             setNotification({ show: true, type: 'success', message: 'User updated successfully!' });
@@ -158,8 +191,8 @@ const AdminDashboard = () => {
     };
 
     const handleGridClick = (form) => {
-        if (form.isSpecial && form.id === 'users') {
-            setActiveView('users');
+        if (form.isSpecial) {
+            setActiveView(form.id);
         } else {
             setActionModal({ show: true, selectedForm: form });
         }
@@ -197,7 +230,7 @@ const AdminDashboard = () => {
         }
     };
 
-  const handleDownloadPDF = async () => {
+    const handleDownloadPDF = async () => {
         if (!dateRange.from || !dateRange.to) {
             setNotification({ show: true, type: 'error', message: 'Please select both From and To dates.' });
             return;
@@ -209,7 +242,6 @@ const AdminDashboard = () => {
         try {
             const token = localStorage.getItem('token'); 
 
-            // 1. PERFORMANCE REPORT EXPORT (Blob Download)
             if (pdfModal.selectedForm.id === 'performance') {
                 const url = `${process.env.REACT_APP_API_URL}/api/daily-performance/download-pdf?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
                 const response = await axios.get(url, { responseType: 'blob', headers: { Authorization: `Bearer ${token}` } });
@@ -235,7 +267,6 @@ const AdminDashboard = () => {
                 return;
             }
 
-            // 2. Server Rendered PDFs (4M & Disamatic)
             const serverPdfForms = ['4m-change', 'disamatic-report'];
             if (serverPdfForms.includes(pdfModal.selectedForm.id)) {
                 let url = '';
@@ -267,7 +298,6 @@ const AdminDashboard = () => {
                 return;
             }
 
-            // 3. Client Rendered PDFs (Fetching JSON Data)
             let apiRoute = `${process.env.REACT_APP_API_URL}/api/reports/${pdfModal.selectedForm.id}`;
             if (pdfModal.selectedForm.id === 'disa-setting-adjustment') apiRoute = `${process.env.REACT_APP_API_URL}/api/disa/records`;
             else if (pdfModal.selectedForm.id === 'error-proof') apiRoute = `${process.env.REACT_APP_API_URL}/api/error-proof/bulk-data`;
@@ -301,7 +331,6 @@ const AdminDashboard = () => {
             
             let data = res.data;
 
-            // Date Sanitization logic
             const sanitizeDates = (arr) => {
                 if (!Array.isArray(arr)) return arr;
                 return arr.map(row => ({
@@ -311,7 +340,6 @@ const AdminDashboard = () => {
                 }));
             };
 
-            // Deep object sanitization
             if (Array.isArray(data)) {
                 data = sanitizeDates(data);
             } else if (data && typeof data === 'object') {
@@ -320,7 +348,6 @@ const AdminDashboard = () => {
                 });
             }
 
-            // 🔥 CRITICAL FIX: Normalize DMM Setting Data format 🔥
             if (pdfModal.selectedForm.id === 'dmm-setting-parameters') {
                 if (Array.isArray(data)) {
                     data = { meta: data, trans: data };
@@ -334,7 +361,6 @@ const AdminDashboard = () => {
                 }
             }
 
-            // Robust validation to check if standard data payloads are empty
             let isEmpty = false;
             if (!data || (Array.isArray(data) && data.length === 0)) {
                 isEmpty = true;
@@ -358,14 +384,13 @@ const AdminDashboard = () => {
 
             const effectiveDateRange = { from: fetchFromDate, to: fetchToDate };
 
-            // Generate PDFs
             switch (pdfModal.selectedForm.id) {
                 case 'unpoured-mould-details': generateUnPouredMouldPDF(data, dateRange); break;
                 case 'dmm-setting-parameters': await generateDmmSettingPDF(data, dateRange); break;
                 case 'disa-operator': generateChecklistPDF(data, effectiveDateRange, "DISA MACHINE OPERATOR CHECK SHEET", "Non-Conformance Report"); break;
                 case 'lpa': generateChecklistPDF(data, effectiveDateRange, "LAYERED PROCESS AUDIT - BOTTOM LEVEL", "Non-Conformance Report"); break;
-                case 'error-proof': generateErrorProofV1PDF(data, dateRange); break;
-                case 'error-proof2': generateErrorProofV2PDF(data, dateRange); break;
+                case 'error-proof': generateErrorProofPDF(data, dateRange); break;
+                case 'error-proof2': generateErrorProofPDF(data, dateRange); break;
                 case 'mould-quality': generateMouldQualityPDF(data, dateRange); break;
                 case 'disa-setting-adjustment': generateDisaSettingAdjustmentPDF(data, dateRange); break;
                 default:
@@ -395,13 +420,80 @@ const AdminDashboard = () => {
         );
     }
 
-    if (activeView === 'unpoured-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigUnpouredMould onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'disa-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigDisaColumns onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === '4m-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigFourMColumns onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'dmm-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigDmmSetting onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'ep-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigErrorProof onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'checklist-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigDisaChecklist onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'lpa-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigLpa onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'unpoured-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigUnpouredMould onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'disa-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigDisaColumns onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === '4m-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigFourMColumns onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'dmm-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigDmmSetting onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'ep-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigErrorProof onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'checklist-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigDisaChecklist onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'lpa-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigLpa onBack={() => setActiveView('grid')} /></div>);
+
+    // 🔥 NEW: QF SETTINGS MANAGER UI (INDIVIDUAL SAVE BUTTONS)
+    if (activeView === 'qf-settings') {
+        return (
+            <div className="relative w-full min-h-screen bg-[#2d2d2d] flex flex-col items-center pt-24 pb-10 px-4 font-sans">
+                <NotificationToast data={notification} onClose={() => setNotification(prev => ({ ...prev, show: false }))} />
+
+                <button
+                    onClick={() => setActiveView('grid')}
+                    className="absolute top-6 left-6 z-[100] flex items-center gap-2 text-[#ff9100] font-bold uppercase tracking-wider text-sm hover:text-white transition-colors bg-white/5 px-4 py-2 rounded-lg border border-white/10 hover:border-[#ff9100]/50 shadow-lg backdrop-blur-sm"
+                >
+                    ← Back to Dashboard
+                </button>
+
+                <div className="bg-[#383838] w-full max-w-4xl rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.6)] overflow-hidden">
+                    <div className="bg-gradient-to-r from-[#ff9100] to-orange-700 px-8 py-6">
+                        <h2 className="text-2xl font-black text-white uppercase tracking-widest flex items-center gap-3">
+                            <BookOpen size={24} /> Manage QF Document Numbers
+                        </h2>
+                        <p className="text-white/80 text-sm mt-1">Update the footer document tracking codes and edit dates for the generated PDFs individually.</p>
+                    </div>
+
+                    <div className="p-8 space-y-6">
+                        {qfSettings.length === 0 ? (
+                            <div className="text-center text-white/50 py-10 font-bold uppercase">No QF Settings Found in Database.</div>
+                        ) : (
+                            <div className="grid grid-cols-1 gap-6">
+                                {qfSettings.map((setting) => (
+                                    <div key={setting.id} className="bg-[#2a2a2a] p-6 rounded-xl border border-white/10 shadow-inner flex flex-col md:flex-row gap-6 items-end">
+                                        <div className="flex-1 w-full">
+                                            <label className="block text-xs font-black uppercase tracking-widest text-[#ff9100] mb-2">{setting.formName.replace('-', ' ')} - QF Value</label>
+                                            <input 
+                                                type="text" 
+                                                value={setting.qfValue} 
+                                                onChange={(e) => handleQfChange(setting.id, e.target.value)}
+                                                className="w-full bg-[#1a1a1a] border border-white/20 p-3 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-[#ff9100] transition-colors"
+                                                placeholder="e.g. QF/07/FBP-03, Rev.No: 02"
+                                            />
+                                        </div>
+                                        <div className="w-full md:w-1/4">
+                                            <label className="block text-xs font-black uppercase tracking-widest text-[#ff9100] mb-2">Date Edited</label>
+                                            <input 
+                                                type="date" 
+                                                value={setting.date ? setting.date.split('T')[0] : ''} 
+                                                onChange={(e) => handleQfDateChange(setting.id, e.target.value)}
+                                                className="w-full bg-[#1a1a1a] border border-white/20 p-3 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-[#ff9100] transition-colors [color-scheme:dark]"
+                                            />
+                                        </div>
+                                        <div className="w-full md:w-auto">
+                                            <button 
+                                                onClick={() => handleSaveSingleQfSetting(setting)} 
+                                                disabled={savingId === setting.id}
+                                                className="w-full md:w-auto bg-[#ff9100] hover:bg-orange-500 text-white font-bold uppercase tracking-wider px-6 py-3 rounded-xl transition-all shadow-lg flex justify-center items-center gap-2 disabled:opacity-50"
+                                            >
+                                                {savingId === setting.id ? <Loader className="w-5 h-5 animate-spin" /> : <Settings className="w-5 h-5" />}
+                                                Save
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (activeView === 'users') {
         return (
@@ -438,7 +530,7 @@ const AdminDashboard = () => {
                             <table className="w-full text-left border-collapse bg-white">
                                 <thead className="bg-gray-800 text-white">
                                     <tr>
-                                        <th className="p-4 border-b border-gray-700 w-32 text-center uppercase tracking-wider text-xs font-bold">Emp ID</th>
+                                        <th className="p-4 border-b border-gray-700 w-20 text-center uppercase tracking-wider text-xs font-bold">ID</th>
                                         <th className="p-4 border-b border-gray-700 uppercase tracking-wider text-xs font-bold">Username</th>
                                         <th className="p-4 border-b border-gray-700 w-48 uppercase tracking-wider text-xs font-bold">Role</th>
                                         <th className="p-4 border-b border-gray-700 w-32 text-center uppercase tracking-wider text-xs font-bold">Actions</th>
@@ -448,7 +540,7 @@ const AdminDashboard = () => {
                                     {users.length > 0 ? (
                                         users.map((u) => (
                                             <tr key={u.id} className="hover:bg-orange-50 transition-colors border-b border-gray-200 last:border-0 group">
-                                                <td className="p-4 text-center font-black text-gray-400 group-hover:text-[#ff9100] transition-colors">{u.employeeId}</td>
+                                                <td className="p-4 text-center font-black text-gray-400 group-hover:text-[#ff9100] transition-colors">{u.id}</td>
                                                 <td className="p-4 font-bold text-gray-800 text-lg">{u.username}</td>
                                                 <td className="p-4">
                                                     <span className="bg-gray-200 text-gray-800 px-3 py-1 rounded-md text-xs font-bold uppercase tracking-widest">
@@ -457,7 +549,7 @@ const AdminDashboard = () => {
                                                 </td>
                                                 <td className="p-4">
                                                     <div className="flex justify-center gap-4">
-                                                        <button onClick={() => { setEditUser({ id: u.id, username: u.username, employeeId: u.employeeId, role: u.role }); setIsEditModalOpen(true); }} className="text-blue-500 hover:text-blue-700 transition-transform hover:scale-110" title="Edit User">
+                                                        <button onClick={() => { setEditUser({ id: u.id, username: u.username, role: u.role }); setIsEditModalOpen(true); }} className="text-blue-500 hover:text-blue-700 transition-transform hover:scale-110" title="Edit User">
                                                             <Edit size={20} />
                                                         </button>
                                                         <button onClick={() => handleDeleteUser(u.id)} className="text-red-500 hover:text-red-700 transition-transform hover:scale-110" title="Delete User">
@@ -493,10 +585,6 @@ const AdminDashboard = () => {
                                     <input type="text" required value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-[#ff9100] transition-colors font-bold text-gray-800" placeholder="Enter username" />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-black uppercase tracking-wider text-gray-600 mb-1">Employee ID</label>
-                                    <input type="text" required value={newUser.employeeId} onChange={(e) => setNewUser({ ...newUser, employeeId: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-[#ff9100] transition-colors font-bold text-gray-800" placeholder="Enter employee ID" />
-                                </div>
-                                <div>
                                     <label className="block text-xs font-black uppercase tracking-wider text-gray-600 mb-1">Password</label>
                                     <input type="text" required value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-[#ff9100] transition-colors font-bold text-gray-800" placeholder="Enter password" />
                                 </div>
@@ -505,7 +593,6 @@ const AdminDashboard = () => {
                                     <select required value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-[#ff9100] transition-colors font-bold text-gray-800 bg-white">
                                         <option value="">Select a Role</option>
                                         <option value="operator">Operator</option>
-                                        <option value="pp operator">PP Operator</option>
                                         <option value="supervisor">Supervisor</option>
                                         <option value="hof">HOF</option>
                                         <option value="hod">HOD</option>
@@ -534,15 +621,10 @@ const AdminDashboard = () => {
                                     <input type="text" required value={editUser.username} onChange={(e) => setEditUser({ ...editUser, username: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors font-bold text-gray-800" />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-black uppercase tracking-wider text-gray-600 mb-1">Employee ID</label>
-                                    <input type="text" required value={editUser.employeeId} onChange={(e) => setEditUser({ ...editUser, employeeId: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors font-bold text-gray-800" />
-                                </div>
-                                <div>
                                     <label className="block text-xs font-black uppercase tracking-wider text-gray-600 mb-1">Role</label>
                                     <select required value={editUser.role} onChange={(e) => setEditUser({ ...editUser, role: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors font-bold text-gray-800 bg-white">
                                         <option value="">Select a Role</option>
                                         <option value="operator">Operator</option>
-                                        <option value="pp operator">PP Operator</option>
                                         <option value="supervisor">Supervisor</option>
                                         <option value="hof">HOF</option>
                                         <option value="hod">HOD</option>
@@ -568,7 +650,6 @@ const AdminDashboard = () => {
             <div className="h-1.5 bg-[#ff9100] flex-shrink-0 shadow-[0_0_15px_rgba(255,145,0,0.5)]" />
 
             <div className="w-full flex justify-between items-center px-10 pt-6 absolute top-0 left-0 z-10">
-                
                 <div className="flex items-center gap-4">
                     <span className="text-white/30 text-xs font-mono uppercase tracking-wider">
                         {user ? `${user.username} · ${user.role}` : ''}
@@ -592,27 +673,26 @@ const AdminDashboard = () => {
 
             <div className="flex-1 flex justify-center items-center px-10 pb-10 overflow-y-auto mt-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 w-full max-w-7xl">
-                    {forms.map((form) => (
-                        <button
-                            key={form.name}
-                            onClick={() => handleGridClick(form)}
-                            className={`
-                                relative group border text-white rounded-2xl flex flex-col items-center justify-center text-center p-6 shadow-xl transition-all duration-300 hover:scale-[1.03] active:scale-95 overflow-hidden h-40
-                                ${form.isSpecial
-                                    ? 'bg-gradient-to-br from-[#ff9100]/80 to-orange-700 border-[#ff9100] hover:shadow-[0_0_30px_rgba(255,145,0,0.6)]'
-                                    : 'bg-[#383838] border-white/5 hover:bg-white/10 hover:border-[#ff9100]/50'}
-                            `}
-                        >
-                            {form.isSpecial ? (
-                                <Users className="w-10 h-10 mb-3 text-white drop-shadow-md group-hover:scale-110 transition-transform" />
-                            ) : (
-                                <Settings className="w-8 h-8 mb-3 text-[#ff9100] opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all" />
-                            )}
-                            <span className="relative z-10 text-sm md:text-base font-bold uppercase tracking-wide group-hover:text-white leading-tight">
-                                {form.name}
-                            </span>
-                        </button>
-                    ))}
+                    {forms.map((form) => {
+                        const IconComponent = form.icon || Settings;
+                        return (
+                            <button
+                                key={form.name}
+                                onClick={() => handleGridClick(form)}
+                                className={`
+                                    relative group border text-white rounded-2xl flex flex-col items-center justify-center text-center p-6 shadow-xl transition-all duration-300 hover:scale-[1.03] active:scale-95 overflow-hidden h-40
+                                    ${form.isSpecial
+                                        ? 'bg-gradient-to-br from-[#ff9100]/80 to-orange-700 border-[#ff9100] hover:shadow-[0_0_30px_rgba(255,145,0,0.6)]'
+                                        : 'bg-[#383838] border-white/5 hover:bg-white/10 hover:border-[#ff9100]/50'}
+                                `}
+                            >
+                                <IconComponent className={`w-10 h-10 mb-3 drop-shadow-md group-hover:scale-110 transition-transform ${form.isSpecial ? 'text-white' : 'text-[#ff9100] opacity-80 group-hover:opacity-100'}`} />
+                                <span className="relative z-10 text-sm md:text-base font-bold uppercase tracking-wide group-hover:text-white leading-tight">
+                                    {form.name}
+                                </span>
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
@@ -637,7 +717,6 @@ const AdminDashboard = () => {
                                 <h2 className="text-2xl font-black text-white leading-tight">{actionModal.selectedForm.name}</h2>
                             </div>
 
-                            {/* 🔥 DYNAMIC GRID TO KEEP BUTTONS CENTERED 🔥 */}
                             <div className={`grid grid-cols-1 gap-4 w-full ${hideManageFormIds.includes(actionModal.selectedForm.id) ? 'md:grid-cols-2 max-w-sm mx-auto' : 'md:grid-cols-3'}`}>
                                 <button onClick={() => openPdfModal(actionModal.selectedForm)} className="group flex flex-col items-center justify-center gap-4 bg-[#2a2a2a] hover:bg-[#333] border-2 border-transparent hover:border-[#ff9100]/50 p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 shadow-lg">
                                     <div className="bg-[#ff9100]/10 p-4 rounded-full group-hover:scale-110 transition-transform group-hover:bg-[#ff9100]/20"><FileText className="w-8 h-8 text-[#ff9100]" /></div>
@@ -649,7 +728,6 @@ const AdminDashboard = () => {
                                     <div className="text-center"><div className="text-white font-bold uppercase tracking-wide text-sm mb-1">View by Date</div><div className="text-white/40 text-[10px] uppercase font-bold">Edit Form Data</div></div>
                                 </button>
                                 
-                                {/* 🔥 ONLY SHOW IF FORM IS NOT IN THE HIDDEN LIST 🔥 */}
                                 {!hideManageFormIds.includes(actionModal.selectedForm.id) && (
                                     <button onClick={() => handleManageForm(actionModal.selectedForm)} className="group flex flex-col items-center justify-center gap-4 bg-[#2a2a2a] hover:bg-[#333] border-2 border-transparent hover:border-[#ff9100]/50 p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 shadow-lg relative overflow-hidden">
                                         <div className="absolute top-0 right-0 bg-[#ff9100] text-black text-[9px] font-black uppercase tracking-wider py-1 px-3 rounded-bl-lg flex items-center gap-1 shadow-md"><Settings size={10} /> Admin Setup</div>

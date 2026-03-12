@@ -204,6 +204,22 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
   const getDisaData = (disaName) => unpouredSummary.find(d => d.disa === disaName) || {};
 
   const handleSave = async () => {
+    // --- Empty field validation ---
+    let hasEmpty = false;
+    [1, 2, 3].forEach(s => {
+      columns.forEach(col => {
+        const val = col.isCustom ? shiftsData[s]?.customValues?.[col.id] : shiftsData[s]?.[col.key];
+        if (val === undefined || val === null || String(val).trim() === '') {
+          hasEmpty = true;
+        }
+      });
+    });
+
+    if (hasEmpty) {
+      setNotification({ show: true, type: 'error', message: "Please fill all input fields. Type '-' if empty." });
+      return;
+    }
+
     setLoading(true);
     const payloadData = { ...shiftsData };
 
@@ -337,8 +353,9 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
       });
       summaryBodyRows.push(['TOTAL', '-', '-', totalProduced, totalPoured, totalUnpoured, `${totalPercentage}%`, totalDelays, '-', '-', totalRunningHours]);
 
+      // --- 1. Main summary table spanning full width
       autoTable(doc, {
-        startY: summaryStartY, margin: { right: 80, left: 5 },
+        startY: summaryStartY, margin: { right: 5, left: 5 },
         head: [['DISA', 'MOULD\nCLOSE', 'MOULD\nOPEN', 'PRODUCED', 'POURED', 'UNPOURED', '%', 'DELAYS', 'PROD\nM/HR', 'POURED\nM/HR', 'RUN HRS']],
         body: summaryBodyRows, theme: 'grid',
         styles: { fontSize: 6, lineColor: [0, 0, 0], lineWidth: 0.15, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
@@ -346,8 +363,21 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
         didParseCell: function (data) { if (data.section === 'body' && data.row.index === summaryBodyRows.length - 1) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240]; } }
       });
 
+      // --- 2. Calculate safe Y position for bottom parallel tables ---
+      let bottomTablesStartY = doc.lastAutoTable.finalY + 10;
+      
+      // Safety check: if there is not enough space for the bottom tables (approx 40mm needed), push them together to a new page
+      if (bottomTablesStartY + 40 > 210) { 
+          doc.addPage();
+          bottomTablesStartY = 20; 
+      }
+
+      // --- 3. Render NO. OF MOULDS/DAY strictly on the Left ---
       autoTable(doc, {
-        startY: summaryStartY, margin: { left: 220, right: 5 },
+        startY: bottomTablesStartY, 
+        margin: { left: 5 }, 
+        tableWidth: 140, // EXPLICIT WIDTH to force parallel
+        pageBreak: 'avoid',
         head: [[{ content: 'NO. OF MOULDS/DAY', colSpan: 7, styles: { halign: 'left' } }], ['', 'DISA 1', 'DISA 2', 'DISA 3', 'DISA 4', 'DISA 5', 'DISA 6']],
         body: [
           ['MOULD / DAY', getDisaData('I').producedMould ?? '0', getDisaData('II').producedMould ?? '0', getDisaData('III').producedMould ?? '0', getDisaData('IV').producedMould ?? '0', getDisaData('V').producedMould ?? '0', getDisaData('VI').producedMould ?? '0'],
@@ -361,8 +391,12 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
         }
       });
 
+      // --- 4. Render NO. OF QUANTITY/DAY strictly on the Right ---
       autoTable(doc, {
-        startY: doc.lastAutoTable.finalY + 5, margin: { left: 220, right: 5 },
+        startY: bottomTablesStartY, // MUST match the left table's startY
+        margin: { left: 152 },      // Start drawing at 152mm from the left edge
+        tableWidth: 140,            // EXPLICIT WIDTH
+        pageBreak: 'avoid',
         head: [[{ content: 'NO. OF QUANTITY/DAY', colSpan: 7, styles: { halign: 'left' } }], ['', 'DISA 1', 'DISA 2', 'DISA 3', 'DISA 4', 'DISA 5', 'DISA 6']],
         body: [
           ['QTY / DAY', getDisaData('I').pouredMould ?? '0', getDisaData('II').pouredMould ?? '0', getDisaData('III').pouredMould ?? '0', getDisaData('IV').pouredMould ?? '0', getDisaData('V').pouredMould ?? '0', getDisaData('VI').pouredMould ?? '0'],
@@ -471,12 +505,12 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
                       return (
                         <td key={col.key} className={`border border-gray-300 p-0 relative ${col.isLastInGroup ? 'border-r-2 border-r-gray-400' : ''}`}>
                           <input
-                            type="number"
-                            min="0"
+                            type="text"
+                            placeholder="Type '-' if empty"
                             value={val || ''}
                             onChange={(e) => handleInputChange(shift, col.key, e.target.value, col.isCustom, col.id)}
                             onFocus={(e) => e.target.select()}
-                            className="absolute inset-0 w-full h-full text-center text-sm font-bold text-gray-800 bg-transparent outline-none focus:bg-orange-100 focus:ring-inset focus:ring-2 focus:ring-orange-500 [&::-webkit-inner-spin-button]:appearance-none transition-colors"
+                            className="absolute inset-0 w-full h-full text-center text-sm font-bold text-gray-800 bg-transparent outline-none placeholder:text-[8px] placeholder:text-gray-400 focus:bg-orange-100 focus:ring-inset focus:ring-2 focus:ring-orange-500 transition-colors"
                           />
                         </td>
                       );
