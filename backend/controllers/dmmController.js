@@ -1,12 +1,13 @@
 const sql = require('../db');
 
 // --- Operator Fetch (FIXED 500 ERROR) ---
+// --- Operator Fetch (FIXED 500 ERROR) ---
 exports.getDetails = async (req, res) => {
   try {
     const { date, disa } = req.query;
 
-    // 1. Fetch Users for dropdowns
-    const operatorsRes = await sql.query`SELECT username AS OperatorName FROM dbo.Users WHERE role = 'operator' ORDER BY username`;
+    // 🔥 UPDATED: Fetch both operators and supervisors for the Operator dropdown
+    const operatorsRes = await sql.query`SELECT username AS OperatorName FROM dbo.Users WHERE role IN ('operator', 'supervisor') ORDER BY username`;
     const supervisorsRes = await sql.query`SELECT username AS supervisorName FROM dbo.Users WHERE role = 'supervisor' ORDER BY username`;
 
     // 2. Fetch the Base Records

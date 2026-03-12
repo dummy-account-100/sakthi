@@ -50,17 +50,17 @@ function App() {
         <Route
           path="/operator"
           element={
-            <ProtectedRoute allowedRoles={["operator"]}>
+            <ProtectedRoute allowedRoles={["operator", "supervisor"]}>
               <Operator />
             </ProtectedRoute>
           }
         />
 
-        {/* 🔥 ONE dynamic route for ALL operator forms */}
+        {/* Allow BOTH operators and supervisors to view the Operator Forms */}
         <Route
           path="/operator/:formName"
           element={
-            <ProtectedRoute allowedRoles={["operator"]}>
+            <ProtectedRoute allowedRoles={["operator", "supervisor"]}>
               <FormPlaceholder />
             </ProtectedRoute>
           }

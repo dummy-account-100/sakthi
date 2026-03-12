@@ -9,6 +9,7 @@ const AddUser = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     username: "",
+    employeeId: "",
     password: "",
     role: "operator", 
   });
@@ -20,7 +21,7 @@ const AddUser = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.username || !formData.password || !formData.role) {
+    if (!formData.username || !formData.employeeId || !formData.password || !formData.role) {
       toast.warning("Please fill out all fields.");
       return;
     }
@@ -29,7 +30,7 @@ const AddUser = () => {
       await axios.post(`${process.env.REACT_APP_API_URL}/api/users/add`, formData);
       toast.success(`User ${formData.username} added successfully!`);
       
-      setFormData({ username: "", password: "", role: "operator" });
+      setFormData({ username: "", employeeId: "", password: "", role: "operator" });
       
       // 🔥 Send them back to "/admin" after a short delay
       setTimeout(() => navigate("/admin"), 1500);
@@ -64,6 +65,18 @@ const AddUser = () => {
             </div>
 
             <div>
+              <label className="block text-gray-700 font-bold mb-2">Employee ID</label>
+              <input
+                type="text"
+                name="employeeId"
+                value={formData.employeeId}
+                onChange={handleChange}
+                placeholder="Enter employee ID"
+                className="w-full border p-3 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+              />
+            </div>
+
+            <div>
               <label className="block text-gray-700 font-bold mb-2">Password</label>
               <input
                 type="password"
@@ -84,6 +97,7 @@ const AddUser = () => {
                 className="w-full border p-3 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer"
               >
                 <option value="operator">Operator</option>
+                <option value="pp operator">PP Operator</option>
                 <option value="supervisor">Supervisor</option>
                 <option value="hod">HOD (Head of Dept)</option>
                 <option value="hof">HOF (Head of Factory)</option>

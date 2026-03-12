@@ -5,14 +5,14 @@ const jwt = require("jsonwebtoken");
 const sql = require("../db"); // Adjust path based on your folder structure
 
 router.post("/login", async (req, res) => {
-  const { username, password } = req.body;
+  const { employeeId, password } = req.body;
 
-  if (!username || !password) {
-    return res.status(400).json({ error: "Username and password are required." });
+  if (!employeeId || !password) {
+    return res.status(400).json({ error: "Employee ID and password are required." });
   }
 
   try {
-    const result = await sql.query`SELECT * FROM Users WHERE username = ${username}`;
+    const result = await sql.query`SELECT * FROM Users WHERE employeeId = ${employeeId}`;
     const user = result.recordset[0];
 
     if (!user) {
@@ -30,7 +30,7 @@ router.post("/login", async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { id: user.id, username: user.username, role: user.role, employeeId: user.employeeId },
       process.env.JWT_SECRET || "fallback_secret_key_change_me",
       { expiresIn: "1d" }
     );
@@ -38,6 +38,7 @@ router.post("/login", async (req, res) => {
     res.status(200).json({
       id: user.id,
       username: user.username,
+      employeeId: user.employeeId,
       role: user.role,
       token: token
     });

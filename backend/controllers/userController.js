@@ -5,18 +5,18 @@ const bcrypt = require("bcrypt");
 //   1. ADD USER (Your original code preserved)
 // ==========================================
 exports.addUser = async (req, res) => {
-  const { username, password, role } = req.body;
+  const { username, password, role, employeeId } = req.body;
 
-  if (!username || !password || !role) {
-    return res.status(400).json({ error: "Please provide username, password, and role." });
+  if (!username || !password || !role || !employeeId) {
+    return res.status(400).json({ error: "Please provide username, employeeId, password, and role." });
   }
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
     // 🔥 Changed the table name here from AppUsers to Users
     await sql.query`
-      INSERT INTO Users (username, password, role)
-      VALUES (${username}, ${hashedPassword}, ${role})
+      INSERT INTO Users (username, password, role, employeeId)
+      VALUES (${username}, ${hashedPassword}, ${role}, ${employeeId})
     `;
 
     res.status(201).json({ message: "User added successfully!" });
@@ -38,7 +38,7 @@ exports.addUser = async (req, res) => {
 exports.getUsers = async (req, res) => {
   try {
     const result = await sql.query`
-      SELECT id, username, role 
+      SELECT id, username, role, employeeId 
       FROM Users 
       ORDER BY id ASC
     `;
@@ -55,15 +55,15 @@ exports.getUsers = async (req, res) => {
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { username, role } = req.body;
+    const { username, role, employeeId } = req.body;
 
-    if (!username || !role) {
-      return res.status(400).json({ error: "Username and role are required." });
+    if (!username || !role || !employeeId) {
+      return res.status(400).json({ error: "Username, employeeId, and role are required." });
     }
 
     await sql.query`
       UPDATE Users 
-      SET username = ${username}, role = ${role} 
+      SET username = ${username}, role = ${role}, employeeId = ${employeeId} 
       WHERE id = ${id}
     `;
 

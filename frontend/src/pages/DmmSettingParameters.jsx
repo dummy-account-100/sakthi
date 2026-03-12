@@ -30,20 +30,41 @@ const ToastNotification = ({ data, onClose }) => {
   );
 };
 
+// --- Compact SearchableSelect ---
 const SearchableSelect = ({ label, options, displayKey, onSelect, value, placeholder }) => {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
+  
   useEffect(() => { if (value) setSearch(value); }, [value]);
-  const filtered = options.filter((item) => item[displayKey]?.toLowerCase().includes(search.toLowerCase()));
+  
+  const filtered = options.filter((item) => 
+    item[displayKey]?.toLowerCase().includes((search || "").toLowerCase())
+  );
+  
   return (
     <div className="relative w-full">
       {label && <label className="text-[11px] font-black text-gray-800 uppercase block mb-1 tracking-wider">{label}</label>}
-      <input type="text" value={search} onChange={(e) => { setSearch(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} className="w-full p-3 text-sm font-bold border-2 border-gray-600 bg-white text-gray-900 rounded-lg outline-none focus:border-orange-600 placeholder-gray-500 shadow-sm" placeholder={placeholder || "Search..."} />
-      {open && <ul className="absolute bottom-full mb-1 z-50 bg-white border-2 border-gray-400 w-full max-h-60 overflow-y-auto rounded-lg shadow-2xl">
-        {filtered.length > 0 ? filtered.map((item, index) => (
-          <li key={index} onMouseDown={(e) => { e.preventDefault(); setSearch(item[displayKey]); setOpen(false); onSelect(item); }} className="p-3 hover:bg-orange-100 cursor-pointer text-sm font-bold border-b border-gray-200 text-gray-900">{item[displayKey]}</li>
-        )) : <li className="p-3 text-gray-500 text-sm font-medium">No results</li>}
-      </ul>}
+      <input 
+        type="text" 
+        value={search} 
+        onChange={(e) => { setSearch(e.target.value); setOpen(true); }} 
+        onFocus={() => setOpen(true)} 
+        className="w-full p-1.5 text-xs font-bold border-2 border-gray-300 bg-white text-gray-900 rounded outline-none focus:border-orange-500 placeholder-gray-400" 
+        placeholder={placeholder || "Search..."} 
+      />
+      {open && (
+        <ul className="absolute top-full mt-1 z-50 bg-white border-2 border-gray-300 w-full max-h-48 overflow-y-auto rounded shadow-xl text-left">
+          {filtered.length > 0 ? filtered.map((item, index) => (
+            <li 
+              key={index} 
+              onMouseDown={(e) => { e.preventDefault(); setSearch(item[displayKey]); setOpen(false); onSelect(item); }} 
+              className="p-2 hover:bg-orange-100 cursor-pointer text-xs font-bold border-b border-gray-100 text-gray-900 last:border-0"
+            >
+              {item[displayKey]}
+            </li>
+          )) : <li className="p-2 text-gray-500 text-xs font-medium">No results</li>}
+        </ul>
+      )}
     </div>
   );
 };
@@ -345,26 +366,44 @@ const DmmSettingParameters = () => {
                   return (
                     <React.Fragment key={`shift-${shift}`}>
                       <tr className="bg-orange-50/50 border-y-2 border-orange-200">
-                        <td colSpan={allColumns.length + 2} className="p-3 text-left sticky left-0 z-0">
-                          <div className="flex items-center justify-between w-[850px]">
+                        {/* 🔥 FIX: Dynamic z-index applied here based on the shift number to prevent overlap! */}
+                        <td colSpan={allColumns.length + 2} className={`p-3 text-left sticky left-0 ${shift === 1 ? 'z-40' : shift === 2 ? 'z-30' : 'z-20'}`}>
+                          <div className="flex items-center justify-between w-[950px]">
                             <div className="flex items-center gap-6">
                               <span className="font-black text-gray-800 text-lg">SHIFT {shift}</span>
                               <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded border-2 border-gray-300 hover:border-orange-500 transition-colors shadow-sm">
                                 <input type="checkbox" checked={isIdle} onChange={(e) => handleMetaChange(shift, 'isIdle', e.target.checked)} className="w-4 h-4 accent-orange-600 cursor-pointer" />
                                 <span className="text-xs font-bold text-gray-700 uppercase">Line Idle</span>
                               </label>
+
+                              {/* 🔥 UPDATED OPERATOR SEARCHABLE SELECT */}
                               <div className={`flex items-center gap-2 transition-opacity ${isIdle ? 'opacity-40 pointer-events-none' : ''}`}>
                                 <span className="text-xs font-bold text-gray-600 uppercase">Operator:</span>
-                                <select value={shiftsMeta[shift].operator} onChange={(e) => handleMetaChange(shift, 'operator', e.target.value)} className="p-1.5 rounded border-2 border-gray-300 bg-white text-xs font-bold outline-none focus:border-orange-500">
-                                  <option value="">Select...</option>{dropdowns.operators.map((o, i) => <option key={i} value={o.OperatorName}>{o.OperatorName}</option>)}
-                                </select>
+                                <div className="w-48 relative">
+                                  <SearchableSelect 
+                                    options={dropdowns.operators} 
+                                    displayKey="OperatorName" 
+                                    value={shiftsMeta[shift].operator} 
+                                    placeholder="Select Operator..."
+                                    onSelect={(item) => handleMetaChange(shift, 'operator', item.OperatorName)} 
+                                  />
+                                </div>
                               </div>
+
+                              {/* 🔥 UPDATED SUPERVISOR SEARCHABLE SELECT */}
                               <div className={`flex items-center gap-2 transition-opacity ${isIdle ? 'opacity-40 pointer-events-none' : ''}`}>
                                 <span className="text-xs font-bold text-gray-600 uppercase">Supervisor:</span>
-                                <select value={shiftsMeta[shift].supervisor} onChange={(e) => handleMetaChange(shift, 'supervisor', e.target.value)} className="p-1.5 rounded border-2 border-gray-300 bg-white text-xs font-bold outline-none focus:border-orange-500">
-                                  <option value="">Select...</option>{dropdowns.supervisors.map((s, i) => <option key={i} value={s.supervisorName}>{s.supervisorName}</option>)}
-                                </select>
+                                <div className="w-48 relative">
+                                  <SearchableSelect 
+                                    options={dropdowns.supervisors} 
+                                    displayKey="supervisorName" 
+                                    value={shiftsMeta[shift].supervisor} 
+                                    placeholder="Select Supervisor..."
+                                    onSelect={(item) => handleMetaChange(shift, 'supervisor', item.supervisorName)} 
+                                  />
+                                </div>
                               </div>
+
                             </div>
                             <button onClick={() => addRow(shift)} disabled={isIdle} className={`flex items-center gap-1 border-2 px-3 py-1.5 rounded transition-all shadow-sm text-xs font-bold uppercase ${isIdle ? 'bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed' : 'bg-white border-gray-800 text-gray-800 hover:bg-gray-800 hover:text-white'}`}>
                               <PlusCircle className="w-4 h-4" /> Add Row

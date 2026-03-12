@@ -4,7 +4,7 @@ import axios from "axios";
 import myLogo from "../Assets/logo.png";
 
 const Login = () => {
-  const [username, setUsername] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
 
@@ -12,7 +12,7 @@ const Login = () => {
     try {
       const res = await axios.post(
         `${process.env.REACT_APP_API_URL}/api/auth/login`,
-        { username, password }
+        { employeeId, password }
       );
 
       // ✅ res.data = { username, role }
@@ -50,13 +50,13 @@ const Login = () => {
 
         <div className="space-y-6">
           <div>
-            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2 ml-1">Username</label>
+            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2 ml-1">Employee ID</label>
             <input
               type="text"
-              placeholder="Enter your username"
+              placeholder="Enter your employee ID"
               className="w-full px-5 py-4 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-[#ff9100] focus:bg-white transition-all text-gray-800 font-bold placeholder:text-gray-400"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              value={employeeId}
+              onChange={(e) => setEmployeeId(e.target.value)}
             />
           </div>
 

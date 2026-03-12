@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
 import SignatureCanvas from "react-signature-canvas";
 import { ToastContainer, toast } from "react-toastify";
@@ -11,6 +12,7 @@ import autoTable from "jspdf-autotable";
 const Supervisor = () => {
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const currentSupervisor = storedUser.username || "supervisor1";
+  const navigate = useNavigate();
 
   // --- States for Disamatic Report ---
   const [disaReports, setDisaReports] = useState([]);
@@ -485,6 +487,18 @@ const Supervisor = () => {
       <ToastContainer position="top-right" autoClose={3000} />
 
       <div className="min-h-screen bg-[#2d2d2d] p-10 space-y-10">
+
+      <div className="max-w-6xl mx-auto flex justify-end items-center mb-[-20px]">
+          <button 
+            onClick={() => {
+              // We pass the supervisor's name in the route state so the operator forms can read it
+              navigate("/operator", { state: { actingOperator: currentSupervisor } });
+            }}
+            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-black uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1 flex items-center gap-2"
+          >
+            <span>🔄</span> Switch to Operator Mode
+          </button>
+        </div>
 
         {/* SECTION 1: DISAMATIC REPORTS */}
         <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl p-8 border-t-4 border-orange-500">

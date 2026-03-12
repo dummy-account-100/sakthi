@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 // ==========================================
-//           BULLETPROOF HELPERS
+//          BULLETPROOF HELPERS
 // ==========================================
 const safeNum = (val) => {
   if (val === null || val === undefined || String(val).trim() === "" || String(val).trim() === "-") return 0;
@@ -125,7 +125,8 @@ exports.getDelaysByDateAndDisa = async (req, res) => {
 // ==========================================
 exports.getFormUsers = async (req, res) => {
   try {
-    const incharges = await sql.query`SELECT username as name FROM dbo.Users WHERE role = 'operator' ORDER BY username ASC`;
+    // 🔥 UPDATED: Now fetches both operators and supervisors
+    const incharges = await sql.query`SELECT username as name FROM dbo.Users WHERE role IN ('operator', 'supervisor') ORDER BY username ASC`;
     const hofs = await sql.query`SELECT username as name FROM dbo.Users WHERE role = 'hof' ORDER BY username ASC`;
     const hods = await sql.query`SELECT username as name FROM dbo.Users WHERE role = 'hod' ORDER BY username ASC`;
 

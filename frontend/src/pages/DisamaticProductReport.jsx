@@ -292,7 +292,17 @@ const DisamaticProductReport = () => {
     axios.get(`${process.env.REACT_APP_API_URL}/api/delays`).then((res) => setDelaysMaster(res.data));
     axios.get(`${process.env.REACT_APP_API_URL}/api/incharges`).then((res) => setIncharges(res.data));
     axios.get(`${process.env.REACT_APP_API_URL}/api/employees`).then((res) => setEmployees(res.data));
-    axios.get(`${process.env.REACT_APP_API_URL}/api/operators`).then((res) => setOperators(res.data));
+    
+    // 🔥 UPDATED: Fetch from users endpoint and filter by PP Operator role
+    axios.get(`${process.env.REACT_APP_API_URL}/api/users`)
+      .then((res) => {
+        // Added .trim() defensively to ensure no trailing spaces cause the filter to fail
+        const ppOps = res.data.filter(user => user.role && user.role.trim().toLowerCase() === 'pp operator');
+        
+        setOperators(ppOps);
+      })
+      .catch(err => console.error("Failed to fetch PP Operators", err));
+
     axios.get(`${process.env.REACT_APP_API_URL}/api/components`).then((res) => setComponents(res.data));
     axios.get(`${process.env.REACT_APP_API_URL}/api/supervisors`).then((res) => setSupervisors(res.data));
     axios.get(`${process.env.REACT_APP_API_URL}/api/mould-hardness-remarks`).then((res) => setMouldRemarksList(res.data));
@@ -346,9 +356,15 @@ const DisamaticProductReport = () => {
     if (updated[index].startTime && updated[index].endTime && updated[index].startTime !== "-" && updated[index].endTime !== "-") {
       const startParts = updated[index].startTime.split(':');
       const endParts = updated[index].endTime.split(':');
+      
       if(startParts.length === 2 && endParts.length === 2) {
-        const start = new Date(`1970-01-01T${updated[index].startTime}:00`);
-        const end = new Date(`1970-01-01T${updated[index].endTime}:00`);
+        // Automatically pad single digits with a leading '0' (e.g., "2:00" becomes "02:00")
+        const formattedStart = `${startParts[0].padStart(2, '0')}:${startParts[1].padStart(2, '0')}`;
+        const formattedEnd = `${endParts[0].padStart(2, '0')}:${endParts[1].padStart(2, '0')}`;
+        
+        const start = new Date(`1970-01-01T${formattedStart}:00`);
+        const end = new Date(`1970-01-01T${formattedEnd}:00`);
+        
         let diff = (end - start) / 60000; 
         if (diff < 0) diff += 1440;
         updated[index].duration = isNaN(diff % 720) ? "-" : Math.round(diff % 720); 
@@ -360,7 +376,6 @@ const DisamaticProductReport = () => {
     }
     setDelays(updated);
   };
-
   const addMouldHardness = () => setMouldHardness([...mouldHardness, { componentName: "", penetrationPP: "", penetrationSP: "", bScalePP: "", bScaleSP: "", remarks: "-" }]);
   const removeMouldHardness = (index) => {
     if (mouldHardness.length === 1) return;
@@ -606,7 +621,17 @@ const DisamaticProductReport = () => {
             
             <div className="grid grid-cols-3 gap-6">
               <SearchableSelect key={`incharge-${resetKey}`} label="Incharge" options={incharges} displayKey="name" value={formData.incharge} onSelect={(item) => setFormData({ ...formData, incharge: item.name || item.name })} />
-              <SearchableSelect key={`ppOperator-${resetKey}`} label="P/P Operator" options={operators} displayKey="operatorName" value={formData.ppOperator} onSelect={(item) => setFormData({ ...formData, ppOperator: item.operatorName || item.operatorName })} />
+              
+              {/* 🔥 UPDATED: P/P Operator now uses username */}
+              <SearchableSelect 
+                key={`ppOperator-${resetKey}`} 
+                label="P/P Operator" 
+                options={operators} 
+                displayKey="username" 
+                value={formData.ppOperator} 
+                onSelect={(item) => setFormData({ ...formData, ppOperator: item.username || item.username })} 
+              />
+              
               <SearchableSelect key={`member-${resetKey}`} label="Member" options={employees} displayKey="name" value={formData.member} onSelect={(item) => setFormData({ ...formData, member: item.name || item.name })} />
             </div>
 
