@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import { ArrowLeft } from 'lucide-react';
 import {
     FileDown, Calendar, Users, X, Loader, AlertTriangle, CheckCircle,
-    Settings, FileText, LogOut, Edit, Trash2, UserPlus, Eye, BookOpen
+    Settings, FileText, LogOut, Edit, Trash2, UserPlus, Eye, BookOpen,
+    BarChart3, Factory, Layers, Cpu, ListChecks, FileSearch, ShieldCheck, 
+    ShieldAlert, SlidersHorizontal, Activity, ClipboardCheck
 } from 'lucide-react';
 
 import {
@@ -21,6 +24,7 @@ import ConfigDmmSetting from './ConfigDmmSetting';
 import ConfigErrorProof from './ConfigErrorProof';
 import ConfigDisaChecklist from './ConfigDisaChecklist';
 import AdminFormEditor from './AdminFormEditor';
+import Header from '../components/Header';
 
 const NotificationToast = ({ data, onClose }) => {
     const isError = data.type === 'error';
@@ -36,16 +40,16 @@ const NotificationToast = ({ data, onClose }) => {
     if (!data.show) return null;
 
     return (
-        <div className="fixed top-6 right-6 z-[200] animate-slide-in-right">
-            <div className={`flex items-center gap-4 px-6 py-4 rounded-xl shadow-2xl backdrop-blur-md border ${isError ? 'bg-red-500/10 border-red-500/30 text-red-200' : isLoading ? 'bg-[#ff9100]/10 border-[#ff9100]/30 text-[#ff9100]' : 'bg-green-500/10 border-green-500/30 text-green-200'}`}>
-                <div className="flex-shrink-0">
-                    {isLoading ? <Loader className="w-6 h-6 animate-spin" /> : isError ? <AlertTriangle className="w-6 h-6 text-red-500" /> : <CheckCircle className="w-6 h-6 text-green-500" />}
+        <div className="fixed top-24 right-6 z-[2000] animate-in slide-in-from-right-8 duration-300">
+            <div className={`flex items-center gap-4 px-6 py-4 rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] backdrop-blur-md border ${isError ? 'bg-[#2A0D0D]/90 border-red-500/50 text-red-400' : isLoading ? 'bg-[#1A1005]/90 border-[#ff9100]/50 text-[#ff9100]' : 'bg-[#0A1A10]/90 border-green-500/50 text-green-400'}`}>
+                <div className="flex-shrink-0 bg-black/20 p-2 rounded-lg shadow-inner">
+                    {isLoading ? <Loader className="w-5 h-5 animate-spin" /> : isError ? <AlertTriangle className="w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
                 </div>
                 <div className="flex flex-col">
-                    <h4 className="text-sm font-bold tracking-wide uppercase">
-                        {isLoading ? 'Processing' : isError ? 'Error' : 'Success'}
+                    <h4 className="text-[10px] font-black tracking-widest uppercase mb-0.5 opacity-80">
+                        {isLoading ? 'System Processing' : isError ? 'System Error' : 'Success'}
                     </h4>
-                    <p className="text-sm opacity-90">{data.message}</p>
+                    <p className="text-sm font-bold tracking-wide">{data.message}</p>
                 </div>
             </div>
         </div>
@@ -55,11 +59,6 @@ const NotificationToast = ({ data, onClose }) => {
 const AdminDashboard = () => {
     const navigate = useNavigate();
     const user = getUser();
-
-    const handleLogout = () => {
-        removeToken();
-        navigate('/login');
-    };
 
     const [activeView, setActiveView] = useState('grid');
     const [actionModal, setActionModal] = useState({ show: false, selectedForm: null });
@@ -86,17 +85,17 @@ const AdminDashboard = () => {
     const [savingId, setSavingId] = useState(null);
 
     const forms = [
-        { name: "Performance", id: "performance" },
-        { name: "DISA Matic Product Report", id: "disamatic-report" },
-        { name: "Unpoured Mould Details", id: "unpoured-mould-details" },
-        { name: "DMM Setting Parameters", id: "dmm-setting-parameters" },
-        { name: "DISA Operator Checklist", id: "disa-operator" },
-        { name: "Layered Process Audit", id: "lpa" },
-        { name: "Error Proof Verification", id: "error-proof" },
-        { name: "Error Proof 2", id: "error-proof2" },
-        { name: "DISA Setting Adjustment Record", id: "disa-setting-adjustment" },
-        { name: "4M Monitoring", id: "4m-change" },
-        { name: "Mould Quality Inspection", id: "mould-quality" },
+        { name: "Performance", id: "performance", icon: BarChart3 },
+        { name: "DISA Matic Product Report", id: "disamatic-report", icon: Factory },
+        { name: "Unpoured Mould Details", id: "unpoured-mould-details", icon: Layers },
+        { name: "DMM Setting Parameters", id: "dmm-setting-parameters", icon: Cpu },
+        { name: "DISA Operator Checklist", id: "disa-operator", icon: ListChecks },
+        { name: "Layered Process Audit", id: "lpa", icon: FileSearch },
+        { name: "Error Proof Verification", id: "error-proof", icon: ShieldCheck },
+        { name: "Error Proof 2", id: "error-proof2", icon: ShieldAlert },
+        { name: "DISA Setting Adjustment", id: "disa-setting-adjustment", icon: SlidersHorizontal },
+        { name: "4M Monitoring", id: "4m-change", icon: Activity },
+        { name: "Mould Quality Inspection", id: "mould-quality", icon: ClipboardCheck },
         { name: "Manage QF Values", id: "qf-settings", isSpecial: true, icon: BookOpen },
         { name: "Add / Manage Users", id: "users", isSpecial: true, icon: Users }
     ];
@@ -133,7 +132,7 @@ const AdminDashboard = () => {
         try {
             await axios.put(`${process.env.REACT_APP_API_URL}/api/settings/qf-values`, { setting });
             setNotification({ show: true, type: 'success', message: `${setting.formName.replace('-', ' ')} QF updated!` });
-            fetchQfSettings(); // Refresh to get the new latest record
+            fetchQfSettings(); 
         } catch (error) {
             setNotification({ show: true, type: 'error', message: 'Failed to save QF value.' });
         }
@@ -420,327 +419,355 @@ const AdminDashboard = () => {
         );
     }
 
-    if (activeView === 'unpoured-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigUnpouredMould onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'disa-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigDisaColumns onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === '4m-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigFourMColumns onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'dmm-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigDmmSetting onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'ep-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigErrorProof onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'checklist-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigDisaChecklist onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'lpa-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigLpa onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'unpoured-config') return (<div className="relative w-full min-h-screen bg-[#2d2d2d]"><ConfigUnpouredMould onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'disa-config') return (<div className="relative w-full min-h-screen bg-[#2d2d2d]"><ConfigDisaColumns onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === '4m-config') return (<div className="relative w-full min-h-screen bg-[#2d2d2d]"><ConfigFourMColumns onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'dmm-config') return (<div className="relative w-full min-h-screen bg-[#2d2d2d]"><ConfigDmmSetting onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'ep-config') return (<div className="relative w-full min-h-screen bg-[#2d2d2d]"><ConfigErrorProof onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'checklist-config') return (<div className="relative w-full min-h-screen bg-[#2d2d2d]"><ConfigDisaChecklist onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'lpa-config') return (<div className="relative w-full min-h-screen bg-[#2d2d2d]"><ConfigLpa onBack={() => setActiveView('grid')} /></div>);
 
-    // 🔥 NEW: QF SETTINGS MANAGER UI (INDIVIDUAL SAVE BUTTONS)
+    // ==========================================
+    // 🔥 QF SETTINGS MANAGER UI
+    // ==========================================
     if (activeView === 'qf-settings') {
         return (
-            <div className="relative w-full min-h-screen bg-[#2d2d2d] flex flex-col items-center pt-24 pb-10 px-4 font-sans">
+            <div className="relative w-full min-h-screen bg-[#2d2d2d] flex flex-col font-sans">
+                <Header />
                 <NotificationToast data={notification} onClose={() => setNotification(prev => ({ ...prev, show: false }))} />
 
-                <button
-                    onClick={() => setActiveView('grid')}
-                    className="absolute top-6 left-6 z-[100] flex items-center gap-2 text-[#ff9100] font-bold uppercase tracking-wider text-sm hover:text-white transition-colors bg-white/5 px-4 py-2 rounded-lg border border-white/10 hover:border-[#ff9100]/50 shadow-lg backdrop-blur-sm"
-                >
-                    ← Back to Dashboard
-                </button>
+                <div className="flex-1 flex flex-col items-center py-10 px-6 relative z-10">
+                    <button
+                        onClick={() => setActiveView('grid')}
+                        className="self-start mb-6 flex items-center gap-2 text-gray-400 hover:text-white transition-colors bg-[#383838] hover:bg-[#4a4a4a] px-5 py-2.5 rounded-xl border border-[#4a4a4a] hover:border-gray-300 shadow-md font-bold uppercase tracking-wider text-xs"
+                    >
+                        <ArrowLeft size={16} /> Back to Dashboard
+                    </button>
 
-                <div className="bg-[#383838] w-full max-w-4xl rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.6)] overflow-hidden">
-                    <div className="bg-gradient-to-r from-[#ff9100] to-orange-700 px-8 py-6">
-                        <h2 className="text-2xl font-black text-white uppercase tracking-widest flex items-center gap-3">
-                            <BookOpen size={24} /> Manage QF Document Numbers
-                        </h2>
-                        <p className="text-white/80 text-sm mt-1">Update the footer document tracking codes and edit dates for the generated PDFs individually.</p>
-                    </div>
-
-                    <div className="p-8 space-y-6">
-                        {qfSettings.length === 0 ? (
-                            <div className="text-center text-white/50 py-10 font-bold uppercase">No QF Settings Found in Database.</div>
-                        ) : (
-                            <div className="grid grid-cols-1 gap-6">
-                                {qfSettings.map((setting) => (
-                                    <div key={setting.formName} className="bg-[#2a2a2a] p-6 rounded-xl border border-white/10 shadow-inner flex flex-col md:flex-row gap-6 items-end">
-                                        <div className="flex-1 w-full">
-                                            <label className="block text-xs font-black uppercase tracking-widest text-[#ff9100] mb-2">{setting.formName.replace('-', ' ')} - QF Value</label>
-                                            <input 
-                                                type="text" 
-                                                value={setting.qfValue} 
-                                                onChange={(e) => handleQfChange(setting.formName, e.target.value)}
-                                                className="w-full bg-[#1a1a1a] border border-white/20 p-3 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-[#ff9100] transition-colors"
-                                                placeholder="e.g. QF/07/FBP-03, Rev.No: 02"
-                                            />
-                                        </div>
-                                        <div className="w-full md:w-1/4">
-                                            <label className="block text-xs font-black uppercase tracking-widest text-[#ff9100] mb-2">Date Edited</label>
-                                            <input 
-                                                type="date" 
-                                                value={setting.date ? setting.date.split('T')[0] : ''} 
-                                                onChange={(e) => handleQfDateChange(setting.formName, e.target.value)}
-                                                className="w-full bg-[#1a1a1a] border border-white/20 p-3 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-[#ff9100] transition-colors [color-scheme:dark]"
-                                            />
-                                        </div>
-                                        <div className="w-full md:w-auto">
-                                            <button 
-                                                onClick={() => handleSaveSingleQfSetting(setting)} 
-                                                disabled={savingId === setting.formName}
-                                                className="w-full md:w-auto bg-[#ff9100] hover:bg-orange-500 text-white font-bold uppercase tracking-wider px-6 py-3 rounded-xl transition-all shadow-lg flex justify-center items-center gap-2 disabled:opacity-50"
-                                            >
-                                                {savingId === setting.formName ? <Loader className="w-5 h-5 animate-spin" /> : <Settings className="w-5 h-5" />}
-                                                Save
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
+                    <div className="bg-[#383838] border border-[#4a4a4a] w-full max-w-4xl rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.5)] overflow-hidden animate-in fade-in slide-in-from-bottom-4">
+                        <div className="bg-gradient-to-r from-orange-600 to-[#ff9100] px-8 py-6 flex items-center gap-4">
+                            <div className="bg-black/20 p-3 rounded-xl shadow-inner">
+                                <BookOpen size={24} className="text-white" />
                             </div>
-                        )}
+                            <div>
+                                <h2 className="text-xl font-black text-white uppercase tracking-widest leading-tight">
+                                    Manage QF Document Numbers
+                                </h2>
+                                <p className="text-white/80 text-xs font-bold tracking-wide mt-1 uppercase">Update footer tracking codes for generated reports</p>
+                            </div>
+                        </div>
+
+                        <div className="p-8 space-y-6 bg-[#2d2d2d]/50">
+                            {qfSettings.length === 0 ? (
+                                <div className="text-center text-gray-500 py-10 font-black uppercase tracking-widest text-lg">No QF Settings Found.</div>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-5">
+                                    {qfSettings.map((setting) => (
+                                        <div key={setting.formName} className="bg-[#383838] p-5 rounded-xl border border-[#4a4a4a] shadow-inner flex flex-col md:flex-row gap-5 items-end group hover:border-[#ff9100]/50 transition-colors">
+                                            <div className="flex-1 w-full">
+                                                <label className="block text-[10px] font-black uppercase tracking-widest text-[#ff9100] mb-2">{setting.formName.replace('-', ' ')} - QF Value</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={setting.qfValue} 
+                                                    onChange={(e) => handleQfChange(setting.formName, e.target.value)}
+                                                    className="w-full bg-[#222] border border-[#4a4a4a] p-3.5 rounded-xl text-gray-200 font-mono text-sm focus:outline-none focus:border-[#ff9100] focus:ring-1 focus:ring-[#ff9100] transition-all shadow-inner"
+                                                    placeholder="e.g. QF/07/FBP-03, Rev.No: 02"
+                                                />
+                                            </div>
+                                            <div className="w-full md:w-1/4">
+                                                <label className="block text-[10px] font-black uppercase tracking-widest text-[#ff9100] mb-2">Effective Date</label>
+                                                <input 
+                                                    type="date" 
+                                                    value={setting.date ? setting.date.split('T')[0] : ''} 
+                                                    onChange={(e) => handleQfDateChange(setting.formName, e.target.value)}
+                                                    className="w-full bg-[#222] border border-[#4a4a4a] p-3.5 rounded-xl text-gray-200 font-mono text-sm focus:outline-none focus:border-[#ff9100] focus:ring-1 focus:ring-[#ff9100] transition-all shadow-inner [color-scheme:dark]"
+                                                />
+                                            </div>
+                                            <div className="w-full md:w-auto">
+                                                <button 
+                                                    onClick={() => handleSaveSingleQfSetting(setting)} 
+                                                    disabled={savingId === setting.formName}
+                                                    className="w-full md:w-auto bg-[#ff9100] hover:bg-orange-500 text-white font-black text-xs uppercase tracking-wider px-6 py-3.5 rounded-xl transition-all shadow-[0_4px_15px_rgba(255,145,0,0.3)] hover:shadow-[0_4px_20px_rgba(255,145,0,0.5)] flex justify-center items-center gap-2 disabled:opacity-50"
+                                                >
+                                                    {savingId === setting.formName ? <Loader className="w-4 h-4 animate-spin" /> : <Settings className="w-4 h-4" />}
+                                                    Update
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
         );
     }
 
+    // ==========================================
+    // 🔥 MANAGE USERS UI
+    // ==========================================
     if (activeView === 'users') {
         return (
-            <div className="relative w-full min-h-screen bg-[#2d2d2d] flex flex-col items-center pt-24 pb-10 px-4 font-sans">
+            <div className="relative w-full min-h-screen bg-[#2d2d2d] flex flex-col font-sans">
+                <Header />
                 <NotificationToast data={notification} onClose={() => setNotification(prev => ({ ...prev, show: false }))} />
 
-                <button
-                    onClick={() => setActiveView('grid')}
-                    className="absolute top-6 left-6 z-[100] flex items-center gap-2 text-[#ff9100] font-bold uppercase tracking-wider text-sm hover:text-white transition-colors bg-white/5 px-4 py-2 rounded-lg border border-white/10 hover:border-[#ff9100]/50 shadow-lg backdrop-blur-sm"
-                >
-                    ← Back to Dashboard
-                </button>
+                <div className="flex-1 flex flex-col items-center py-10 px-6 relative z-10">
+                    <button
+                        onClick={() => setActiveView('grid')}
+                        className="self-start mb-6 flex items-center gap-2 text-gray-400 hover:text-white transition-colors bg-[#383838] hover:bg-[#4a4a4a] px-5 py-2.5 rounded-xl border border-[#4a4a4a] hover:border-gray-300 shadow-md font-bold uppercase tracking-wider text-xs"
+                    >
+                        <ArrowLeft size={16} /> Back to Dashboard
+                    </button>
 
-                <div className="bg-white w-full max-w-5xl rounded-2xl p-8 shadow-2xl animate-fade-in">
-                    <div className="flex justify-between items-center border-b-2 border-gray-800 pb-4 mb-6">
-                        <div>
-                            <h1 className="text-3xl font-black text-gray-800 uppercase tracking-wide">Manage Users</h1>
-                            <p className="text-sm text-gray-500 font-bold mt-1 uppercase tracking-widest">System Access Control</p>
-                        </div>
-                        <button
-                            onClick={() => setIsAddModalOpen(true)}
-                            className="bg-[#ff9100] hover:bg-orange-600 text-white px-6 py-3 rounded-xl font-bold uppercase tracking-wider transition-colors shadow-lg flex items-center gap-2"
-                        >
-                            <UserPlus size={18} /> Add New User
-                        </button>
-                    </div>
-
-                    <div className="overflow-x-auto rounded-xl border border-gray-300 shadow-sm">
-                        {loadingUsers ? (
-                            <div className="flex justify-center items-center py-20">
-                                <Loader className="animate-spin text-[#ff9100] w-10 h-10" />
+                    <div className="bg-[#383838] border border-[#4a4a4a] w-full max-w-5xl rounded-2xl p-8 shadow-[0_15px_40px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95">
+                        <div className="flex justify-between items-center border-b border-[#4a4a4a] pb-6 mb-6">
+                            <div className="flex items-center gap-4">
+                                <div className="bg-[#ff9100]/10 p-3 rounded-xl border border-[#ff9100]/30 shadow-inner">
+                                    <Users size={28} className="text-[#ff9100]" />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-black text-white uppercase tracking-widest leading-tight">System Users</h1>
+                                    <p className="text-[11px] text-gray-400 font-bold mt-1 uppercase tracking-[0.2em]">Manage access & privileges</p>
+                                </div>
                             </div>
-                        ) : (
-                            <table className="w-full text-left border-collapse bg-white">
-                                <thead className="bg-gray-800 text-white">
-                                    <tr>
-                                        <th className="p-4 border-b border-gray-700 w-32 text-center uppercase tracking-wider text-xs font-bold">Emp ID</th>
-                                        <th className="p-4 border-b border-gray-700 uppercase tracking-wider text-xs font-bold">Username</th>
-                                        <th className="p-4 border-b border-gray-700 w-48 uppercase tracking-wider text-xs font-bold">Role</th>
-                                        <th className="p-4 border-b border-gray-700 w-32 text-center uppercase tracking-wider text-xs font-bold">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {users.length > 0 ? (
-                                        users.map((u) => (
-                                            <tr key={u.id} className="hover:bg-orange-50 transition-colors border-b border-gray-200 last:border-0 group">
-                                                <td className="p-4 text-center font-black text-gray-400 group-hover:text-[#ff9100] transition-colors">{u.employeeId}</td>
-                                                <td className="p-4 font-bold text-gray-800 text-lg">{u.username}</td>
-                                                <td className="p-4">
-                                                    <span className="bg-gray-200 text-gray-800 px-3 py-1 rounded-md text-xs font-bold uppercase tracking-widest">
-                                                        {u.role}
-                                                    </span>
-                                                </td>
-                                                <td className="p-4">
-                                                    <div className="flex justify-center gap-4">
-                                                        <button onClick={() => { setEditUser({ id: u.id, username: u.username, employeeId: u.employeeId, role: u.role }); setIsEditModalOpen(true); }} className="text-blue-500 hover:text-blue-700 transition-transform hover:scale-110" title="Edit User">
-                                                            <Edit size={20} />
-                                                        </button>
-                                                        <button onClick={() => handleDeleteUser(u.id)} className="text-red-500 hover:text-red-700 transition-transform hover:scale-110" title="Delete User">
-                                                            <Trash2 size={20} />
-                                                        </button>
-                                                    </div>
+                            <button
+                                onClick={() => setIsAddModalOpen(true)}
+                                className="bg-[#ff9100] hover:bg-orange-500 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-colors shadow-[0_4px_15px_rgba(255,145,0,0.3)] hover:shadow-[0_4px_25px_rgba(255,145,0,0.5)] flex items-center gap-2 border border-[#ffaa33]"
+                            >
+                                <UserPlus size={16} /> Add User
+                            </button>
+                        </div>
+
+                        <div className="overflow-hidden rounded-xl border border-[#4a4a4a] shadow-inner bg-[#2d2d2d]">
+                            {loadingUsers ? (
+                                <div className="flex justify-center items-center py-20">
+                                    <Loader className="animate-spin text-[#ff9100] w-10 h-10" />
+                                </div>
+                            ) : (
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="bg-[#1A2634] text-gray-300 border-b border-[#4a4a4a]">
+                                        <tr>
+                                            <th className="p-4 w-32 text-center uppercase tracking-widest text-[10px] font-black">Emp ID</th>
+                                            <th className="p-4 uppercase tracking-widest text-[10px] font-black">Username</th>
+                                            <th className="p-4 w-48 uppercase tracking-widest text-[10px] font-black">Role Privilege</th>
+                                            <th className="p-4 w-32 text-center uppercase tracking-widest text-[10px] font-black">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-[#4a4a4a]">
+                                        {users.length > 0 ? (
+                                            users.map((u) => (
+                                                <tr key={u.id} className="hover:bg-white/5 transition-colors group">
+                                                    <td className="p-4 text-center font-black text-gray-500 font-mono tracking-wider group-hover:text-[#ff9100] transition-colors">{u.employeeId}</td>
+                                                    <td className="p-4 font-bold text-gray-200 text-base">{u.username}</td>
+                                                    <td className="p-4">
+                                                        <span className="bg-[#222] border border-[#4a4a4a] text-gray-300 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-inner">
+                                                            {u.role}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <div className="flex justify-center gap-3">
+                                                            <button onClick={() => { setEditUser({ id: u.id, username: u.username, employeeId: u.employeeId, role: u.role }); setIsEditModalOpen(true); }} className="bg-[#222] border border-[#4a4a4a] p-2 rounded-lg text-blue-400 hover:text-white hover:bg-blue-600 hover:border-blue-500 transition-all shadow-sm" title="Edit User">
+                                                                <Edit size={16} />
+                                                            </button>
+                                                            <button onClick={() => handleDeleteUser(u.id)} className="bg-[#222] border border-[#4a4a4a] p-2 rounded-lg text-red-500 hover:text-white hover:bg-red-600 hover:border-red-500 transition-all shadow-sm" title="Delete User">
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan="4" className="text-center p-12 text-gray-500 font-black uppercase tracking-widest">
+                                                    No users found in database.
                                                 </td>
                                             </tr>
-                                        ))
-                                    ) : (
-                                        <tr>
-                                            <td colSpan="4" className="text-center p-8 text-gray-500 font-bold italic">
-                                                No users found in the system.
-                                            </td>
-                                        </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Modals for Add/Edit User */}
+                    {(isAddModalOpen || isEditModalOpen) && (
+                        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                            <div className="bg-[#383838] border border-[#4a4a4a] rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.8)] w-full max-w-md overflow-hidden scale-in">
+                                <div className={`bg-[#1A2634] px-6 py-5 flex justify-between items-center border-b-2 ${isAddModalOpen ? 'border-[#ff9100]' : 'border-blue-500'}`}>
+                                    <h3 className="text-white font-black uppercase tracking-widest text-sm flex items-center gap-3">
+                                        {isAddModalOpen ? <><UserPlus size={18} className="text-[#ff9100]" /> Add New User</> : <><Edit size={18} className="text-blue-500" /> Modify User</>}
+                                    </h3>
+                                    <button onClick={() => isAddModalOpen ? setIsAddModalOpen(false) : setIsEditModalOpen(false)} className="text-gray-400 hover:text-white bg-black/20 hover:bg-black/40 p-1.5 rounded-lg transition-colors"><X size={18} /></button>
+                                </div>
+                                <form onSubmit={isAddModalOpen ? handleAddUser : handleUpdateUser} className="p-7 flex flex-col gap-5">
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Username</label>
+                                        <input type="text" required value={isAddModalOpen ? newUser.username : editUser.username} onChange={(e) => isAddModalOpen ? setNewUser({ ...newUser, username: e.target.value }) : setEditUser({ ...editUser, username: e.target.value })} className="w-full bg-[#222] border border-[#4a4a4a] p-3 rounded-xl focus:outline-none focus:border-[#ff9100] transition-colors font-bold text-white shadow-inner" placeholder="Enter username" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Employee ID</label>
+                                        <input type="text" required value={isAddModalOpen ? newUser.employeeId : editUser.employeeId} onChange={(e) => isAddModalOpen ? setNewUser({ ...newUser, employeeId: e.target.value }) : setEditUser({ ...editUser, employeeId: e.target.value })} className="w-full bg-[#222] border border-[#4a4a4a] p-3 rounded-xl focus:outline-none focus:border-[#ff9100] transition-colors font-bold text-white font-mono shadow-inner" placeholder="Enter ID" />
+                                    </div>
+                                    {isAddModalOpen && (
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Password</label>
+                                            <input type="password" required value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} className="w-full bg-[#222] border border-[#4a4a4a] p-3 rounded-xl focus:outline-none focus:border-[#ff9100] transition-colors font-bold text-white shadow-inner" placeholder="Enter secure password" />
+                                        </div>
                                     )}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Role Privilege</label>
+                                        <select required value={isAddModalOpen ? newUser.role : editUser.role} onChange={(e) => isAddModalOpen ? setNewUser({ ...newUser, role: e.target.value }) : setEditUser({ ...editUser, role: e.target.value })} className="w-full bg-[#222] border border-[#4a4a4a] p-3 rounded-xl focus:outline-none focus:border-[#ff9100] transition-colors font-bold text-white shadow-inner appearance-none">
+                                            <option value="" disabled className="text-gray-500">Select Access Level</option>
+                                            <option value="operator">Operator</option>
+                                            <option value="supervisor">Supervisor</option>
+                                            <option value="hof">Head of Foundry (HOF)</option>
+                                            <option value="hod">Head of Department (HOD)</option>
+                                            <option value="admin">System Admin</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex gap-3 mt-4 pt-4 border-t border-[#4a4a4a]">
+                                        <button type="button" onClick={() => isAddModalOpen ? setIsAddModalOpen(false) : setIsEditModalOpen(false)} className="flex-1 bg-[#222] border border-[#4a4a4a] hover:bg-[#4a4a4a] text-gray-300 font-black text-xs uppercase tracking-widest py-3.5 rounded-xl transition-colors">Cancel</button>
+                                        <button type="submit" className={`flex-1 text-white font-black text-xs uppercase tracking-widest py-3.5 rounded-xl transition-all shadow-lg border ${isAddModalOpen ? 'bg-[#ff9100] hover:bg-orange-500 border-[#ffaa33] shadow-[0_0_15px_rgba(255,145,0,0.3)]' : 'bg-blue-600 hover:bg-blue-500 border-blue-400 shadow-[0_0_15px_rgba(37,99,235,0.3)]'}`}>
+                                            {isAddModalOpen ? 'Authorize User' : 'Save Update'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
                 </div>
-
-                {isAddModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-                        <div className="bg-white rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] w-full max-w-md overflow-hidden scale-in">
-                            <div className="bg-gray-800 px-6 py-5 flex justify-between items-center border-b-4 border-[#ff9100]">
-                                <h3 className="text-white font-black uppercase tracking-widest text-lg flex items-center gap-2"><UserPlus size={20} className="text-[#ff9100]" /> Add New User</h3>
-                                <button onClick={() => setIsAddModalOpen(false)} className="text-gray-400 hover:text-white transition-colors"><X size={24} /></button>
-                            </div>
-                            <form onSubmit={handleAddUser} className="p-6 flex flex-col gap-5">
-                                <div>
-                                    <label className="block text-xs font-black uppercase tracking-wider text-gray-600 mb-1">Username</label>
-                                    <input type="text" required value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-[#ff9100] transition-colors font-bold text-gray-800" placeholder="Enter username" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-black uppercase tracking-wider text-gray-600 mb-1">Employee ID</label>
-                                    <input type="text" required value={newUser.employeeId} onChange={(e) => setNewUser({ ...newUser, employeeId: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-[#ff9100] transition-colors font-bold text-gray-800" placeholder="Enter Employee ID" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-black uppercase tracking-wider text-gray-600 mb-1">Password</label>
-                                    <input type="text" required value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-[#ff9100] transition-colors font-bold text-gray-800" placeholder="Enter password" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-black uppercase tracking-wider text-gray-600 mb-1">Role</label>
-                                    <select required value={newUser.role} onChange={(e) => setNewUser({ ...newUser, role: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-[#ff9100] transition-colors font-bold text-gray-800 bg-white">
-                                        <option value="">Select a Role</option>
-                                        <option value="operator">Operator</option>
-                                        <option value="supervisor">Supervisor</option>
-                                        <option value="hof">HOF</option>
-                                        <option value="hod">HOD</option>
-                                        <option value="admin">Admin</option>
-                                    </select>
-                                </div>
-                                <div className="flex gap-3 mt-4">
-                                    <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold uppercase tracking-wider py-3 rounded-xl transition-colors">Cancel</button>
-                                    <button type="submit" className="flex-1 bg-[#ff9100] hover:bg-orange-600 text-white font-bold uppercase tracking-wider py-3 rounded-xl transition-colors shadow-lg">Create User</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                )}
-
-                {isEditModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-                        <div className="bg-white rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.5)] w-full max-w-md overflow-hidden scale-in">
-                            <div className="bg-gray-800 px-6 py-5 flex justify-between items-center border-b-4 border-blue-500">
-                                <h3 className="text-white font-black uppercase tracking-widest text-lg flex items-center gap-2"><Edit size={20} className="text-blue-500" /> Edit User</h3>
-                                <button onClick={() => setIsEditModalOpen(false)} className="text-gray-400 hover:text-white transition-colors"><X size={24} /></button>
-                            </div>
-                            <form onSubmit={handleUpdateUser} className="p-6 flex flex-col gap-5">
-                                <div>
-                                    <label className="block text-xs font-black uppercase tracking-wider text-gray-600 mb-1">Username</label>
-                                    <input type="text" required value={editUser.username} onChange={(e) => setEditUser({ ...editUser, username: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors font-bold text-gray-800" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-black uppercase tracking-wider text-gray-600 mb-1">Employee ID</label>
-                                    <input type="text" required value={editUser.employeeId} onChange={(e) => setEditUser({ ...editUser, employeeId: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors font-bold text-gray-800" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-black uppercase tracking-wider text-gray-600 mb-1">Role</label>
-                                    <select required value={editUser.role} onChange={(e) => setEditUser({ ...editUser, role: e.target.value })} className="w-full border-2 border-gray-300 p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors font-bold text-gray-800 bg-white">
-                                        <option value="">Select a Role</option>
-                                        <option value="operator">Operator</option>
-                                        <option value="supervisor">Supervisor</option>
-                                        <option value="hof">HOF</option>
-                                        <option value="hod">HOD</option>
-                                        <option value="admin">Admin</option>
-                                    </select>
-                                </div>
-                                <div className="flex gap-3 mt-4">
-                                    <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold uppercase tracking-wider py-3 rounded-xl transition-colors">Cancel</button>
-                                    <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold uppercase tracking-wider py-3 rounded-xl transition-colors shadow-lg">Save Changes</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                )}
             </div>
         );
     }
 
+    // ==========================================
+    // 🔥 MAIN DASHBOARD GRID
+    // ==========================================
     return (
-        <div className="h-screen w-screen bg-[#2d2d2d] flex flex-col overflow-hidden font-sans relative">
+        <div className="min-h-screen w-full bg-[#2d2d2d] flex flex-col relative font-sans">
             <NotificationToast data={notification} onClose={() => setNotification(prev => ({ ...prev, show: false }))} />
 
-            <div className="h-1.5 bg-[#ff9100] flex-shrink-0 shadow-[0_0_15px_rgba(255,145,0,0.5)]" />
+            {/* Subtle Background Radial Glow for Depth */}
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,145,0,0.03)_0%,transparent_70%)] pointer-events-none"></div>
 
-            <div className="w-full flex justify-between items-center px-10 pt-6 absolute top-0 left-0 z-10">
-                <div className="flex items-center gap-4">
-                    <span className="text-white/30 text-xs font-mono uppercase tracking-wider">
-                        {user ? `${user.username} · ${user.role}` : ''}
-                    </span>
-                    <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-2 text-white/50 hover:text-[#ff9100] text-xs font-bold uppercase tracking-widest transition-colors bg-white/5 hover:bg-white/10 px-4 py-2 rounded-lg border border-white/10 hover:border-[#ff9100]/40 shadow-lg backdrop-blur-sm"
-                    >
-                        <LogOut className="w-4 h-4" /> Logout
-                    </button>
+            <Header />
+
+            <div className="flex-1 flex flex-col items-center px-6 py-12 relative z-10">
+                <div className="mb-12 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <h2 className="text-2xl md:text-3xl font-black text-white tracking-[0.2em] uppercase mb-3 drop-shadow-md">
+                        Admin Command Center
+                    </h2>
+                    <div className="w-20 h-1.5 bg-gradient-to-r from-orange-600 via-[#ff9100] to-orange-600 mx-auto rounded-full shadow-[0_0_10px_rgba(255,145,0,0.5)]"></div>
                 </div>
-            </div>
 
-            <div className="py-8 pt-16 flex-shrink-0 flex flex-col items-center">
-                <h1 className="text-[2.5rem] md:text-[3.5rem] font-black text-center text-white tracking-tighter uppercase leading-tight drop-shadow-lg">
-                    Admin Dashboard
-                </h1>
-                <div className="text-[#ff9100] tracking-widest uppercase text-sm font-bold mt-2">Sakthi Auto Component Limited</div>
-                <div className="w-32 h-1 bg-[#ff9100] mt-4 rounded-full" />
-            </div>
-
-            <div className="flex-1 flex justify-center items-center px-10 pb-10 overflow-y-auto mt-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 w-full max-w-7xl">
-                    {forms.map((form) => {
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 max-w-[1400px] w-full pb-10">
+                    {forms.map((form, index) => {
                         const IconComponent = form.icon || Settings;
                         return (
                             <button
-                                key={form.name}
+                                key={form.id}
                                 onClick={() => handleGridClick(form)}
+                                style={{ animationDelay: `${index * 40}ms` }}
                                 className={`
-                                    relative group border text-white rounded-2xl flex flex-col items-center justify-center text-center p-6 shadow-xl transition-all duration-300 hover:scale-[1.03] active:scale-95 overflow-hidden h-40
-                                    ${form.isSpecial
-                                        ? 'bg-gradient-to-br from-[#ff9100]/80 to-orange-700 border-[#ff9100] hover:shadow-[0_0_30px_rgba(255,145,0,0.6)]'
-                                        : 'bg-[#383838] border-white/5 hover:bg-white/10 hover:border-[#ff9100]/50'}
+                                    group relative flex flex-col items-center justify-center p-8 
+                                    bg-[#383838] border border-[#4a4a4a] rounded-2xl
+                                    shadow-[0_8px_20px_rgba(0,0,0,0.3)]
+                                    hover:-translate-y-1.5 active:translate-y-0
+                                    transition-all duration-300 ease-out
+                                    animate-in fade-in zoom-in-95 fill-mode-both overflow-hidden
+                                    ${form.isSpecial 
+                                        ? 'hover:border-transparent hover:bg-gradient-to-br hover:from-red-900/80 hover:to-[#0A121C] hover:shadow-[0_15px_30px_rgba(220,38,38,0.2)]' 
+                                        : 'hover:border-transparent hover:bg-gradient-to-br hover:from-[#ff9100] hover:to-[#e68200] hover:shadow-[0_15px_30px_rgba(255,145,0,0.3)]'
+                                    }
                                 `}
                             >
-                                <IconComponent className={`w-10 h-10 mb-3 drop-shadow-md group-hover:scale-110 transition-transform ${form.isSpecial ? 'text-white' : 'text-[#ff9100] opacity-80 group-hover:opacity-100'}`} />
-                                <span className="relative z-10 text-sm md:text-base font-bold uppercase tracking-wide group-hover:text-white leading-tight">
+                                <div className={`mb-5 p-4 rounded-full border shadow-inner transition-colors duration-300 
+                                    ${form.isSpecial 
+                                        ? 'bg-[#2A0D0D] border-red-900/50 group-hover:bg-white/10 group-hover:border-white/20' 
+                                        : 'bg-[#2d2d2d] border-[#4a4a4a] group-hover:bg-white/20 group-hover:border-white/30'
+                                    }
+                                `}>
+                                    <IconComponent className={`w-8 h-8 drop-shadow-md transition-colors duration-300
+                                        ${form.isSpecial 
+                                            ? 'text-red-500 group-hover:text-red-400' 
+                                            : 'text-[#ff9100] group-hover:text-white'
+                                        }
+                                    `} strokeWidth={2.5} />
+                                </div>
+
+                                <span className={`text-[14px] font-bold text-center tracking-wide leading-snug drop-shadow-sm transition-colors duration-300
+                                    ${form.isSpecial ? 'text-gray-300 group-hover:text-white' : 'text-gray-200 group-hover:text-white'}
+                                `}>
                                     {form.name}
                                 </span>
+
+                                <div className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-1 rounded-t-full transition-all duration-300 opacity-50
+                                    ${form.isSpecial ? 'bg-red-500 group-hover:w-1/2' : 'bg-white group-hover:w-1/3'}
+                                `}></div>
                             </button>
                         );
                     })}
                 </div>
             </div>
 
-            <div className="h-1.5 bg-[#ff9100] flex-shrink-0 mt-auto" />
+            <div className="h-1.5 w-full bg-gradient-to-r from-orange-600 via-[#ff9100] to-orange-600 relative z-20 shadow-[0_-2px_10px_rgba(255,145,0,0.5)]" />
 
+            {/* ==========================================
+                🔥 HARDWARE-STYLED MODALS
+            ========================================== */}
+            
+            {/* ACTION MODAL */}
             {actionModal.show && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="bg-[#383838] border border-white/10 w-full max-w-lg rounded-3xl shadow-[0_0_60px_rgba(0,0,0,0.8)] overflow-hidden scale-in relative">
-                        <div className="h-24 bg-gradient-to-br from-[#ff9100] to-orange-800 relative flex items-center justify-center overflow-hidden">
-                            <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white to-transparent"></div>
-                            <h3 className="relative z-10 text-2xl font-black text-white uppercase tracking-widest drop-shadow-md">
-                                Select Action
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-[#383838] border border-[#4a4a4a] w-full max-w-xl rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.9)] overflow-hidden scale-in relative">
+                        <div className="h-20 bg-[#1A2634] border-b-2 border-[#ff9100] relative flex items-center justify-center">
+                            <h3 className="text-lg font-black text-white uppercase tracking-widest drop-shadow-md flex items-center gap-2">
+                                <Settings size={18} className="text-[#ff9100]" /> Module Routing
                             </h3>
-                            <button onClick={() => setActionModal({ show: false, selectedForm: null })} className="absolute top-4 right-4 z-20 text-white/70 hover:text-white transition-colors bg-black/20 hover:bg-black/40 p-2 rounded-full">
+                            <button onClick={() => setActionModal({ show: false, selectedForm: null })} className="absolute top-1/2 -translate-y-1/2 right-4 text-gray-400 hover:text-white transition-colors bg-black/20 hover:bg-black/40 p-2 rounded-lg border border-transparent hover:border-gray-500">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
 
-                        <div className="px-8 py-10 flex flex-col items-center gap-6">
-                            <div className="text-center mb-4">
-                                <p className="text-sm font-bold text-[#ff9100] uppercase tracking-[0.2em] mb-2">Target Module</p>
-                                <h2 className="text-2xl font-black text-white leading-tight">{actionModal.selectedForm.name}</h2>
+                        <div className="px-8 py-8 flex flex-col items-center gap-6">
+                            <div className="bg-[#2d2d2d] border border-[#4a4a4a] w-full p-4 rounded-xl text-center shadow-inner">
+                                <p className="text-[10px] font-black text-[#ff9100] uppercase tracking-[0.3em] mb-1">Target Form</p>
+                                <h2 className="text-xl font-bold text-white leading-tight">{actionModal.selectedForm.name}</h2>
                             </div>
 
-                            <div className={`grid grid-cols-1 gap-4 w-full ${hideManageFormIds.includes(actionModal.selectedForm.id) ? 'md:grid-cols-2 max-w-sm mx-auto' : 'md:grid-cols-3'}`}>
-                                <button onClick={() => openPdfModal(actionModal.selectedForm)} className="group flex flex-col items-center justify-center gap-4 bg-[#2a2a2a] hover:bg-[#333] border-2 border-transparent hover:border-[#ff9100]/50 p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 shadow-lg">
-                                    <div className="bg-[#ff9100]/10 p-4 rounded-full group-hover:scale-110 transition-transform group-hover:bg-[#ff9100]/20"><FileText className="w-8 h-8 text-[#ff9100]" /></div>
-                                    <div className="text-center"><div className="text-white font-bold uppercase tracking-wide text-sm mb-1">Export Data</div><div className="text-white/40 text-[10px] uppercase font-bold">Generate Bulk PDF</div></div>
+                            <div className={`grid grid-cols-1 gap-4 w-full ${hideManageFormIds.includes(actionModal.selectedForm.id) ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+                                
+                                <button onClick={() => openPdfModal(actionModal.selectedForm)} className="group flex flex-col items-center justify-center gap-3 bg-[#2d2d2d] border border-[#4a4a4a] hover:bg-[#1A2634] hover:border-blue-500 p-5 rounded-xl transition-all duration-300 shadow-md">
+                                    <div className="bg-[#222] border border-[#4a4a4a] p-3 rounded-lg group-hover:bg-blue-900/30 group-hover:border-blue-500/50 transition-colors shadow-inner">
+                                        <FileDown className="w-6 h-6 text-blue-400" />
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="text-white font-black uppercase tracking-wider text-xs mb-0.5">Export PDF</div>
+                                        <div className="text-gray-500 text-[9px] uppercase font-bold tracking-widest">Bulk Download</div>
+                                    </div>
                                 </button>
-                                <button onClick={() => handleViewByDate(actionModal.selectedForm)} className="group flex flex-col items-center justify-center gap-4 bg-[#2a2a2a] hover:bg-[#333] border-2 border-transparent hover:border-[#ff9100]/50 p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 shadow-lg relative overflow-hidden">
-                                    <div className="absolute top-0 right-0 bg-green-600 text-white text-[9px] font-black uppercase tracking-wider py-1 px-3 rounded-bl-lg flex items-center gap-1 shadow-md"><Eye size={10} /> Admin Edit</div>
-                                    <div className="bg-[#ff9100]/10 p-4 rounded-full group-hover:scale-110 transition-transform group-hover:bg-[#ff9100]/20"><Calendar className="w-8 h-8 text-[#ff9100]" /></div>
-                                    <div className="text-center"><div className="text-white font-bold uppercase tracking-wide text-sm mb-1">View by Date</div><div className="text-white/40 text-[10px] uppercase font-bold">Edit Form Data</div></div>
+                                
+                                <button onClick={() => handleViewByDate(actionModal.selectedForm)} className="group flex flex-col items-center justify-center gap-3 bg-[#2d2d2d] border border-[#4a4a4a] hover:bg-[#1A2634] hover:border-green-500 p-5 rounded-xl transition-all duration-300 shadow-md">
+                                    <div className="bg-[#222] border border-[#4a4a4a] p-3 rounded-lg group-hover:bg-green-900/30 group-hover:border-green-500/50 transition-colors shadow-inner">
+                                        <Calendar className="w-6 h-6 text-green-400" />
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="text-white font-black uppercase tracking-wider text-xs mb-0.5">View & Edit</div>
+                                        <div className="text-gray-500 text-[9px] uppercase font-bold tracking-widest">By Date Record</div>
+                                    </div>
                                 </button>
                                 
                                 {!hideManageFormIds.includes(actionModal.selectedForm.id) && (
-                                    <button onClick={() => handleManageForm(actionModal.selectedForm)} className="group flex flex-col items-center justify-center gap-4 bg-[#2a2a2a] hover:bg-[#333] border-2 border-transparent hover:border-[#ff9100]/50 p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 shadow-lg relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 bg-[#ff9100] text-black text-[9px] font-black uppercase tracking-wider py-1 px-3 rounded-bl-lg flex items-center gap-1 shadow-md"><Settings size={10} /> Admin Setup</div>
-                                        <div className="bg-[#ff9100]/10 p-4 rounded-full group-hover:scale-110 transition-transform group-hover:bg-[#ff9100]/20"><Settings className="w-8 h-8 text-[#ff9100]" /></div>
-                                        <div className="text-center"><div className="text-white font-bold uppercase tracking-wide text-sm mb-1">Manage Form</div><div className="text-white/40 text-[10px] uppercase font-bold">Edit Structure & Parameters</div></div>
+                                    <button onClick={() => handleManageForm(actionModal.selectedForm)} className="group flex flex-col items-center justify-center gap-3 bg-[#2d2d2d] border border-[#4a4a4a] hover:bg-[#1A2634] hover:border-[#ff9100] p-5 rounded-xl transition-all duration-300 shadow-md">
+                                        <div className="bg-[#222] border border-[#4a4a4a] p-3 rounded-lg group-hover:bg-orange-900/30 group-hover:border-[#ff9100]/50 transition-colors shadow-inner">
+                                            <Settings className="w-6 h-6 text-[#ff9100]" />
+                                        </div>
+                                        <div className="text-center">
+                                            <div className="text-white font-black uppercase tracking-wider text-xs mb-0.5">Form Setup</div>
+                                            <div className="text-gray-500 text-[9px] uppercase font-bold tracking-widest">Edit Parameters</div>
+                                        </div>
                                     </button>
                                 )}
                             </div>
@@ -749,28 +776,29 @@ const AdminDashboard = () => {
                 </div>
             )}
 
+            {/* DATE PICKER MODAL */}
             {datePickerModal.show && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="bg-[#383838] border border-white/10 w-full max-w-md rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.6)] overflow-hidden scale-in">
-                        <div className="bg-[#2a2a2a] px-6 py-5 border-b border-white/10 flex justify-between items-center">
-                            <h3 className="font-extrabold text-lg text-white uppercase tracking-widest flex items-center gap-2">
-                                <Calendar size={20} className="text-[#ff9100]" /> Select Date
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-[#383838] border border-[#4a4a4a] w-full max-w-sm rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.8)] overflow-hidden scale-in">
+                        <div className="bg-[#1A2634] px-6 py-5 border-b-2 border-green-500 flex justify-between items-center">
+                            <h3 className="font-black text-sm text-white uppercase tracking-widest flex items-center gap-2">
+                                <Calendar size={18} className="text-green-500" /> Date Lookup
                             </h3>
-                            <button onClick={() => setDatePickerModal({ show: false, selectedForm: null })} className="text-white/40 hover:text-[#ff9100] transition-colors p-1"><X className="w-6 h-6" /></button>
+                            <button onClick={() => setDatePickerModal({ show: false, selectedForm: null })} className="text-gray-400 hover:text-white bg-black/20 hover:bg-black/40 p-1.5 rounded-lg transition-colors"><X className="w-5 h-5" /></button>
                         </div>
                         <div className="p-6 flex flex-col gap-5">
-                            <div className="bg-white/5 border border-[#ff9100]/30 rounded-xl p-4 text-center">
-                                <div className="text-xs font-bold text-[#ff9100] uppercase tracking-widest mb-1">Target Form</div>
-                                <div className="text-lg font-bold text-white uppercase leading-tight">{datePickerModal.selectedForm?.name}</div>
+                            <div className="bg-[#2d2d2d] border border-[#4a4a4a] rounded-xl p-3 text-center shadow-inner">
+                                <div className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-1">Editing Form</div>
+                                <div className="text-sm font-bold text-white uppercase leading-tight">{datePickerModal.selectedForm?.name}</div>
                             </div>
                             <div>
-                                <label className="flex items-center gap-2 text-xs font-bold text-white/50 uppercase tracking-widest mb-2"><Calendar size={14} /> Date</label>
-                                <input type="date" value={viewDate} onChange={e => setViewDate(e.target.value)} className="w-full bg-[#222] border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-[#ff9100] focus:ring-1 focus:ring-[#ff9100] transition-all cursor-pointer font-bold [color-scheme:dark]" />
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Target Date</label>
+                                <input type="date" value={viewDate} onChange={e => setViewDate(e.target.value)} className="w-full bg-[#222] border border-[#4a4a4a] rounded-xl p-3 text-white focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all cursor-pointer font-bold shadow-inner [color-scheme:dark]" />
                             </div>
-                            <div className="flex gap-4 pt-2">
-                                <button onClick={() => setDatePickerModal({ show: false, selectedForm: null })} className="flex-1 py-3 text-sm font-bold text-white/60 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all">Cancel</button>
-                                <button disabled={!viewDate} onClick={() => { setAdminEditView({ form: datePickerModal.selectedForm, date: viewDate }); setDatePickerModal({ show: false, selectedForm: null }); }} className="flex-1 bg-[#ff9100] hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl uppercase transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,145,0,0.3)]">
-                                    <Eye className="w-5 h-5" /> Load Form
+                            <div className="flex gap-3 pt-2">
+                                <button onClick={() => setDatePickerModal({ show: false, selectedForm: null })} className="flex-1 py-3 text-xs font-black uppercase tracking-widest text-gray-300 hover:text-white bg-[#222] border border-[#4a4a4a] hover:bg-[#4a4a4a] rounded-xl transition-all shadow-sm">Cancel</button>
+                                <button disabled={!viewDate} onClick={() => { setAdminEditView({ form: datePickerModal.selectedForm, date: viewDate }); setDatePickerModal({ show: false, selectedForm: null }); }} className="flex-[1.5] bg-green-600 hover:bg-green-500 border border-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black text-xs uppercase tracking-widest py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_4px_15px_rgba(22,163,74,0.3)]">
+                                    <Eye className="w-4 h-4" /> Load Record
                                 </button>
                             </div>
                         </div>
@@ -778,28 +806,36 @@ const AdminDashboard = () => {
                 </div>
             )}
 
+            {/* PDF MODAL */}
             {pdfModal.show && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="bg-[#383838] border border-white/10 w-full max-w-md rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.6)] overflow-hidden scale-in">
-                        <div className="bg-[#2a2a2a] px-6 py-5 border-b border-white/10 flex justify-between items-center">
-                            <h3 className="font-extrabold text-lg text-white uppercase tracking-widest flex items-center gap-2">
-                                <FileDown size={20} className="text-[#ff9100]" /> Bulk PDF Export
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-[#383838] border border-[#4a4a4a] w-full max-w-md rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.8)] overflow-hidden scale-in">
+                        <div className="bg-[#1A2634] px-6 py-5 border-b-2 border-blue-500 flex justify-between items-center">
+                            <h3 className="font-black text-sm text-white uppercase tracking-widest flex items-center gap-2">
+                                <FileDown size={18} className="text-blue-500" /> Export Records
                             </h3>
-                            <button onClick={() => setPdfModal({ show: false, selectedForm: null })} className="text-white/40 hover:text-[#ff9100] transition-colors p-1"><X className="w-6 h-6" /></button>
+                            <button onClick={() => setPdfModal({ show: false, selectedForm: null })} className="text-gray-400 hover:text-white bg-black/20 hover:bg-black/40 p-1.5 rounded-lg transition-colors"><X className="w-5 h-5" /></button>
                         </div>
-                        <div className="p-6 flex flex-col gap-6">
-                            <div className="bg-white/5 border border-[#ff9100]/30 rounded-xl p-4 text-center">
-                                <div className="text-xs font-bold text-[#ff9100] uppercase tracking-widest mb-1">Target Report</div>
-                                <div className="text-lg font-bold text-white uppercase leading-tight">{pdfModal.selectedForm.name}</div>
+                        <div className="p-6 flex flex-col gap-5">
+                            <div className="bg-[#2d2d2d] border border-[#4a4a4a] rounded-xl p-3 text-center shadow-inner">
+                                <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Target Report</div>
+                                <div className="text-sm font-bold text-white uppercase leading-tight">{pdfModal.selectedForm.name}</div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="flex items-center gap-2 text-xs font-bold text-white/50 uppercase tracking-widest mb-2"><Calendar size={14} /> From Date</label><input type="date" value={dateRange.from} onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })} className="w-full bg-[#222] border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-[#ff9100] focus:ring-1 focus:ring-[#ff9100] transition-all cursor-pointer font-bold [color-scheme:dark]" /></div>
-                                <div><label className="flex items-center gap-2 text-xs font-bold text-white/50 uppercase tracking-widest mb-2"><Calendar size={14} /> To Date</label><input type="date" value={dateRange.to} min={dateRange.from} onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })} className="w-full bg-[#222] border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-[#ff9100] focus:ring-1 focus:ring-[#ff9100] transition-all cursor-pointer font-bold [color-scheme:dark]" /></div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Start Date</label>
+                                    <input type="date" value={dateRange.from} onChange={(e) => setDateRange({ ...dateRange, from: e.target.value })} className="w-full bg-[#222] border border-[#4a4a4a] rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer font-bold shadow-inner [color-scheme:dark]" />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">End Date</label>
+                                    <input type="date" value={dateRange.to} min={dateRange.from} onChange={(e) => setDateRange({ ...dateRange, to: e.target.value })} className="w-full bg-[#222] border border-[#4a4a4a] rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all cursor-pointer font-bold shadow-inner [color-scheme:dark]" />
+                                </div>
                             </div>
-                            <div className="flex gap-4 pt-2">
-                                <button onClick={() => setPdfModal({ show: false, selectedForm: null })} className="flex-1 py-3 text-sm font-bold text-white/60 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-all">Cancel</button>
-                                <button onClick={handleDownloadPDF} disabled={loading} className="flex-1 bg-[#ff9100] hover:bg-orange-500 text-white font-bold py-3 rounded-xl uppercase transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,145,0,0.3)] disabled:opacity-70 disabled:cursor-not-allowed">
-                                    {loading ? <Loader className="animate-spin w-5 h-5" /> : <FileDown className="w-5 h-5" />}{loading ? 'Generating...' : 'Download'}
+                            <div className="flex gap-3 pt-2">
+                                <button onClick={() => setPdfModal({ show: false, selectedForm: null })} className="flex-1 py-3 text-xs font-black uppercase tracking-widest text-gray-300 hover:text-white bg-[#222] border border-[#4a4a4a] hover:bg-[#4a4a4a] rounded-xl transition-all shadow-sm">Cancel</button>
+                                <button onClick={handleDownloadPDF} disabled={loading} className="flex-[1.5] bg-blue-600 hover:bg-blue-500 border border-blue-500 text-white font-black text-xs uppercase tracking-widest py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_4px_15px_rgba(37,99,235,0.3)] disabled:opacity-70 disabled:cursor-not-allowed">
+                                    {loading ? <Loader className="animate-spin w-4 h-4" /> : <FileDown className="w-4 h-4" />}
+                                    {loading ? 'Processing' : 'Generate PDF'}
                                 </button>
                             </div>
                         </div>
@@ -811,10 +847,6 @@ const AdminDashboard = () => {
                 __html: `
         @keyframes scale-in { 0% { transform: scale(0.95); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
         .scale-in { animation: scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        @keyframes fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
-        .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
-        @keyframes slide-in-right { 0% { transform: translateX(100%); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
-        .animate-slide-in-right { animation: slide-in-right 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
       `}} />
         </div>
     );
