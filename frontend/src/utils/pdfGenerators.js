@@ -683,6 +683,9 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
     doc.save(`${safeTitle}_Bulk_${dateRange.from}_to_${dateRange.to}.pdf`);
 };
 
+// ============================================================================
+// 5. ERROR PROOF VERIFICATION (DYNAMIC FOR BOTH V1 AND V2)
+// ============================================================================
 export const generateErrorProofPDF = (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
     
@@ -696,456 +699,308 @@ export const generateErrorProofPDF = (data, dateRange) => {
         return;
     }
 
+    // 🔥 Auto-Detect V2 vs V1 by checking the presence of the Date1_Shift1_Res key
+    const isV2 = verifications.some(v => 'Date1_Shift1_Res' in v || 'Date1_Shift2_Res' in v);
+
+    // Grouping by Date and Machine
     const groupedByDateAndMachine = {};
     verifications.forEach(row => {
-        const dateKey = String(row.recordDate || row.RecordDate).split('T')[0];
+        const dateKey = getSafeDateStr(row.recordDate || row.RecordDate);
         const machine = row.line || row.DisaMachine;
         if (!groupedByDateAndMachine[dateKey]) groupedByDateAndMachine[dateKey] = {};
         if (!groupedByDateAndMachine[dateKey][machine]) groupedByDateAndMachine[dateKey][machine] = { v: [], r: [] };
         groupedByDateAndMachine[dateKey][machine].v.push(row);
     });
 
-    if (plans) {
-        plans.forEach(plan => {
-            const planDateKey = String(plan.recordDate || plan.RecordDate).split('T')[0];
-            const planName = plan.errorProofName || plan.ErrorProofName;
+    plans.forEach(plan => {
+        let machine, dateKey;
 
-            // 🔥 CRITICAL FIX: Match the reaction plan EXACTLY to the verification on the same Date and Error Proof Name
-            const exactVerification = verifications.find(v => 
-                String(v.recordDate || v.RecordDate).split('T')[0] === planDateKey &&
+        // In V2, plans contain a direct VerificationId we can map safely
+        if (isV2 && plan.VerificationId) {
+            const matchV = verifications.find(v => v.Id === plan.VerificationId || String(v.Id) === String(plan.VerificationId));
+            if (matchV) {
+                machine = matchV.DisaMachine || matchV.Line;
+                dateKey = getSafeDateStr(matchV.RecordDate || matchV.recordDate);
+            }
+        } 
+        // V1 Fallback (Maps by exact Date + Error Proof Name)
+        else {
+            const planDateKey = getSafeDateStr(plan.recordDate || plan.RecordDate);
+            const planName = plan.errorProofName || plan.ErrorProofName;
+            
+            let matchV = verifications.find(v => 
+                getSafeDateStr(v.recordDate || v.RecordDate) === planDateKey &&
                 (v.errorProofName || v.ErrorProofName) === planName
             );
 
-            // Fallback in case timestamps drifted: find any verification in the whole array with the same name
-            const fallbackVerification = verifications.find(v => (v.errorProofName || v.ErrorProofName) === planName);
-
-            const machine = exactVerification ? (exactVerification.line || exactVerification.DisaMachine) : 
-                            (fallbackVerification ? (fallbackVerification.line || fallbackVerification.DisaMachine) : null);
-
-            if (machine) {
-                // Standard exact match
-                if (groupedByDateAndMachine[planDateKey] && groupedByDateAndMachine[planDateKey][machine]) {
-                    groupedByDateAndMachine[planDateKey][machine].r.push(plan);
-                } 
-                // Fallback: If dates drifted, attach it to the actual date group where the machine and error proof exist
-                else {
-                    const actualDateKey = Object.keys(groupedByDateAndMachine).find(dk => 
-                        groupedByDateAndMachine[dk][machine] && 
-                        groupedByDateAndMachine[dk][machine].v.some(v => (v.errorProofName || v.ErrorProofName) === planName)
-                    );
-                    if (actualDateKey) {
-                        groupedByDateAndMachine[actualDateKey][machine].r.push(plan);
-                    }
-                }
+            if (!matchV) {
+                matchV = verifications.find(v => (v.errorProofName || v.ErrorProofName) === planName);
             }
-        });
-    }
+            
+            if (matchV) {
+                machine = matchV.line || matchV.DisaMachine;
+                dateKey = getSafeDateStr(matchV.recordDate || matchV.RecordDate);
+            }
+        }
+
+        if (machine && dateKey && groupedByDateAndMachine[dateKey] && groupedByDateAndMachine[dateKey][machine]) {
+            groupedByDateAndMachine[dateKey][machine].r.push(plan);
+        }
+    });
 
     let isFirstPage = true;
-    const PAGE_HEIGHT = 210; 
 
     Object.keys(groupedByDateAndMachine).sort().forEach(dateKey => {
         Object.keys(groupedByDateAndMachine[dateKey]).sort().forEach(machine => {
             if (!isFirstPage) doc.addPage();
             isFirstPage = false;
 
-            let currentPageQfValue = "QF/07/FBP-13, Rev.No:06 dt 08.10.2025"; 
-            const reportDate = new Date(dateKey);
-            reportDate.setHours(0, 0, 0, 0);
-
-            for (let qf of qfHistory) {
-                if (!qf.date) continue;
-                const qfDate = new Date(qf.date);
-                qfDate.setHours(0, 0, 0, 0);
-                if (qfDate <= reportDate) {
-                    currentPageQfValue = qf.qfValue;
-                    break; 
-                }
-            }
-
             const records = groupedByDateAndMachine[dateKey][machine];
-            const headerData = { date: dateKey, disaMachine: machine, reviewedBy: records.v[0]?.ReviewedByHOF || records.v[0]?.HOFSignature || '', approvedBy: records.v[0]?.ApprovedBy || records.v[0]?.OperatorSignature || '' };
+            const displayDate = formatDate(dateKey).replace(/\//g, '-');
+            const currentPageQfValue = getDynamicQfString(dateKey, qfHistory, isV2 ? "QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023" : "QF/07/FBP-13, Rev.No:06 dt 08.10.2025");
 
-            doc.setLineWidth(0.3);
-            doc.rect(10, 10, 40, 20);
-            try {
-                doc.addImage(logo, 'PNG', 12, 11, 36, 18);
-            } catch (err) {
+            // ==============================================================
+            // 🔥 V2 EXACT LAYOUT (Mirrors ErrorProofVerification2.jsx)
+            // ==============================================================
+            if (isV2) {
+                // PAGE HEADER
+                doc.setLineWidth(0.3);
+                doc.rect(10, 10, 40, 20);
+                try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); }
+                catch (err) {
+                    doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+                    doc.text("SAKTHI", 30, 18, { align: 'center' });
+                    doc.text("AUTO", 30, 26, { align: 'center' });
+                }
+
+                doc.rect(50, 10, 187, 20);
                 doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-                doc.text("SAKTHI", 30, 18, { align: 'center' }); 
-                doc.text("AUTO", 30, 26, { align: 'center' });
-            }
-            doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
-            doc.text("ERROR PROOF VERIFICATION REPORT", 140, 22, { align: 'center' });
-            doc.rect(230, 10, 57, 20); doc.setFontSize(11);
-            doc.text(`${machine}`, 258.5, 16, { align: 'center' });
-            doc.line(230, 20, 287, 20);
-            doc.setFontSize(10); doc.setFont('helvetica', 'normal'); 
-            doc.text(`DATE: ${formatDate(dateKey)}`, 258.5, 26, { align: 'center' });
+                doc.text("ERROR PROOF VERIFICATION CHECK LIST - FDY", 143.5, 22, { align: 'center' });
 
-            const vRows = records.v.map((item, index) => {
-                const obs = item.observationResult === 'NOT_OK' ? 'NOT OK' : (item.observationResult || '-');
-                return [
-                    index + 1, 
-                    item.line || item.DisaMachine, 
-                    item.errorProofName || item.ErrorProofName, 
-                    item.natureOfErrorProof || item.NatureOfErrorProof, 
-                    item.frequency || item.Frequency,
-                    obs
+                doc.rect(237, 10, 50, 20);
+                doc.setFontSize(11);
+                doc.text(machine, 262, 16, { align: 'center' });
+                doc.line(237, 20, 287, 20);
+                doc.setFontSize(10);
+                doc.text(`Date: ${displayDate}`, 262, 26, { align: 'center' });
+
+                const mainHead = [
+                    [
+                        { content: 'Line', rowSpan: 3, styles: { halign: 'center', valign: 'middle' } },
+                        { content: 'Error Proof Name', rowSpan: 3, styles: { halign: 'center', valign: 'middle' } },
+                        { content: 'Nature of Error Proof', rowSpan: 3, styles: { halign: 'center', valign: 'middle' } },
+                        { content: 'Frequency', rowSpan: 3, styles: { halign: 'center', valign: 'middle', cellWidth: 15 } },
+                        { content: `Date: ${displayDate}`, colSpan: 3, styles: { halign: 'center', fillColor: [240, 240, 240] } }
+                    ],
+                    [{ content: 'I Shift', styles: { halign: 'center' } }, { content: 'II Shift', styles: { halign: 'center' } }, { content: 'III Shift', styles: { halign: 'center' } }],
+                    [{ content: 'Observation Result', styles: { halign: 'center', fontSize: 6 } }, { content: 'Observation Result', styles: { halign: 'center', fontSize: 6 } }, { content: 'Observation Result', styles: { halign: 'center', fontSize: 6 } }]
                 ];
-            });
 
-            autoTable(doc, {
-                startY: 35,
-                head: [['S.No', 'Line', 'Error Proof Name', 'Nature of Error Proof', 'Frequency', 'Observation Result']],
-                body: vRows, theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'middle' },
-                headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
-                columnStyles: { 0: { halign: 'center', cellWidth: 12 }, 5: { halign: 'center', fontStyle: 'bold', cellWidth: 25 } }
-            });
-
-            let currentY = doc.lastAutoTable.finalY + 10;
-            
-            if (records.r && records.r.length > 0) {
-                doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-                doc.text("Reaction Plan", 148.5, currentY, { align: 'center' });
-                currentY += 5;
-
-                const rRows = records.r.map((item, index) => [
-                    index + 1, 
-                    item.errorProofNo || '-', 
-                    item.errorProofName || item.ErrorProofName, 
-                    formatDate(dateKey), 
-                    item.problem || item.Problem, 
-                    item.rootCause || item.RootCause, 
-                    item.correctiveAction || item.CorrectiveAction, 
-                    item.status || item.Status, 
-                    item.remarks || item.Remarks
+                const mainBody = records.v.map(row => [
+                    row.Line || row.DisaMachine || '-',
+                    row.ErrorProofName || '-',
+                    row.NatureOfErrorProof || '-',
+                    row.Frequency || '-',
+                    row.Date1_Shift1_Res || '-',
+                    row.Date1_Shift2_Res || '-',
+                    row.Date1_Shift3_Res || '-'
                 ]);
-                
+
                 autoTable(doc, {
-                    startY: currentY,
-                    margin: { left: 10, right: 10 }, 
-                    head: [['S.No', 'Ep.No', 'Error Proof Name', 'Verification Date', 'Problem', 'Root Cause', 'Corrective action taken \n (Temporary)', 'Status', 'Remarks']],
-                    body: rRows, theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
-                    headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
-                    columnStyles: { 
-                        0: { cellWidth: 10, halign: 'center' }, 
-                        1: { cellWidth: 12 }, 
-                        2: { cellWidth: 35 }, 
-                        3: { cellWidth: 20 }, 
-                        4: { cellWidth: 35 }, 
-                        5: { cellWidth: 35 }, 
-                        6: { cellWidth: 40 }, 
-                        7: { cellWidth: 15 }, 
-                        8: { cellWidth: 'auto' } 
+                    startY: 35, margin: { left: 10, right: 10 }, head: mainHead, body: mainBody, theme: 'grid',
+                    styles: { fontSize: 7, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle' },
+                    headStyles: { fillColor: [230, 230, 230], textColor: [0, 0, 0], fontStyle: 'bold' },
+                    columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 45 }, 2: { cellWidth: 70 } }
+                });
+
+                const finalY = doc.lastAutoTable.finalY + 8;
+                doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+
+                doc.text("Verified By Moulding Incharge", 20, finalY);
+                doc.rect(20, finalY + 2, 40, 15);
+                const opSig = records.v.find(v => v.OperatorSignature)?.OperatorSignature;
+                if (opSig && opSig.startsWith('data:image')) {
+                    try { doc.addImage(opSig, 'PNG', 21, finalY + 3, 38, 13); } catch (e) { }
+                }
+
+                doc.text("Reviewed By HOF", 130, finalY);
+                doc.rect(130, finalY + 2, 40, 15);
+                const hofSig = records.v.find(v => v.HOFSignature)?.HOFSignature;
+                if (hofSig && hofSig.startsWith('data:image')) {
+                    try { doc.addImage(hofSig, 'PNG', 131, finalY + 3, 38, 13); } catch (e) { }
+                }
+
+                doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+                doc.text(currentPageQfValue, 10, doc.internal.pageSize.getHeight() - 10);
+
+                // V2 REACTION PLAN PAGE
+                if (records.r.length > 0) {
+                    doc.addPage();
+                    
+                    doc.setLineWidth(0.3);
+                    doc.rect(10, 10, 40, 20);
+                    try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); }
+                    catch (err) {
+                        doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+                        doc.text("SAKTHI", 30, 18, { align: 'center' });
+                        doc.text("AUTO", 30, 26, { align: 'center' });
+                    }
+
+                    doc.rect(50, 10, 187, 20);
+                    doc.setFontSize(15); doc.setFont('helvetica', 'bold');
+                    doc.text("REACTION PLAN", 143.5, 22, { align: 'center' });
+
+                    doc.rect(237, 10, 50, 20);
+                    doc.setFontSize(11);
+                    doc.text(machine, 262, 16, { align: 'center' });
+                    doc.line(237, 20, 287, 20);
+                    doc.setFontSize(10);
+                    doc.text(`Date: ${displayDate}`, 262, 26, { align: 'center' });
+
+                    const planHead = [['S.No', 'Error Proof No', 'Error Proof Name', 'Verification Date / Shift', 'Problem', 'Root Cause', 'Corrective Action', 'Status', 'Reviewed By (Op)', 'Approved By (Sup)', 'Remarks']];
+                    const planBody = records.r.map((p, i) => [
+                        i + 1, p.ErrorProofNo || '-', p.ErrorProofName || '-', p.VerificationDateShift || '-', p.Problem || '-', p.RootCause || '-', p.CorrectiveAction || '-', p.Status || '-',
+                        p.ReviewedBy || '-', p.SupervisorSignature || p.ApprovedBy || '-', p.Remarks || '-'
+                    ]);
+
+                    autoTable(doc, {
+                        startY: 35, margin: { left: 5, right: 5 }, head: planHead, body: planBody, theme: 'grid',
+                        styles: { fontSize: 7, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle' },
+                        headStyles: { fillColor: [230, 230, 230], textColor: [0, 0, 0], fontStyle: 'bold' },
+                        columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 15 }, 2: { cellWidth: 35 }, 3: { cellWidth: 25 }, 4: { cellWidth: 30 } },
+                        didDrawCell: function (data) {
+                            if (data.section === 'body' && data.column.index === 9) {
+                                const sig = records.r[data.row.index].SupervisorSignature;
+                                if (sig && sig.startsWith('data:image')) {
+                                    try { doc.addImage(sig, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { }
+                                }
+                            }
+                        },
+                        didParseCell: function (data) {
+                            if (data.section === 'body' && data.column.index === 9 && data.cell.text[0] && data.cell.text[0].startsWith('data:image')) {
+                                data.cell.text = '';
+                            }
+                        }
+                    });
+
+                    doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+                    doc.text(currentPageQfValue, 10, doc.internal.pageSize.getHeight() - 10);
+                }
+            } 
+            // ==============================================================
+            // 🔥 V1 EXACT LAYOUT (Fallback for older data if triggered)
+            // ==============================================================
+            else {
+                doc.setLineWidth(0.3);
+                doc.rect(10, 10, 40, 20);
+                try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); }
+                catch (err) {
+                    doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+                    doc.text("SAKTHI", 30, 18, { align: 'center' });
+                    doc.text("AUTO", 30, 26, { align: 'center' });
+                }
+                doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+                doc.text("ERROR PROOF VERIFICATION REPORT", 140, 22, { align: 'center' });
+                doc.rect(230, 10, 57, 20); doc.setFontSize(11);
+                doc.text(machine, 258.5, 16, { align: 'center' });
+                doc.line(230, 20, 287, 20);
+                doc.setFontSize(10); doc.setFont('helvetica', 'normal'); 
+                doc.text(`DATE: ${formatDate(dateKey)}`, 258.5, 26, { align: 'center' });
+
+                const vRows = records.v.map((item, index) => {
+                    const obs = item.observationResult === 'NOT_OK' ? 'NOT OK' : (item.observationResult || '-');
+                    return [
+                        index + 1, 
+                        item.line || item.DisaMachine, 
+                        item.errorProofName || item.ErrorProofName, 
+                        item.natureOfErrorProof || item.NatureOfErrorProof, 
+                        item.frequency || item.Frequency,
+                        obs
+                    ];
+                });
+
+                autoTable(doc, {
+                    startY: 35,
+                    head: [['S.No', 'Line', 'Error Proof Name', 'Nature of Error Proof', 'Frequency', 'Observation Result']],
+                    body: vRows, theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'middle' },
+                    headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
+                    columnStyles: { 0: { halign: 'center', cellWidth: 12 }, 5: { halign: 'center', fontStyle: 'bold', cellWidth: 25 } }
+                });
+
+                let currentY = doc.lastAutoTable.finalY + 10;
+                
+                if (records.r && records.r.length > 0) {
+                    doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+                    doc.text("Reaction Plan", 148.5, currentY, { align: 'center' });
+                    currentY += 5;
+
+                    const rRows = records.r.map((item, index) => [
+                        index + 1, 
+                        item.errorProofNo || '-', 
+                        item.errorProofName || item.ErrorProofName, 
+                        formatDate(dateKey), 
+                        item.problem || item.Problem, 
+                        item.rootCause || item.RootCause, 
+                        item.correctiveAction || item.CorrectiveAction, 
+                        item.status || item.Status, 
+                        item.remarks || item.Remarks
+                    ]);
+                    
+                    autoTable(doc, {
+                        startY: currentY,
+                        margin: { left: 10, right: 10 }, 
+                        head: [['S.No', 'Ep.No', 'Error Proof Name', 'Verification Date', 'Problem', 'Root Cause', 'Corrective action taken \n (Temporary)', 'Status', 'Remarks']],
+                        body: rRows, theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
+                        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
+                        columnStyles: { 
+                            0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 12 }, 2: { cellWidth: 35 }, 3: { cellWidth: 20 }, 
+                            4: { cellWidth: 35 }, 5: { cellWidth: 35 }, 6: { cellWidth: 40 }, 7: { cellWidth: 15 }, 8: { cellWidth: 'auto' } 
+                        }
+                    });
+                    currentY = doc.lastAutoTable.finalY + 10;
+                }
+
+                if (currentY + 30 > 210) { doc.addPage(); currentY = 20; }
+
+                autoTable(doc, {
+                    startY: currentY, margin: { left: 10, right: 10 }, head: [['REVIEWED BY (OP/HOF)', 'APPROVED BY (SUP)']], 
+                    body: [['SIG1', 'SIG2']], theme: 'grid',
+                    styles: { fontSize: 10, cellPadding: 4, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', minCellHeight: 15 }, 
+                    headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+                    didDrawCell: function (data) {
+                        if (data.section === 'body') {
+                            const reviewedBy = records.v[0]?.ReviewedByHOF || records.v[0]?.HOFSignature || '';
+                            const approvedBy = records.v[0]?.ApprovedBy || records.v[0]?.OperatorSignature || '';
+                            if (data.column.index === 0 && reviewedBy.startsWith('data:image')) {
+                                try { doc.addImage(reviewedBy, 'PNG', data.cell.x + 2, data.cell.y + 2, 40, 10); } catch (e) {}
+                            }
+                            if (data.column.index === 1 && approvedBy.startsWith('data:image')) {
+                                try { doc.addImage(approvedBy, 'PNG', data.cell.x + 2, data.cell.y + 2, 40, 10); } catch (e) {}
+                            }
+                        }
+                    },
+                    didParseCell: function (data) {
+                        if (data.section === 'body' && (data.cell.raw === 'SIG1' || data.cell.raw === 'SIG2')) {
+                            const reviewedBy = records.v[0]?.ReviewedByHOF || records.v[0]?.HOFSignature || '';
+                            const approvedBy = records.v[0]?.ApprovedBy || records.v[0]?.OperatorSignature || '';
+                            const val = data.column.index === 0 ? reviewedBy : approvedBy;
+                            if (val && !val.startsWith('data:image')) data.cell.text = val;
+                            else data.cell.text = '';
+                        }
                     }
                 });
-                currentY = doc.lastAutoTable.finalY + 10;
+
+                doc.setFontSize(8); doc.setFont('helvetica', 'normal'); 
+                doc.text(currentPageQfValue, 10, 200);
             }
-
-            if (currentY + 30 > PAGE_HEIGHT) { doc.addPage(); currentY = 20; }
-
-            autoTable(doc, {
-                startY: currentY, margin: { left: 10, right: 10 }, head: [['REVIEWED BY (OP/HOF)', 'APPROVED BY (SUP)']], 
-                body: [['SIG1', 'SIG2']], theme: 'grid',
-                styles: { fontSize: 10, cellPadding: 4, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', minCellHeight: 15 }, 
-                headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-                didDrawCell: function (data) {
-                    if (data.section === 'body') {
-                        if (data.column.index === 0 && headerData.reviewedBy && headerData.reviewedBy.startsWith('data:image')) {
-                            try { doc.addImage(headerData.reviewedBy, 'PNG', data.cell.x + 2, data.cell.y + 2, 40, 10); } catch (e) {}
-                        }
-                        if (data.column.index === 1 && headerData.approvedBy && headerData.approvedBy.startsWith('data:image')) {
-                            try { doc.addImage(headerData.approvedBy, 'PNG', data.cell.x + 2, data.cell.y + 2, 40, 10); } catch (e) {}
-                        }
-                    }
-                },
-                didParseCell: function (data) {
-                    if (data.section === 'body' && (data.cell.raw === 'SIG1' || data.cell.raw === 'SIG2')) {
-                        const val = data.column.index === 0 ? headerData.reviewedBy : headerData.approvedBy;
-                        if (val && !val.startsWith('data:image')) data.cell.text = val;
-                        else data.cell.text = '';
-                    }
-                }
-            });
-
-            doc.setFontSize(8); doc.setFont('helvetica', 'normal'); 
-            doc.text(currentPageQfValue, 10, 200);
         });
     });
 
     doc.save(`ErrorProof_Verification_Bulk_${dateRange.from}_to_${dateRange.to}.pdf`);
 };
 
-// ============================================================================
-// 5a. ERROR PROOF VERIFICATION (V1 - Alternate layout structure)
-// ============================================================================
-export const generateErrorProofV1PDF = (data, dateRange) => {
-    const doc = new jsPDF('l', 'mm', 'a4');
-    const verifications = data.verifications || [];
-    const plans = data.plans || [];
-    const qfHistory = data.qfHistory || [];
-
-    if (verifications.length === 0) {
-        doc.setFontSize(14);
-        doc.text("No V1 Error Proof records found for the selected date range.", 148.5, 40, { align: 'center' });
-        doc.save(`ErrorProof_V1_${dateRange.from}_to_${dateRange.to}.pdf`);
-        return;
-    }
-
-    const grouped = {};
-    verifications.forEach(v => {
-        const d = v.recordDate ? v.recordDate.split('T')[0] : 'Unknown';
-        const l = v.line || 'Unknown';
-        const key = `${d}_${l}`;
-        if (!grouped[key]) grouped[key] = { date: d, line: l, verifications: [], plans: [] };
-        grouped[key].verifications.push(v);
-    });
-
-    plans.forEach(p => {
-        const planDateKey = p.recordDate ? p.recordDate.split('T')[0] : 'Unknown';
-        const planName = p.errorProofName;
-        
-        // 🔥 CRITICAL FIX: Ensure exact mapping
-        let matchV = verifications.find(v => v.errorProofName === planName && v.recordDate && v.recordDate.split('T')[0] === planDateKey);
-        
-        // Fallback
-        if (!matchV) {
-            matchV = verifications.find(v => v.errorProofName === planName);
-        }
-
-        if (matchV) {
-            const l = matchV.line || 'Unknown';
-            const targetDateKey = matchV.recordDate ? matchV.recordDate.split('T')[0] : 'Unknown';
-            const key = `${targetDateKey}_${l}`;
-            
-            if (grouped[key]) {
-                if (!grouped[key].plans.some(existing => existing.sNo === p.sNo)) {
-                    grouped[key].plans.push(p);
-                }
-            }
-        }
-    });
-
-    let pageIndex = 0;
-    Object.values(grouped).forEach(group => {
-        if (pageIndex > 0) doc.addPage();
-        pageIndex++;
-
-        doc.setLineWidth(0.3);
-        doc.rect(10, 10, 40, 20);
-        try {
-            doc.addImage(logo, 'PNG', 12, 11, 36, 18);
-        } catch (err) {
-            doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-            doc.text("SAKTHI", 30, 18, { align: 'center' });
-            doc.text("AUTO", 30, 26, { align: 'center' });
-        }
-        doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
-        doc.text("ERROR PROOF VERIFICATION CHECK LIST (V1)", 140, 22, { align: 'center' });
-        doc.rect(230, 10, 57, 20); doc.setFontSize(11);
-        doc.text(`${group.line}`, 258.5, 16, { align: 'center' });
-        doc.line(230, 20, 287, 20);
-        doc.setFontSize(10); doc.setFont('helvetica', 'normal');
-        doc.text(`DATE: ${formatDate(group.date)}`, 258.5, 26, { align: 'center' });
-
-        autoTable(doc, {
-            startY: 35,
-            head: [['Line', 'Error Proof Name', 'Nature of Error Proof', 'Frequency', 'Observation']],
-            body: group.verifications.map(v => [
-                v.line, v.errorProofName, v.natureOfErrorProof, v.frequency,
-                v.observationResult === 'NOT_OK' ? 'NOT OK' : v.observationResult
-            ]),
-            theme: 'grid',
-            styles: { fontSize: 8, halign: 'center', valign: 'middle' },
-            headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0] }
-        });
-
-        let finalY = doc.lastAutoTable.finalY + 10;
-        const opSig = group.verifications.find(v => v.OperatorSignature)?.OperatorSignature;
-        const hofSig = group.verifications.find(v => v.HOFSignature)?.HOFSignature;
-
-        doc.setFontSize(10).setFont('helvetica', 'bold');
-        doc.text("Operator Signature:", 14, finalY);
-        doc.rect(14, finalY + 2, 45, 18).stroke();
-        if (opSig && opSig.startsWith('data:image')) {
-            try { doc.addImage(opSig, 'PNG', 15, finalY + 3, 43, 16); } catch (e) { }
-        }
-
-        doc.text("HOF Signature:", 148.5, finalY);
-        doc.rect(148.5, finalY + 2, 45, 18).stroke();
-        if (hofSig && hofSig.startsWith('data:image')) {
-            try { doc.addImage(hofSig, 'PNG', 149.5, finalY + 3, 43, 16); } catch (e) { }
-        }
-
-        finalY += 30;
-
-        if (group.plans.length > 0) {
-            if (finalY > 150) { doc.addPage(); finalY = 20; }
-            doc.setFontSize(12).text("REACTION PLAN", 148.5, finalY, { align: 'center' });
-            autoTable(doc, {
-                startY: finalY + 5,
-                margin: { left: 10, right: 10 },
-                head: [['S.No', 'EP No', 'Error Proof Name', 'Problem', 'Root Cause', 'Corrective Action', 'Status', 'Op Sign', 'Sup Sign', 'Remarks']],
-                body: group.plans.map(p => [
-                    p.sNo, p.errorProofNo, p.errorProofName, p.problem, p.rootCause, p.correctiveAction, p.status,
-                    p.reviewedBy, 'SIG', p.remarks
-                ]),
-                theme: 'grid',
-                styles: { fontSize: 7, halign: 'center', valign: 'middle' },
-                headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0] },
-                columnStyles: { 
-                    0: { cellWidth: 10 }, 
-                    1: { cellWidth: 12 }, 
-                    2: { cellWidth: 35 }, 
-                    3: { cellWidth: 35 }, 
-                    4: { cellWidth: 35 }, 
-                    5: { cellWidth: 35 }, 
-                    6: { cellWidth: 15 }, 
-                    7: { cellWidth: 20 }, 
-                    8: { cellWidth: 20 }, 
-                    9: { cellWidth: 'auto' } 
-                },
-                didDrawCell: function (data) {
-                    if (data.section === 'body' && data.column.index === 8) {
-                        const p = group.plans[data.row.index];
-                        if (p.SupervisorSignature && p.SupervisorSignature.startsWith('data:image')) {
-                            try { doc.addImage(p.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { }
-                        }
-                    }
-                },
-                didParseCell: function (data) {
-                    if (data.section === 'body' && data.column.index === 8 && data.cell.raw === 'SIG') data.cell.text = '';
-                }
-            });
-        }
-
-        const dynamicQf = getDynamicQfString(group.date, qfHistory, "QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023");
-        doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text(dynamicQf, 10, 200);
-    });
-
-    doc.save(`ErrorProof_V1_Bulk_${dateRange.from}_to_${dateRange.to}.pdf`);
-};
-
-// ============================================================================
-// 5b. ERROR PROOF VERIFICATION (V2 - ENTIRELY UNTOUCHED)
-// ============================================================================
-export const generateErrorProofV2PDF = (data, dateRange) => {
-    const doc = new jsPDF('l', 'mm', 'a4');
-    const verifications = data.verifications || [];
-    const plans = data.plans || [];
-    const qfHistory = data.qfHistory || [];
-
-    if (verifications.length === 0) {
-        doc.setFontSize(14);
-        doc.text("No V2 Error Proof records found for the selected date range.", 148.5, 40, { align: 'center' });
-        doc.save(`ErrorProof_V2_${dateRange.from}_to_${dateRange.to}.pdf`);
-        return;
-    }
-
-    const grouped = {};
-    verifications.forEach(v => {
-        const d = v.RecordDate ? v.RecordDate.split('T')[0] : 'Unknown';
-        const l = v.DisaMachine || 'Unknown';
-        const key = `${d}_${l}`;
-        if (!grouped[key]) grouped[key] = { date: d, line: l, verifications: [], plans: [] };
-        grouped[key].verifications.push(v);
-    });
-
-    plans.forEach(p => {
-        const matchV = verifications.find(v => v.Id === p.VerificationId);
-        const d = matchV && matchV.RecordDate ? matchV.RecordDate.split('T')[0] : 'Unknown';
-        const l = matchV ? matchV.DisaMachine : 'Unknown';
-        const key = `${d}_${l}`;
-        if (grouped[key]) grouped[key].plans.push(p);
-    });
-
-    let pageIndex = 0;
-    Object.values(grouped).forEach(group => {
-        if (pageIndex > 0) doc.addPage();
-        pageIndex++;
-
-        doc.setLineWidth(0.3);
-        doc.rect(10, 10, 40, 20);
-        try {
-            doc.addImage(logo, 'PNG', 12, 11, 36, 18);
-        } catch (err) {
-            doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-            doc.text("SAKTHI", 30, 18, { align: 'center' });
-            doc.text("AUTO", 30, 26, { align: 'center' });
-        }
-        doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
-        doc.text("ERROR PROOF VERIFICATION CHECK LIST (V2)", 140, 22, { align: 'center' });
-        doc.rect(230, 10, 57, 20); doc.setFontSize(11);
-        doc.text(`${group.line}`, 258.5, 16, { align: 'center' });
-        doc.line(230, 20, 287, 20);
-        doc.setFontSize(10); doc.setFont('helvetica', 'normal');
-        doc.text(`DATE: ${formatDate(group.date)}`, 258.5, 26, { align: 'center' });
-
-        autoTable(doc, {
-            startY: 35,
-            head: [['Line', 'Error Proof Name', 'Nature', 'Freq', 'Shift 1', 'Shift 2', 'Shift 3']],
-            body: group.verifications.map(v => [
-                v.Line, v.ErrorProofName, v.NatureOfErrorProof, v.Frequency,
-                v.Date1_Shift1_Res, v.Date1_Shift2_Res, v.Date1_Shift3_Res
-            ]),
-            theme: 'grid',
-            styles: { fontSize: 8, halign: 'center', valign: 'middle' },
-            headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0] }
-        });
-
-        let finalY = doc.lastAutoTable.finalY + 10;
-        const opSig = group.verifications.find(v => v.OperatorSignature)?.OperatorSignature;
-        const hofSig = group.verifications.find(v => v.HOFSignature)?.HOFSignature;
-
-        doc.setFontSize(10).setFont('helvetica', 'bold');
-        doc.text("Operator Signature:", 14, finalY);
-        doc.rect(14, finalY + 2, 45, 18).stroke();
-        if (opSig && opSig.startsWith('data:image')) {
-            try { doc.addImage(opSig, 'PNG', 15, finalY + 3, 43, 16); } catch (e) { }
-        }
-
-        doc.text("HOF Signature:", 148.5, finalY);
-        doc.rect(148.5, finalY + 2, 45, 18).stroke();
-        if (hofSig && hofSig.startsWith('data:image')) {
-            try { doc.addImage(hofSig, 'PNG', 149.5, finalY + 3, 43, 16); } catch (e) { }
-        }
-
-        finalY += 30;
-
-        if (group.plans.length > 0) {
-            if (finalY > 150) { doc.addPage(); finalY = 20; }
-            doc.setFontSize(12).text("REACTION PLAN", 148.5, finalY, { align: 'center' });
-            autoTable(doc, {
-                startY: finalY + 5,
-                head: [['S.No', 'EP No', 'Error Proof Name', 'Shift', 'Problem', 'Root Cause', 'Corrective Action', 'Status', 'Op Sign', 'Sup Sign', 'Remarks']],
-                body: group.plans.map(p => [
-                    p.SNo, p.ErrorProofNo, p.ErrorProofName, p.VerificationDateShift, p.Problem, p.RootCause, p.CorrectiveAction, p.Status,
-                    p.ReviewedBy, 'SIG', p.Remarks
-                ]),
-                theme: 'grid',
-                styles: { fontSize: 7, halign: 'center', valign: 'middle' },
-                headStyles: { fillColor: [220, 220, 220], textColor: [0, 0, 0] },
-                didDrawCell: function (data) {
-                    if (data.section === 'body' && data.column.index === 9) {
-                        const p = group.plans[data.row.index];
-                        if (p.SupervisorSignature && p.SupervisorSignature.startsWith('data:image')) {
-                            try { doc.addImage(p.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { }
-                        }
-                    }
-                },
-                didParseCell: function (data) {
-                    if (data.section === 'body' && data.column.index === 9 && data.cell.raw === 'SIG') data.cell.text = '';
-                }
-            });
-        }
-
-        const dynamicQf = getDynamicQfString(group.date, qfHistory, "QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023");
-        doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text(dynamicQf, 10, 200);
-    });
-
-    doc.save(`ErrorProof_V2_Bulk_${dateRange.from}_to_${dateRange.to}.pdf`);
-};
+// Map generateErrorProofV2PDF as an explicit proxy just in case your frontend calls it by name
+export const generateErrorProofV2PDF = generateErrorProofPDF;
 
 // ============================================================================
 // 6. DISA SETTING ADJUSTMENT RECORD
