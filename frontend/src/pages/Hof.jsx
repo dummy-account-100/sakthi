@@ -7,6 +7,7 @@ import "react-toastify/dist/ReactToastify.css";
 import { Loader, X } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import logo from '../Assets/logo.png'; // 🔥 ADDED LOGO IMPORT FOR PDF HEADER
 
 // 🔥 Dynamic QF Helpers
 const getSafeDateStr = (val) => {
@@ -24,6 +25,12 @@ const getDynamicQfString = (recordDate, qfHistory, defaultFallback) => {
       if (qfDateStr <= targetDateStr) return qf.qfValue;
   }
   return qfHistory[qfHistory.length - 1].qfValue || defaultFallback;
+};
+
+// 🔥 DATE FORMATTER FOR PDF 🔥
+const formatDate = (dateString) => { 
+  if (!dateString) return "";
+  return new Date(dateString).toLocaleDateString("en-GB"); 
 };
 
 const Hof = () => {
@@ -92,9 +99,6 @@ const Hof = () => {
     } catch (err) { toast.error("Failed to load Error Proof V2 reports."); }
   };
 
-  // ===============================================
-  //  DAILY PRODUCTION PERFORMANCE LOGIC
-  // ===============================================
   const fetchDailyReports = async () => {
     try {
       const res = await axios.get(`${DAILY_API_BASE}/hof/${currentHOF}`);
@@ -127,7 +131,6 @@ const Hof = () => {
     } catch (err) { toast.error("Failed to save Daily Performance signature."); }
   };
 
-  // --- EXISTING MODAL LOGIC (Bottom Level, Error V1, Error V2) ---
   const handleOpenSignModal = async (report) => {
     setSelectedReport(report); setPdfUrl(null); setIsPdfLoading(true);
     try {
@@ -135,7 +138,7 @@ const Hof = () => {
       const monthlyRes = await axios.get(`${API_BASE}/monthly-report`, { params: { month, year, disaMachine } });
       const monthlyLogs = monthlyRes.data.monthlyLogs || [];
       const ncReports = monthlyRes.data.ncReports || [];
-      const qfHistory = monthlyRes.data.qfHistory || []; // 🔥 Fetch QF History
+      const qfHistory = monthlyRes.data.qfHistory || []; 
 
       const todayStr = new Date().toISOString().split('T')[0];
       const detailsRes = await axios.get(`${API_BASE}/details`, { params: { date: todayStr, disaMachine } });
@@ -212,7 +215,6 @@ const Hof = () => {
       doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.text("Legend:   3 - OK    X - NOT OK    CA - Corrected during Audit    NA - Not Applicable", 10, doc.lastAutoTable.finalY + 6);
       doc.setFont('helvetica', 'normal'); doc.text("Remarks: If Nonconformity please write on NCR format (back-side)", 10, doc.lastAutoTable.finalY + 12); 
       
-      // 🔥 DYNAMIC QF VALUE FOR PAGE 1 🔥
       const reportDateObjStr = `${year}-${String(month).padStart(2, '0')}-01`;
       const dynamicQf = getDynamicQfString(reportDateObjStr, qfHistory, "QF/08/MRO - 18, Rev No: 02 dt 01.01.2022");
       doc.text(dynamicQf, 10, 200); 
@@ -236,7 +238,6 @@ const Hof = () => {
   const handleOpenErrorModal = async (report) => {
     setSelectedErrorReport(report); setErrorPdfUrl(null); setIsErrorPdfLoading(true);
     try {
-      // 🔥 FIX: Extract the date from the report and pass it to the backend so the dynamic QF history logic works
       const reportDateStr = new Date(report.reportDate).toISOString().split('T')[0];
       const response = await axios.get(`${ERR_API_BASE}/report`, { params: { line: report.disa, date: reportDateStr }, responseType: 'blob' });
       const pdfBlobUrl = URL.createObjectURL(response.data);
@@ -257,14 +258,198 @@ const Hof = () => {
     } catch (err) { toast.error("Failed to save Error Proof signature."); }
   };
 
+  // =======================================================================
+  // 🔥 FIX: POLISHED V2 PDF GENERATION (MATCHING ErrorProofVerification2)
+  // =======================================================================
   const handleOpenErrorModalV2 = async (report) => {
-    setSelectedErrorReportV2(report); setErrorPdfUrlV2(null); setIsErrorPdfLoadingV2(true);
+    setSelectedErrorReportV2(report); 
+    setErrorPdfUrlV2(null); 
+    setIsErrorPdfLoadingV2(true);
+    
     try {
-      // 🔥 FIX: Added dynamic date extraction for V2 as well to support backend QF history logic
       const reportDateStr = new Date(report.reportDate).toISOString().split('T')[0];
-      const response = await axios.get(`${ERR_API_BASE_V2}/report`, { params: { line: report.disa, date: reportDateStr }, responseType: 'blob' });
-      const pdfBlobUrl = URL.createObjectURL(response.data);
+      const displayDate = formatDate(report.reportDate);
+      const machine = report.disa;
+
+      // Fetch the raw details to generate the PDF client-side
+      const res = await axios.get(`${ERR_API_BASE_V2}/details`, { params: { machine, date: reportDateStr } });
+      const masterData = res.data.masterConfig || [];
+      const transData = res.data.verifications || [];
+      const reactionPlans = res.data.reactionPlans || [];
+      const qfHistory = res.data.qfHistory || [];
+
+      // Reconstruct merged verifications exactly like the frontend form
+      const verifications = [];
+      if (transData.length > 0) {
+        transData.forEach((transItem, index) => {
+          const masterItem = masterData[index];
+          verifications.push({
+            ...transItem,
+            Line: masterItem ? masterItem.Line : transItem.Line,
+            ErrorProofName: masterItem ? masterItem.ErrorProofName : transItem.ErrorProofName,
+            NatureOfErrorProof: masterItem ? masterItem.NatureOfErrorProof : transItem.NatureOfErrorProof,
+            Frequency: masterItem ? masterItem.Frequency : transItem.Frequency,
+          });
+        });
+      }
+
+      // Generate the PDF Document
+      const doc = new jsPDF('l', 'mm', 'a4');
+      const PAGE_HEIGHT = doc.internal.pageSize.getHeight();
+
+      // Dynamic QF Value
+      let currentPageQfValue = "QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023";
+      const repDateObj = new Date(reportDateStr);
+      repDateObj.setHours(0, 0, 0, 0);
+
+      for (let qf of qfHistory) {
+          if (!qf.date) continue;
+          const qfDateObj = new Date(qf.date);
+          qfDateObj.setHours(0, 0, 0, 0);
+          if (qfDateObj <= repDateObj) {
+              currentPageQfValue = qf.qfValue;
+              break; 
+          }
+      }
+
+      // Box 1: Logo
+      doc.setLineWidth(0.3);
+      doc.rect(10, 10, 40, 20);
+      try {
+        doc.addImage(logo, 'PNG', 12, 11, 36, 18);
+      } catch (err) {
+        doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+        doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+        doc.text("AUTO", 30, 26, { align: 'center' });
+      }
+
+      // Box 2: Title
+      doc.rect(50, 10, 187, 20);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text("ERROR PROOF VERIFICATION CHECK LIST - FDY", 143.5, 22, { align: 'center' });
+
+      // Box 3: Meta
+      doc.rect(237, 10, 50, 20);
+      doc.setFontSize(11);
+      doc.text(machine, 262, 16, { align: 'center' });
+      doc.line(237, 20, 287, 20);
+      doc.setFontSize(10);
+      doc.text(`Date: ${displayDate}`, 262, 26, { align: 'center' });
+
+      // Table Header
+      const mainHead = [
+        [
+          { content: 'Line', rowSpan: 3, styles: { halign: 'center', valign: 'middle' } },
+          { content: 'Error Proof Name', rowSpan: 3, styles: { halign: 'center', valign: 'middle' } },
+          { content: 'Nature of Error Proof', rowSpan: 3, styles: { halign: 'center', valign: 'middle' } },
+          { content: 'Frequency', rowSpan: 3, styles: { halign: 'center', valign: 'middle', cellWidth: 15 } },
+          { content: `Date: ${displayDate}`, colSpan: 3, styles: { halign: 'center', fillColor: [240, 240, 240] } }
+        ],
+        [{ content: 'I Shift', styles: { halign: 'center' } }, { content: 'II Shift', styles: { halign: 'center' } }, { content: 'III Shift', styles: { halign: 'center' } }],
+        [{ content: 'Observation Result', styles: { halign: 'center', fontSize: 6 } }, { content: 'Observation Result', styles: { halign: 'center', fontSize: 6 } }, { content: 'Observation Result', styles: { halign: 'center', fontSize: 6 } }]
+      ];
+
+      // Table Body
+      const mainBody = verifications.map(row => {
+        const pdfRow = [row.Line || '-', row.ErrorProofName || '-', row.NatureOfErrorProof || '-', row.Frequency || '-'];
+        [1, 2, 3].forEach(s => { const res = row[`Date1_Shift${s}_Res`] || '-'; pdfRow.push(res); });
+        return pdfRow;
+      });
+
+      autoTable(doc, {
+        startY: 35, margin: { left: 10, right: 10 }, head: mainHead, body: mainBody, theme: 'grid',
+        styles: { fontSize: 7, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle' },
+        headStyles: { fillColor: [230, 230, 230], textColor: [0, 0, 0], fontStyle: 'bold' },
+        columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 45 }, 2: { cellWidth: 70 } }
+      });
+
+      let finalY = doc.lastAutoTable.finalY + 8;
+      doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+
+      // Operator Signature Box
+      doc.text("Verified By Moulding Incharge", 20, finalY);
+      doc.rect(20, finalY + 2, 40, 15);
+      const opSigToDraw = transData.length > 0 ? transData[0].OperatorSignature : '';
+      if (opSigToDraw && opSigToDraw.startsWith('data:image')) {
+        doc.addImage(opSigToDraw, 'PNG', 21, finalY + 3, 38, 13);
+      }
+
+      // HOF Signature Box
+      doc.text("Reviewed By HOF", 130, finalY);
+      doc.rect(130, finalY + 2, 40, 15);
+      // 🔥 If HOF has signed, it will be in the report object passed to this function
+      const hofSigToDraw = report.hofSignature; 
+      if (hofSigToDraw && hofSigToDraw.startsWith('data:image')) {
+        doc.addImage(hofSigToDraw, 'PNG', 131, finalY + 3, 38, 13);
+      } else {
+        doc.setFont('helvetica', 'normal');
+        doc.text("Pending", 143, finalY + 10);
+      }
+
+      // Page 1 QF
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+      doc.text(currentPageQfValue, 10, PAGE_HEIGHT - 10);
+
+      // Reaction Plan Page
+      if (reactionPlans.length > 0) {
+        doc.addPage();
+        
+        doc.setLineWidth(0.3);
+        doc.rect(10, 10, 40, 20);
+        try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } catch (err) {
+          doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+          doc.text("SAKTHI", 30, 18, { align: 'center' }); 
+          doc.text("AUTO", 30, 26, { align: 'center' });
+        }
+
+        doc.rect(50, 10, 187, 20);
+        doc.setFontSize(15); doc.setFont('helvetica', 'bold');
+        doc.text("REACTION PLAN", 143.5, 22, { align: 'center' });
+
+        doc.rect(237, 10, 50, 20);
+        doc.setFontSize(11);
+        doc.text(machine, 262, 16, { align: 'center' });
+        doc.line(237, 20, 287, 20);
+        doc.setFontSize(10);
+        doc.text(`Date: ${displayDate}`, 262, 26, { align: 'center' });
+
+        const planHead = [['S.No', 'Error Proof No', 'Error Proof Name', 'Verification Date / Shift', 'Problem', 'Root Cause', 'Corrective Action', 'Status', 'Reviewed By (Op)', 'Approved By (Sup)', 'Remarks']];
+        const planBody = reactionPlans.map((p, i) => [
+          i + 1, p.ErrorProofNo || '-', p.ErrorProofName, p.VerificationDateShift, p.Problem, p.RootCause, p.CorrectiveAction, p.Status,
+          p.ReviewedBy || '-', p.SupervisorSignature || p.ApprovedBy || '-', p.Remarks || '-'
+        ]);
+
+        autoTable(doc, {
+          startY: 35, margin: { left: 5, right: 5 }, head: planHead, body: planBody, theme: 'grid',
+          styles: { fontSize: 7, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle' },
+          headStyles: { fillColor: [230, 230, 230], textColor: [0, 0, 0], fontStyle: 'bold' },
+          columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 15 }, 2: { cellWidth: 35 }, 3: { cellWidth: 25 }, 4: { cellWidth: 30 } },
+
+          didDrawCell: function (data) {
+            if (data.section === 'body' && data.column.index === 9) {
+              const sig = reactionPlans[data.row.index].SupervisorSignature;
+              if (sig && sig.startsWith('data:image')) {
+                doc.addImage(sig, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2);
+              }
+            }
+          },
+          didParseCell: function (data) {
+            if (data.section === 'body' && data.column.index === 9 && data.cell.text[0] && data.cell.text[0].startsWith('data:image')) {
+              data.cell.text = '';
+            }
+          }
+        });
+
+        // Page 2 QF
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+        doc.text(currentPageQfValue, 10, PAGE_HEIGHT - 10);
+      }
+
+      // Convert to blob and set to viewer
+      const pdfBlobUrl = doc.output('bloburl');
       setErrorPdfUrlV2(pdfBlobUrl);
+
     } catch (error) { toast.error("Failed to generate Error Proof V2 PDF."); }
     setIsErrorPdfLoadingV2(false);
   };
@@ -280,8 +465,6 @@ const Hof = () => {
       setSelectedErrorReportV2(null); fetchErrorReportsV2(); 
     } catch (err) { toast.error("Failed to save Error Proof V2 signature."); }
   };
-
-  const formatDate = (dateString) => { return new Date(dateString).toLocaleDateString("en-GB"); };
 
   return (
     <>

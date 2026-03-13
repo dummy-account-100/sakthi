@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
     FileDown, Calendar, Users, X, Loader, AlertTriangle, CheckCircle,
@@ -420,13 +420,13 @@ const AdminDashboard = () => {
         );
     }
 
-    if (activeView === 'unpoured-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigUnpouredMould onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'disa-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigDisaColumns onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === '4m-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigFourMColumns onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'dmm-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigDmmSetting onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'ep-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigErrorProof onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'checklist-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigDisaChecklist onBack={() => setActiveView('grid')} /></div>);
-    if (activeView === 'lpa-config') return (<div className="relative w-full min-h-screen bg-gray-100"><button onClick={() => setActiveView('grid')} className="absolute top-6 left-6 z-[100] flex items-center gap-2 bg-[#ff9100] text-white font-bold px-4 py-2 rounded shadow-lg hover:bg-orange-600 transition-colors uppercase tracking-wider text-sm">← Back to Modules</button><ConfigLpa onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'unpoured-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigUnpouredMould onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'disa-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigDisaColumns onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === '4m-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigFourMColumns onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'dmm-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigDmmSetting onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'ep-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigErrorProof onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'checklist-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigDisaChecklist onBack={() => setActiveView('grid')} /></div>);
+    if (activeView === 'lpa-config') return (<div className="relative w-full min-h-screen bg-gray-100"><ConfigLpa onBack={() => setActiveView('grid')} /></div>);
 
     // 🔥 NEW: QF SETTINGS MANAGER UI (INDIVIDUAL SAVE BUTTONS)
     if (activeView === 'qf-settings') {

@@ -7,7 +7,7 @@ exports.getChecklistDetails = async (req, res) => {
   try {
     const { date, disaMachine } = req.query;
 
-    // 🔥 FIX: Safely filters out deleted items so they disappear from the Operator UI
+    // Safely filters out deleted items so they disappear from the Operator UI
     const checklistResult = await sql.query`
       SELECT 
           M.MasterId, 
@@ -30,7 +30,11 @@ exports.getChecklistDetails = async (req, res) => {
       ORDER BY M.SlNo ASC
     `;
 
+    // Fetch HODs for the main dropdown
     const hodsResult = await sql.query`SELECT username as OperatorName FROM dbo.Users WHERE role = 'hod' ORDER BY username`;
+
+    // Fetch Supervisors for the NC Report Responsibility dropdown
+    const supervisorsResult = await sql.query`SELECT username as OperatorName FROM dbo.Users WHERE role = 'supervisor' OR role = 'admin' ORDER BY username`;
 
     const reportsResult = await sql.query`
       SELECT * FROM dbo.DisaNonConformanceReport 
@@ -40,6 +44,7 @@ exports.getChecklistDetails = async (req, res) => {
     res.json({
       checklist: checklistResult.recordset,
       operators: hodsResult.recordset,
+      supervisors: supervisorsResult.recordset, 
       reports: reportsResult.recordset
     });
 
@@ -165,14 +170,15 @@ exports.getMonthlyReport = async (req, res) => {
       WHERE MONTH(LogDate) = ${month} AND YEAR(LogDate) = ${year} AND DisaMachine = ${disaMachine}
     `;
 
+    // 🔥 FIX: Added SupervisorSignature to the SELECT query here
     const ncResult = await sql.query`
-      SELECT ReportId, ReportDate, NonConformityDetails, Correction, RootCause, CorrectiveAction, TargetDate, Responsibility, Sign, Status
+      SELECT ReportId, ReportDate, NonConformityDetails, Correction, RootCause, CorrectiveAction, TargetDate, Responsibility, Sign, Status, SupervisorSignature
       FROM DisaNonConformanceReport
       WHERE MONTH(ReportDate) = ${month} AND YEAR(ReportDate) = ${year} AND DisaMachine = ${disaMachine}
       ORDER BY ReportDate ASC
     `;
 
-    // 🔥 FETCH QF HISTORY
+    // FETCH QF HISTORY
     let qfHistory = [];
     try {
         const qfRes = await sql.query`SELECT qfValue, date FROM MachineChecklistQFvalues WHERE formName = 'disa-operator' ORDER BY date DESC, id DESC`;
@@ -246,7 +252,7 @@ exports.getBulkData = async (req, res) => {
     const transRes = await request.query(transQuery);
     const ncrRes = await request.query(ncrQuery);
 
-    // 🔥 FETCH QF HISTORY
+    // FETCH QF HISTORY
     let qfHistory = [];
     try {
         const qfRes = await request.query(`SELECT qfValue, date FROM MachineChecklistQFvalues WHERE formName = 'disa-operator' ORDER BY date DESC, id DESC`);
@@ -257,5 +263,44 @@ exports.getBulkData = async (req, res) => {
   } catch (error) {
     console.error("Error fetching bulk data:", error);
     res.status(500).json({ error: error.message });
+  }
+};
+
+// ==========================================
+//   7. SUPERVISOR NCR APIS (NEW)
+// ==========================================
+exports.getNcrReportsBySupervisor = async (req, res) => {
+  try {
+    const { name } = req.params;
+    
+    // Fetch all NCRs where this supervisor is assigned the responsibility
+    const result = await sql.query`
+      SELECT * FROM DisaNonConformanceReport 
+      WHERE Responsibility = ${name}
+      ORDER BY ReportDate DESC
+    `;
+    
+    res.json(result.recordset);
+  } catch (error) {
+    console.error("Error fetching NCR reports:", error);
+    res.status(500).json({ error: "Failed to fetch NCR reports" });
+  }
+};
+
+exports.signNcrBySupervisor = async (req, res) => {
+  try {
+    const { reportId, signature } = req.body;
+    
+    // Update the NCR with the signature and mark as Completed
+    await sql.query`
+      UPDATE DisaNonConformanceReport 
+      SET SupervisorSignature = ${signature}, Status = 'Completed'
+      WHERE ReportId = ${reportId}
+    `;
+    
+    res.json({ message: "NCR signed successfully" });
+  } catch (error) {
+    console.error("Error signing NCR:", error);
+    res.status(500).json({ error: "Failed to sign NCR" });
   }
 };

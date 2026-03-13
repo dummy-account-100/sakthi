@@ -167,13 +167,17 @@ const Supervisor = () => {
   };
 
   const handleOpenBottomModal = async (report) => {
-    setSelectedBottomReport(report); setBottomPdfUrl(null); setIsBottomPdfLoading(true);
+    setSelectedBottomReport(report); 
+    setBottomPdfUrl(null); 
+    setIsBottomPdfLoading(true);
+    
     try {
       const selectedDate = new Date(report.reportDate);
       const offset = selectedDate.getTimezoneOffset();
       const localDate = new Date(selectedDate.getTime() - (offset * 60 * 1000));
       const dateStr = localDate.toISOString().split('T')[0];
-      const month = localDate.getMonth() + 1; const year = localDate.getFullYear();
+      const month = localDate.getMonth() + 1; 
+      const year = localDate.getFullYear();
       const disaMachine = report.disa;
 
       const [detailsRes, monthlyRes] = await Promise.all([
@@ -183,30 +187,44 @@ const Supervisor = () => {
 
       const checklist = detailsRes.data.checklist; 
       const monthlyLogs = monthlyRes.data.monthlyLogs || []; 
-      const qfHistory = monthlyRes.data.qfHistory || []; // 🔥 Fetch QF History
+      const ncReports = monthlyRes.data.ncReports || [];
+      const qfHistory = monthlyRes.data.qfHistory || []; 
 
-      const historyMap = {}; const holidayDays = new Set(); const vatDays = new Set(); const pmDays = new Set();
-      const supSigMap = {}; const hofSig = monthlyLogs.find(l => l.HOFSignature)?.HOFSignature;
+      const historyMap = {}; const holidayDays = new Set(); const vatDays = new Set(); const prevMaintDays = new Set();
+      const supSigMap = {}; 
+      const hofSigRow = monthlyLogs.find(l => l.HOFSignature);
+      const hofSig = hofSigRow ? hofSigRow.HOFSignature : null;
 
       monthlyLogs.forEach(log => {
         const logDay = log.DayVal; const key = String(log.MasterId);
-        if (Number(log.IsHoliday) === 1) holidayDays.add(logDay);
-        if (Number(log.IsVatCleaning) === 1) vatDays.add(logDay);
-        if (Number(log.IsPreventiveMaintenance) === 1) pmDays.add(logDay); 
+
+        const isHol = log.IsHoliday == 1 || log.IsHoliday === true || String(log.IsHoliday) === '1';
+        const isVat = log.IsVatCleaning == 1 || log.IsVatCleaning === true || String(log.IsVatCleaning) === '1';
+        const isPM = log.IsPreventiveMaintenance == 1 || log.IsPreventiveMaintenance === true || String(log.IsPreventiveMaintenance) === '1';
+
+        if (isHol) holidayDays.add(logDay);
+        else if (isVat) vatDays.add(logDay);
+        else if (isPM) prevMaintDays.add(logDay); 
+        
         if (log.SupervisorSignature) supSigMap[logDay] = log.SupervisorSignature;
         if (!historyMap[key]) historyMap[key] = {};
-        if (log.IsNA === 1) { historyMap[key][logDay] = 'NA'; } else if (log.IsDone === 1) { historyMap[key][logDay] = 'Y'; } else { historyMap[key][logDay] = 'N'; }
+        
+        if (log.IsNA == 1 || log.IsNA === true) { historyMap[key][logDay] = 'NA'; } 
+        else if (log.IsDone == 1 || log.IsDone === true) { historyMap[key][logDay] = 'Y'; } 
+        else if (isHol || isVat || isPM) { historyMap[key][logDay] = ''; }
+        else { historyMap[key][logDay] = 'N'; }
       });
 
       const doc = new jsPDF('l', 'mm', 'a4');
       const monthName = localDate.toLocaleString('default', { month: 'long', year: 'numeric' });
       const daysInMonth = new Date(year, month, 0).getDate();
 
-      doc.setLineWidth(0.3); doc.rect(10, 10, 40, 20); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } catch(e){ doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); }
+      doc.setLineWidth(0.3); doc.rect(10, 10, 40, 20); 
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } 
+      catch (err) { doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); }
       
-      doc.rect(50, 10, 237, 20); doc.setFontSize(16); doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 168, 22, { align: 'center' });
-      doc.setFontSize(10); doc.text(`${disaMachine}`, 12, 35); doc.text(`MONTH : ${monthName}`, 235, 35);
+      doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 140, 22, { align: 'center' });
+      doc.rect(230, 10, 57, 20); doc.setFontSize(11); doc.text(disaMachine, 258.5, 16, { align: 'center' }); doc.line(230, 20, 287, 20); doc.setFontSize(10); doc.text(`Month: ${monthName}`, 258.5, 26, { align: 'center' });
 
       const days = Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
       const tableBody = checklist.map((item, rowIndex) => {
@@ -214,17 +232,21 @@ const Supervisor = () => {
         for (let i = 1; i <= daysInMonth; i++) {
           if (holidayDays.has(i)) { if (rowIndex === 0) row.push({ content: 'H\nO\nL\nI\nD\nA\nY', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [230, 230, 230], fontStyle: 'bold', textColor: [100, 100, 100] } }); }
           else if (vatDays.has(i)) { if (rowIndex === 0) row.push({ content: 'V\nA\nT\n\nC\nL\nE\nA\nN\nI\nN\nG', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [210, 230, 255], fontStyle: 'bold', textColor: [50, 100, 150] } }); }
-          else if (pmDays.has(i)) { if (rowIndex === 0) row.push({ content: 'P\nR\nE\nV\n.\n\nM\nA\nI\nN\nT', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [240, 220, 255], fontStyle: 'bold', textColor: [100, 50, 150] } }); } 
+          else if (prevMaintDays.has(i)) { if (rowIndex === 0) row.push({ content: 'P\nR\nE\nV\nE\nN\nT\nI\nV\nE\n\nM\nA\nI\nN\nT\nE\nN\nA\nN\nC\nE', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [243, 232, 255], fontStyle: 'bold', textColor: [126, 34, 206], fontSize: 4.5 } }); }
           else { row.push(historyMap[String(item.MasterId)]?.[i] || ''); }
         }
         return row;
       });
 
-      const supRow = ["", "Supervisor"]; for (let i = 1; i <= daysInMonth; i++) { supRow.push(""); }
-      const hofRow = ["", "HOF"]; for (let i = 1; i <= daysInMonth - 5; i++) { hofRow.push(""); }
+      const supRow = ["", "Supervisor"];
+      for (let i = 1; i <= daysInMonth; i++) { supRow.push(""); }
+      const hofRow = ["", "HOF"];
+      for (let i = 1; i <= daysInMonth - 5; i++) { hofRow.push(""); }
       hofRow.push({ content: '', colSpan: 5, styles: { halign: 'center', valign: 'middle' } });
+
       const footerRows = [supRow, hofRow];
-      const dynamicColumnStyles = {}; for (let i = 2; i < daysInMonth + 2; i++) { dynamicColumnStyles[i] = { cellWidth: 5, halign: 'center' }; }
+      const dynamicColumnStyles = {};
+      for (let i = 2; i < daysInMonth + 2; i++) { dynamicColumnStyles[i] = { cellWidth: 5, halign: 'center' }; }
 
       autoTable(doc, {
         startY: 38, head: [[{ content: 'S.No', styles: { halign: 'center', valign: 'middle' } }, { content: 'Check Points', styles: { halign: 'center', valign: 'middle' } }, ...days.map(d => ({ content: d, styles: { halign: 'center' } }))]],
@@ -251,13 +273,50 @@ const Supervisor = () => {
         }
       });
 
-      doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.text("Legend:   3 - OK     X - NOT OK     CA - Corrected during Audit     NA - Not Applicable", 10, doc.lastAutoTable.finalY + 6);
-      doc.setFont('helvetica', 'normal'); doc.text("Remarks: If Nonconformity please write on NCR format (back-side)", 10, doc.lastAutoTable.finalY + 12);
+      const finalY = doc.lastAutoTable.finalY + 6;
+      doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+      doc.text("Legend:   3 - OK     X - NOT OK     CA - Corrected during Audit     NA - Not Applicable", 10, finalY);
+      doc.setFont('helvetica', 'normal');
+      doc.text("Remarks: If Nonconformity please write on NCR format (back-side)", 10, finalY + 6);
       
-      // 🔥 DYNAMIC QF VALUE FOR PAGE 1 🔥
       const dynamicQf = getDynamicQfString(dateStr, qfHistory, "QF/08/MRO - 18, Rev No: 02 dt 01.01.2022");
       doc.text(dynamicQf, 10, 200); 
       doc.text("Page 1 of 2", 270, 200);
+
+      // Page 2 - NCR
+      doc.addPage(); doc.setDrawColor(0); doc.setLineWidth(0.3); 
+      doc.rect(10, 10, 40, 20); 
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } 
+      catch (err) { doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); }
+      doc.rect(50, 10, 237, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+      doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 168.5, 18, { align: 'center' }); doc.setFontSize(14); doc.text("Non-Conformance Report", 168.5, 26, { align: 'center' });
+
+      const ncRows = ncReports.map((r, index) => [ index + 1, new Date(r.ReportDate).toLocaleDateString('en-GB'), r.NonConformityDetails || '', r.Correction || '', r.RootCause || '', r.CorrectiveAction || '', r.TargetDate ? new Date(r.TargetDate).toLocaleDateString('en-GB') : '', r.Responsibility || '', '', r.Status || '' ]);
+      if (ncRows.length === 0) { for (let i = 0; i < 5; i++) ncRows.push(['', '', '', '', '', '', '', '', '', '']); }
+
+      autoTable(doc, {
+        startY: 35, head: [['S.No', 'Date', 'Non-Conformities Details', 'Correction', 'Root Cause', 'Corrective Action', 'Target Date', 'Responsibility', 'Signature', 'Status']],
+        body: ncRows, theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'middle', overflow: 'linebreak' },
+        headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', valign: 'middle' },
+        columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 40 }, 3: { cellWidth: 35 }, 4: { cellWidth: 35 }, 5: { cellWidth: 35 }, 6: { cellWidth: 20, halign: 'center' }, 7: { cellWidth: 25 }, 8: { cellWidth: 20, halign: 'center' }, 9: { cellWidth: 20, halign: 'center' } },
+        didDrawCell: function (data) {
+          if (data.section === 'body' && data.column.index === 8) {
+            const rowData = ncReports[data.row.index];
+            if (rowData && rowData.SupervisorSignature && rowData.SupervisorSignature.startsWith('data:image')) { try { doc.addImage(rowData.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { } }
+          }
+        },
+        didParseCell: function (data) {
+          if (data.section === 'body' && data.column.index === 9) {
+            const statusText = (data.cell.text || [])[0] || '';
+            if (statusText === 'Completed') { data.cell.styles.textColor = [0, 150, 0]; data.cell.styles.fontStyle = 'bold'; } 
+            else if (statusText === 'Pending') { data.cell.styles.textColor = [200, 0, 0]; data.cell.styles.fontStyle = 'bold'; }
+          }
+        }
+      });
+      
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal'); 
+      doc.text(dynamicQf, 10, 200); 
+      doc.text("Page 2 of 2", 270, 200);
 
       const pdfBlobUrl = doc.output('bloburl'); setBottomPdfUrl(pdfBlobUrl);
     } catch (error) { toast.error("Failed to generate PDF preview."); }
@@ -278,22 +337,51 @@ const Supervisor = () => {
   };
 
   // ==========================================
-  // 3. NCR LOGIC
+  // 3. NCR LOGIC (🔥 FETCHES FROM BOTH LPA AND CHECKLIST)
   // ==========================================
   const fetchNcrReports = async () => {
     try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/bottom-level-audit/supervisor-ncr/${currentSupervisor}`);
-      setNcrReports(res.data);
-    } catch (err) { toast.error("Failed to load NCRs."); }
+      let lpaData = [];
+      let checklistData = [];
+
+      try {
+        const resLpa = await axios.get(`${process.env.REACT_APP_API_URL}/api/bottom-level-audit/supervisor-ncr/${currentSupervisor}`);
+        lpaData = (resLpa.data || []).map(r => ({ ...r, source: 'LPA' }));
+      } catch (err) { console.warn("LPA NCR fetch error", err); }
+
+      try {
+        const resChecklist = await axios.get(`${process.env.REACT_APP_API_URL}/api/disa-checklist/supervisor-ncr/${currentSupervisor}`);
+        checklistData = (resChecklist.data || []).map(r => ({ ...r, source: 'Checklist' }));
+      } catch (err) { console.warn("Checklist NCR fetch error", err); }
+
+      // Merge and sort by Date (Descending)
+      const combined = [...lpaData, ...checklistData].sort((a, b) => new Date(b.ReportDate) - new Date(a.ReportDate));
+      setNcrReports(combined);
+    } catch (err) { 
+      toast.error("Failed to load NCRs."); 
+    }
   };
 
   const submitNcrSignature = async () => {
     if (ncrSigCanvas.current.isEmpty()) { toast.warning("Please provide your signature."); return; }
     const signatureData = ncrSigCanvas.current.getCanvas().toDataURL("image/png");
+    
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/bottom-level-audit/sign-ncr`, { reportId: selectedNcrReport.ReportId, signature: signatureData });
-      toast.success("NCR Verified and Completed!"); setSelectedNcrReport(null); fetchNcrReports(); 
-    } catch (err) { toast.error("Failed to save NCR signature."); }
+      const endpoint = selectedNcrReport.source === 'Checklist' 
+          ? '/api/disa-checklist/sign-ncr' 
+          : '/api/bottom-level-audit/sign-ncr';
+
+      await axios.post(`${process.env.REACT_APP_API_URL}${endpoint}`, { 
+        reportId: selectedNcrReport.ReportId || selectedNcrReport.id, 
+        signature: signatureData 
+      });
+      
+      toast.success("NCR Verified and Completed!"); 
+      setSelectedNcrReport(null); 
+      fetchNcrReports(); 
+    } catch (err) { 
+      toast.error("Failed to save NCR signature."); 
+    }
   };
 
   // ==========================================
@@ -317,9 +405,8 @@ const Supervisor = () => {
 
       const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/dmm-settings/details`, { params: { date: dateStr, disa: disaMachine } });
       const { shiftsData, shiftsMeta } = res.data;
-      const qfHistory = res.data.qfHistory || []; // 🔥 Fetch QF History
+      const qfHistory = res.data.qfHistory || []; 
 
-      // 🔥 DYNAMIC QF VALUE 🔥
       const dynamicQf = getDynamicQfString(dateStr, qfHistory, "QF/07/FBP-13, Rev.No:06 dt 08.10.2025");
 
       const doc = new jsPDF('l', 'mm', 'a4'); 
@@ -437,7 +524,7 @@ const Supervisor = () => {
   };
 
   // ==========================================
-  // 6. ERROR PROOF REACTION PLANS LOGIC (🔥 FULL-SCREEN PDF FIX)
+  // 6. ERROR PROOF REACTION PLANS LOGIC 
   // ==========================================
   const fetchErrorReports = async () => {
     try {
@@ -589,13 +676,41 @@ const Supervisor = () => {
           {ncrReports.length === 0 ? <p className="text-gray-500 italic">No NCRs to review.</p> : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse border border-gray-300">
-                <thead className="bg-gray-800 text-white"><tr><th className="p-3 border border-gray-300">Date</th><th className="p-3 border border-gray-300">Machine</th><th className="p-3 border border-gray-300">NC Details</th><th className="p-3 border border-gray-300">Responsibility</th><th className="p-3 border border-gray-300">Status</th><th className="p-3 border border-gray-300 text-center">Action</th></tr></thead>
+                <thead className="bg-gray-800 text-white">
+                  <tr>
+                    <th className="p-3 border border-gray-300 w-24 text-center">Source</th>
+                    <th className="p-3 border border-gray-300">Date</th>
+                    <th className="p-3 border border-gray-300">Machine</th>
+                    <th className="p-3 border border-gray-300">NC Details</th>
+                    <th className="p-3 border border-gray-300">Responsibility</th>
+                    <th className="p-3 border border-gray-300">Status</th>
+                    <th className="p-3 border border-gray-300 text-center">Action</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {ncrReports.map((report, idx) => (
                     <tr key={idx} className="hover:bg-red-50">
-                      <td className="p-3 border border-gray-300 font-medium">{formatDate(report.ReportDate)}</td><td className="p-3 border border-gray-300 font-bold">{report.DisaMachine}</td><td className="p-3 border border-gray-300 text-sm">{report.NonConformityDetails}</td><td className="p-3 border border-gray-300 font-bold">{report.Responsibility}</td>
-                      <td className="p-3 border border-gray-300">{report.Status === 'Completed' ? <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">✓ Completed</span> : <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">Pending</span>}</td>
-                      <td className="p-3 border border-gray-300 text-center">{report.Status !== 'Completed' && <button onClick={() => setSelectedNcrReport(report)} className="bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow transition-colors">Verify & Sign</button>}</td>
+                      <td className="p-3 border border-gray-300 text-center font-bold uppercase text-[10px] tracking-wider">
+                        {report.source === 'LPA' 
+                          ? <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">LPA</span> 
+                          : <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded">Checklist</span>}
+                      </td>
+                      <td className="p-3 border border-gray-300 font-medium">{formatDate(report.ReportDate)}</td>
+                      <td className="p-3 border border-gray-300 font-bold">{report.DisaMachine}</td>
+                      <td className="p-3 border border-gray-300 text-sm">{report.NonConformityDetails}</td>
+                      <td className="p-3 border border-gray-300 font-bold">{report.Responsibility}</td>
+                      <td className="p-3 border border-gray-300">
+                        {report.Status === 'Completed' 
+                          ? <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">✓ Completed</span> 
+                          : <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">Pending</span>}
+                      </td>
+                      <td className="p-3 border border-gray-300 text-center">
+                        {report.Status !== 'Completed' && (
+                          <button onClick={() => setSelectedNcrReport(report)} className="bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow transition-colors">
+                            Verify & Sign
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -874,7 +989,7 @@ const Supervisor = () => {
         </div>
       )}
 
-      {/* 6. ERROR PROOF MODAL (🔥 FULL-SCREEN SPLIT UI FIX) */}
+      {/* 6. ERROR PROOF MODAL */}
       {selectedErrorReport && (
         <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
           <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
@@ -938,14 +1053,18 @@ const Supervisor = () => {
         </div>
       )}
 
-      {/* NCR Modal Remains a standard popup because it doesn't have an underlying PDF */}
+      {/* NCR Modal */}
       {selectedNcrReport && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden flex flex-col">
             <div className="bg-red-600 text-white px-6 py-4 flex justify-between items-center shrink-0"><h3 className="font-bold text-lg">Verify Non-Conformance Report</h3><button onClick={() => setSelectedNcrReport(null)} className="text-red-200 hover:text-white font-bold text-2xl leading-none">&times;</button></div>
             <div className="p-6 overflow-y-auto">
                <div className="bg-red-50 p-4 rounded-lg border border-red-200 mb-6 flex flex-col gap-3 text-sm text-gray-800">
-                  <div className="flex justify-between border-b border-red-200 pb-2"><p><span className="font-bold">Date:</span> {formatDate(selectedNcrReport.ReportDate)}</p><p><span className="font-bold">Machine:</span> {selectedNcrReport.DisaMachine}</p></div>
+                  <div className="flex justify-between border-b border-red-200 pb-2">
+                      <p><span className="font-bold">Source:</span> {selectedNcrReport.source}</p>
+                      <p><span className="font-bold">Date:</span> {formatDate(selectedNcrReport.ReportDate)}</p>
+                      <p><span className="font-bold">Machine:</span> {selectedNcrReport.DisaMachine}</p>
+                  </div>
                   <p><span className="font-bold">NC Details:</span> {selectedNcrReport.NonConformityDetails || 'N/A'}</p><p><span className="font-bold">Correction:</span> {selectedNcrReport.Correction || 'N/A'}</p><p><span className="font-bold">Root Cause:</span> {selectedNcrReport.RootCause || 'N/A'}</p><p><span className="font-bold">Corrective Action:</span> {selectedNcrReport.CorrectiveAction || 'N/A'}</p>
                </div>
                <label className="block text-gray-800 font-bold mb-2 text-sm">Sign below to confirm resolution:</label><div className="border-2 border-dashed border-gray-300 bg-gray-50 rounded-lg overflow-hidden mb-2"><SignatureCanvas ref={ncrSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-40 cursor-crosshair' }} /></div><div className="flex justify-end mb-6"><button onClick={() => ncrSigCanvas.current.clear()} className="text-sm text-red-500 hover:text-red-700 font-bold underline">Clear Pad</button></div>

@@ -7,6 +7,25 @@ import "react-toastify/dist/ReactToastify.css";
 import { Loader, Maximize2, Minimize2 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import logo from '../Assets/logo.png'; 
+
+// 🔥 Dynamic QF Helpers
+const getSafeDateStr = (val) => {
+  if (!val) return null;
+  if (typeof val === 'string') return val.split('T')[0];
+  try { return val.toISOString().split('T')[0]; } catch (e) { return null; }
+};
+
+const getDynamicQfString = (recordDate, qfHistory, defaultFallback) => {
+  if (!qfHistory || !Array.isArray(qfHistory) || qfHistory.length === 0) return defaultFallback;
+  const targetDateStr = getSafeDateStr(recordDate) || getSafeDateStr(new Date());
+  for (const qf of qfHistory) {
+      const qfDateStr = getSafeDateStr(qf.date);
+      if (!qfDateStr) continue;
+      if (qfDateStr <= targetDateStr) return qf.qfValue;
+  }
+  return qfHistory[qfHistory.length - 1].qfValue || defaultFallback;
+};
 
 const SupervisorBottomLevel = () => {
   const [reports, setReports] = useState([]);
@@ -42,11 +61,15 @@ const SupervisorBottomLevel = () => {
     setIsPdfMaximized(false); 
 
     try {
+      // 1. Fix Date & Timezone Shift
       const selectedDate = new Date(report.reportDate);
-      const month = selectedDate.getMonth() + 1;
-      const year = selectedDate.getFullYear();
+      const offset = selectedDate.getTimezoneOffset();
+      const localDate = new Date(selectedDate.getTime() - (offset * 60 * 1000));
+      
+      const dateStr = localDate.toISOString().split('T')[0];
+      const month = localDate.getMonth() + 1;
+      const year = localDate.getFullYear();
       const disaMachine = report.disa;
-      const dateStr = selectedDate.toISOString().split('T')[0];
 
       const [detailsRes, monthlyRes] = await Promise.all([
         axios.get(`${API_BASE}/details`, { params: { date: dateStr, disaMachine } }),
@@ -56,119 +79,97 @@ const SupervisorBottomLevel = () => {
       const checklist = detailsRes.data.checklist;
       const monthlyLogs = monthlyRes.data.monthlyLogs || [];
       const ncReports = monthlyRes.data.ncReports || [];
+      const qfHistory = monthlyRes.data.qfHistory || [];
 
-      const historyMap = {};
-      const holidayDays = new Set();
-      const vatDays = new Set();
+      const historyMap = {}; const holidayDays = new Set(); const vatDays = new Set(); const prevMaintDays = new Set();
       const supSigMap = {}; 
-      const hofSig = monthlyLogs.find(l => l.HOFSignature)?.HOFSignature; 
+      const hofSigRow = monthlyLogs.find(l => l.HOFSignature);
+      const hofSig = hofSigRow ? hofSigRow.HOFSignature : null; 
 
+      // 2. Fix Boolean Data Parsing 
       monthlyLogs.forEach(log => {
         const logDay = log.DayVal; 
         const key = String(log.MasterId); 
         
-        if (Number(log.IsHoliday) === 1) holidayDays.add(logDay);
-        if (Number(log.IsVatCleaning) === 1) vatDays.add(logDay);
-        if (log.SupervisorSignature) supSigMap[logDay] = log.SupervisorSignature;
+        const isHol = log.IsHoliday == 1 || log.IsHoliday === true || String(log.IsHoliday) === '1';
+        const isVat = log.IsVatCleaning == 1 || log.IsVatCleaning === true || String(log.IsVatCleaning) === '1';
+        const isPM = log.IsPreventiveMaintenance == 1 || log.IsPreventiveMaintenance === true || String(log.IsPreventiveMaintenance) === '1';
 
+        if (isHol) holidayDays.add(logDay);
+        else if (isVat) vatDays.add(logDay);
+        else if (isPM) prevMaintDays.add(logDay); 
+
+        if (log.SupervisorSignature) supSigMap[logDay] = log.SupervisorSignature;
         if (!historyMap[key]) historyMap[key] = {};
         
-        if (log.IsNA == 1) {
-            historyMap[key][logDay] = 'NA';
-        } else if (log.IsDone == 1) {
-            historyMap[key][logDay] = 'Y';
-        } else {
-            historyMap[key][logDay] = 'N'; 
-        }
+        if (log.IsNA == 1 || log.IsNA === true) { historyMap[key][logDay] = 'NA'; } 
+        else if (log.IsDone == 1 || log.IsDone === true) { historyMap[key][logDay] = 'Y'; } 
+        else if (isHol || isVat || isPM) { historyMap[key][logDay] = ''; }
+        else { historyMap[key][logDay] = 'N'; }
       });
 
+      // PAGE 1: CHECKLIST
       const doc = new jsPDF('l', 'mm', 'a4'); 
-      const monthName = selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+      const monthName = localDate.toLocaleString('default', { month: 'long', year: 'numeric' });
       const daysInMonth = new Date(year, month, 0).getDate();
 
       doc.setLineWidth(0.3);
-      doc.rect(10, 10, 40, 20); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-      doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' });
-      doc.rect(50, 10, 237, 20); doc.setFontSize(16);
-      doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 168, 22, { align: 'center' });
+      doc.rect(10, 10, 40, 20); 
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } 
+      catch (err) { doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); }
       
-      doc.setFontSize(10);
-      doc.text(`${disaMachine}`, 12, 35); 
-      doc.text(`MONTH : ${monthName}`, 235, 35);
+      doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold'); 
+      doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 140, 22, { align: 'center' });
+      
+      doc.rect(230, 10, 57, 20); doc.setFontSize(11); 
+      doc.text(disaMachine, 258.5, 16, { align: 'center' }); 
+      doc.line(230, 20, 287, 20); doc.setFontSize(10); 
+      doc.text(`Month: ${monthName}`, 258.5, 26, { align: 'center' });
 
       const days = Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString());
-      
       const tableBody = checklist.map((item, rowIndex) => {
         const row = [String(item.SlNo), item.CheckPointDesc];
         for (let i = 1; i <= daysInMonth; i++) {
-            if (holidayDays.has(i)) {
-                if (rowIndex === 0) row.push({ content: 'H\nO\nL\nI\nD\nA\nY', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [230, 230, 230], fontStyle: 'bold', textColor: [100, 100, 100] } });
-            } else if (vatDays.has(i)) {
-                if (rowIndex === 0) row.push({ content: 'V\nA\nT\n\nC\nL\nE\nA\nN\nI\nN\nG', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [210, 230, 255], fontStyle: 'bold', textColor: [50, 100, 150] } });
-            } else {
-                const key = String(item.MasterId);
-                row.push(historyMap[key]?.[i] || ''); 
-            }
+          if (holidayDays.has(i)) { if (rowIndex === 0) row.push({ content: 'H\nO\nL\nI\nD\nA\nY', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [230, 230, 230], fontStyle: 'bold', textColor: [100, 100, 100] } }); }
+          else if (vatDays.has(i)) { if (rowIndex === 0) row.push({ content: 'V\nA\nT\n\nC\nL\nE\nA\nN\nI\nN\nG', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [210, 230, 255], fontStyle: 'bold', textColor: [50, 100, 150] } }); }
+          else if (prevMaintDays.has(i)) { if (rowIndex === 0) row.push({ content: 'P\nR\nE\nV\nE\nN\nT\nI\nV\nE\n\nM\nA\nI\nN\nT\nE\nN\nA\nN\nC\nE', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [243, 232, 255], fontStyle: 'bold', textColor: [126, 34, 206], fontSize: 4.5 } }); }
+          else { row.push(historyMap[String(item.MasterId)]?.[i] || ''); }
         }
         return row;
       });
 
-      const supRow = ["", "Supervisor Sign"];
-      for (let i = 1; i <= daysInMonth; i++) { supRow.push(supSigMap[i] ? "SIG" : ""); }
-
-      const hofRow = ["", "HOF SIGN"];
+      const supRow = ["", "Supervisor"];
+      for (let i = 1; i <= daysInMonth; i++) { supRow.push(""); }
+      const hofRow = ["", "HOF"];
       for (let i = 1; i <= daysInMonth - 5; i++) { hofRow.push(""); }
-      hofRow.push({ content: hofSig ? 'HOF_SIG' : '', colSpan: 5, styles: { halign: 'center', valign: 'middle' } });
+      hofRow.push({ content: '', colSpan: 5, styles: { halign: 'center', valign: 'middle' } });
 
       const footerRows = [supRow, hofRow];
       const dynamicColumnStyles = {};
       for (let i = 2; i < daysInMonth + 2; i++) { dynamicColumnStyles[i] = { cellWidth: 5, halign: 'center' }; }
 
       autoTable(doc, {
-        startY: 38,
-        head: [[
-          { content: 'S.No', styles: { halign: 'center', valign: 'middle' } },
-          { content: 'Check Points', styles: { halign: 'center', valign: 'middle' } },
-          ...days.map(d => ({ content: d, styles: { halign: 'center' } }))
-        ]],
-        body: [...tableBody, ...footerRows],
-        theme: 'grid',
-        styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'middle' },
+        startY: 38, head: [[{ content: 'S.No', styles: { halign: 'center', valign: 'middle' } }, { content: 'Check Points', styles: { halign: 'center', valign: 'middle' } }, ...days.map(d => ({ content: d, styles: { halign: 'center' } }))]],
+        body: [...tableBody, ...footerRows], theme: 'grid', styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'middle' },
         headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0] },
         columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 105 }, ...dynamicColumnStyles },
-        
-        didDrawCell: function(data) {
-           if (data.row.index === tableBody.length && data.column.index > 1) { 
-               const dayIndex = data.column.index - 1; 
-               if (data.cell.text[0] === 'SIG') {
-                   const sigData = supSigMap[dayIndex];
-                   if (sigData && sigData.startsWith('data:image')) {
-                       doc.setFillColor(255, 255, 255);
-                       doc.rect(data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1, 'F');
-                       try { doc.addImage(sigData, 'PNG', data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1); } catch(e){}
-                   }
-               }
-           }
-           if (data.row.index === tableBody.length + 1) { 
-               if (data.cell.text[0] === 'HOF_SIG' && hofSig && hofSig.startsWith('data:image')) {
-                   doc.setFillColor(255, 255, 255);
-                   doc.rect(data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1, 'F');
-                   try { doc.addImage(hofSig, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch(e){}
-               }
-           }
+        didDrawCell: function (data) {
+          if (data.row.index === tableBody.length && data.column.index > 1) {
+            const sigData = supSigMap[data.column.index - 1];
+            if (sigData && sigData.startsWith('data:image')) { try { doc.addImage(sigData, 'PNG', data.cell.x + 0.5, data.cell.y + 0.5, data.cell.width - 1, data.cell.height - 1); } catch (e) { } }
+          }
+          if (data.row.index === tableBody.length + 1 && data.cell.colSpan === 5) {
+            if (hofSig && hofSig.startsWith('data:image')) { try { doc.addImage(hofSig, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { } }
+          }
         },
-        didParseCell: function(data) {
-           if (data.row.index >= tableBody.length && data.column.index === 1) {
-               data.cell.styles.fontStyle = 'bold'; data.cell.styles.halign = 'right';
-           }
-           if (data.column.index > 1 && data.row.index < tableBody.length) {
-             const rawTextArray = data.cell.text || [];
-             const text = rawTextArray[0] ? rawTextArray[0] : '';
-             
-             if (text === 'Y') { data.cell.styles.font = 'ZapfDingbats'; data.cell.text = '3'; data.cell.styles.textColor = [0, 100, 0]; } 
-             else if (text === 'N') { data.cell.styles.textColor = [255, 0, 0]; data.cell.text = 'X'; data.cell.styles.fontStyle = 'bold'; } 
-             else if (text === 'NA') { data.cell.styles.fontSize = 5; data.cell.styles.textColor = [100, 100, 100]; data.cell.styles.fontStyle = 'bold'; }
-           }
+        didParseCell: function (data) {
+          if (data.row.index >= tableBody.length && data.column.index === 1) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.halign = 'right'; }
+          if (data.column.index > 1 && data.row.index < tableBody.length) {
+            const text = (data.cell.text || [])[0] || '';
+            if (text === 'Y') { data.cell.styles.font = 'ZapfDingbats'; data.cell.text = '3'; data.cell.styles.textColor = [0, 100, 0]; }
+            else if (text === 'N') { data.cell.styles.textColor = [255, 0, 0]; data.cell.text = 'X'; data.cell.styles.fontStyle = 'bold'; }
+            else if (text === 'NA') { data.cell.styles.fontSize = 5; data.cell.styles.textColor = [100, 100, 100]; data.cell.styles.fontStyle = 'bold'; }
+          }
         }
       });
 
@@ -177,8 +178,45 @@ const SupervisorBottomLevel = () => {
       doc.text("Legend:   3 - OK     X - NOT OK     CA - Corrected during Audit     NA - Not Applicable", 10, finalY);
       doc.setFont('helvetica', 'normal');
       doc.text("Remarks: If Nonconformity please write on NCR format (back-side)", 10, finalY + 6);
-      doc.text("QF/08/MRO - 18, Rev No: 02 dt 01.01.2022", 10, 200);
+      
+      const dynamicQf = getDynamicQfString(dateStr, qfHistory, "QF/08/MRO - 18, Rev No: 02 dt 01.01.2022");
+      doc.text(dynamicQf, 10, 200);
       doc.text("Page 1 of 2", 270, 200);
+
+      // PAGE 2: NCR
+      doc.addPage(); doc.setDrawColor(0); doc.setLineWidth(0.3); 
+      doc.rect(10, 10, 40, 20); 
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } 
+      catch (err) { doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); }
+      doc.rect(50, 10, 237, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+      doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 168.5, 18, { align: 'center' }); doc.setFontSize(14); doc.text("Non-Conformance Report", 168.5, 26, { align: 'center' });
+
+      const ncRows = ncReports.map((r, index) => [ index + 1, new Date(r.ReportDate).toLocaleDateString('en-GB'), r.NonConformityDetails || '', r.Correction || '', r.RootCause || '', r.CorrectiveAction || '', r.TargetDate ? new Date(r.TargetDate).toLocaleDateString('en-GB') : '', r.Responsibility || '', '', r.Status || '' ]);
+      if (ncRows.length === 0) { for (let i = 0; i < 5; i++) ncRows.push(['', '', '', '', '', '', '', '', '', '']); }
+
+      autoTable(doc, {
+        startY: 35, head: [['S.No', 'Date', 'Non-Conformities Details', 'Correction', 'Root Cause', 'Corrective Action', 'Target Date', 'Responsibility', 'Signature', 'Status']],
+        body: ncRows, theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'middle', overflow: 'linebreak' },
+        headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', valign: 'middle' },
+        columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 40 }, 3: { cellWidth: 35 }, 4: { cellWidth: 35 }, 5: { cellWidth: 35 }, 6: { cellWidth: 20, halign: 'center' }, 7: { cellWidth: 25 }, 8: { cellWidth: 20, halign: 'center' }, 9: { cellWidth: 20, halign: 'center' } },
+        didDrawCell: function (data) {
+          if (data.section === 'body' && data.column.index === 8) {
+            const rowData = ncReports[data.row.index];
+            if (rowData && rowData.SupervisorSignature && rowData.SupervisorSignature.startsWith('data:image')) { try { doc.addImage(rowData.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { } }
+          }
+        },
+        didParseCell: function (data) {
+          if (data.section === 'body' && data.column.index === 9) {
+            const statusText = (data.cell.text || [])[0] || '';
+            if (statusText === 'Completed') { data.cell.styles.textColor = [0, 150, 0]; data.cell.styles.fontStyle = 'bold'; } 
+            else if (statusText === 'Pending') { data.cell.styles.textColor = [200, 0, 0]; data.cell.styles.fontStyle = 'bold'; }
+          }
+        }
+      });
+      
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal'); 
+      doc.text(dynamicQf, 10, 200); 
+      doc.text("Page 2 of 2", 270, 200);
 
       const pdfBlobUrl = doc.output('bloburl');
       setPdfUrl(pdfBlobUrl);

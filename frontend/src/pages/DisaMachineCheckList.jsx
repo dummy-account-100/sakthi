@@ -5,7 +5,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import SignatureCanvas from 'react-signature-canvas';
 import Header from '../components/Header';
-import logo from '../Assets/logo.png'; // Make sure this path is correct
+import logo from '../Assets/logo.png'; 
 
 // --- Upgraded to Toast Notification ---
 const ToastNotification = ({ data, onClose }) => {
@@ -61,6 +61,7 @@ const getShiftDate = () => {
 const DisaMachineCheckList = () => {
   const [checklist, setChecklist] = useState([]);
   const [operators, setOperators] = useState([]);
+  const [supervisors, setSupervisors] = useState([]); 
   const [reportsMap, setReportsMap] = useState({});
   const [headerData, setHeaderData] = useState({
     date: getShiftDate(),
@@ -84,7 +85,8 @@ const DisaMachineCheckList = () => {
         params: { date: headerData.date, disaMachine: headerData.disaMachine }
       });
 
-      setOperators(res.data.operators);
+      setOperators(res.data.operators || []);
+      setSupervisors(res.data.supervisors || []); 
 
       let foundHOD = '';
       let foundOpSig = '';
@@ -104,8 +106,8 @@ const DisaMachineCheckList = () => {
       });
 
       setChecklist(mergedList);
-
       setHeaderData(prev => ({ ...prev, operatorName: foundHOD }));
+
       if (foundOpSig && operatorSigPad.current) {
         operatorSigPad.current.fromDataURL(foundOpSig);
       } else if (operatorSigPad.current) {
@@ -117,7 +119,6 @@ const DisaMachineCheckList = () => {
       setReportsMap(reportsObj);
 
     } catch (error) {
-      console.error("Fetch Error:", error);
       setNotification({ show: true, type: 'error', message: "Failed to load data." });
     }
   };
@@ -137,12 +138,36 @@ const DisaMachineCheckList = () => {
   };
 
   const handleNotOkClick = (item) => {
+    if (!headerData.operatorName && !(isGlobalHoliday || isGlobalVatCleaning || isGlobalPrevMaint)) {
+      document.getElementById('checklist-footer')?.scrollIntoView({ behavior: 'smooth' });
+      return setNotification({ show: true, type: 'error', message: 'Please select the HOD Name at the bottom before adding NCR.' });
+    }
+
     setModalItem(item);
     const existingReport = reportsMap[item.MasterId];
+
     if (existingReport) {
-      setNcForm({ ncDetails: existingReport.NonConformityDetails, correction: existingReport.Correction, rootCause: existingReport.RootCause, correctiveAction: existingReport.CorrectiveAction, targetDate: existingReport.TargetDate.split('T')[0], responsibility: existingReport.Responsibility, sign: existingReport.Sign, status: existingReport.Status });
+      setNcForm({ 
+        ncDetails: existingReport.NonConformityDetails, 
+        correction: existingReport.Correction, 
+        rootCause: existingReport.RootCause, 
+        correctiveAction: existingReport.CorrectiveAction, 
+        targetDate: existingReport.TargetDate ? existingReport.TargetDate.split('T')[0] : headerData.date, 
+        responsibility: existingReport.Responsibility, 
+        sign: existingReport.Sign, 
+        status: existingReport.Status 
+      });
     } else {
-      setNcForm({ ncDetails: '', correction: '', rootCause: '', correctiveAction: '', targetDate: headerData.date, responsibility: '', sign: '', status: 'Pending' });
+      setNcForm({ 
+        ncDetails: '', 
+        correction: '', 
+        rootCause: '', 
+        correctiveAction: '', 
+        targetDate: headerData.date, 
+        responsibility: '', 
+        sign: headerData.operatorName || 'N/A', 
+        status: 'Pending' 
+      });
     }
     setIsModalOpen(true);
   };
@@ -175,9 +200,16 @@ const DisaMachineCheckList = () => {
       });
       setNotification({ show: true, type: 'success', message: 'Report Logged Successfully.' });
       setIsModalOpen(false);
-      setReportsMap(prev => ({ ...prev, [modalItem.MasterId]: { ...ncForm, MasterId: modalItem.MasterId, Status: 'Pending', Name: ncForm.sign } }));
+      
+      // Update local state without resetting to pending if it was completed
+      setReportsMap(prev => ({ 
+        ...prev, 
+        [modalItem.MasterId]: { ...ncForm, MasterId: modalItem.MasterId, Status: ncForm.status, Name: ncForm.sign } 
+      }));
       setChecklist(prev => prev.map(c => c.MasterId === modalItem.MasterId ? { ...c, IsDone: false, ReadingValue: '' } : c));
-    } catch (error) { setNotification({ show: true, type: 'error', message: 'Failed to save report.' }); }
+    } catch (error) { 
+      setNotification({ show: true, type: 'error', message: 'Failed to save report.' }); 
+    }
   };
 
   const handleBatchSubmit = async () => {
@@ -243,7 +275,6 @@ const DisaMachineCheckList = () => {
         qfHistory = res.data.qfHistory || []; 
       } catch (backendErr) { console.warn(backendErr); }
 
-      // 🔥 FIND CORRECT QF VALUE BASED ON HISTORY 🔥
       let currentPageQfValue = "QF/07/FBP-13, Rev.No:06 dt 08.10.2025";
       const reportDateObj = new Date(year, month - 1, 1);
       for (let qf of qfHistory) {
@@ -260,7 +291,6 @@ const DisaMachineCheckList = () => {
       const holidayDays = new Set();
       const vatDays = new Set();
       const prevMaintDays = new Set();
-
       const opSigMap = {};
       const hodSigMap = {};
 
@@ -281,7 +311,6 @@ const DisaMachineCheckList = () => {
 
         if (!historyMap[key]) historyMap[key] = {};
 
-        // Block text/readings on special days
         if (isHol || isVat || isPM) {
           historyMap[key][logDay] = '';
         } else if (log.ReadingValue) {
@@ -295,41 +324,31 @@ const DisaMachineCheckList = () => {
       const doc = new jsPDF('l', 'mm', 'a4');
       const monthName = selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' });
 
-      // ==============================================================
-      // 🔥 STANDARDIZED HEADER WITH LOGO BOX (PAGE 1)
-      // ==============================================================
       doc.setLineWidth(0.3);
-      
-      // Box 1: SAKTHI AUTO (Logo Area)
       doc.rect(10, 10, 40, 20);
-      try {
-        doc.addImage(logo, 'PNG', 12, 11, 36, 18);
-      } catch (err) {
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } 
+      catch (err) {
         doc.setFontSize(14); doc.setFont('helvetica', 'bold');
         doc.text("SAKTHI", 30, 18, { align: 'center' }); 
         doc.text("AUTO", 30, 26, { align: 'center' });
       }
 
-      // Box 2: Title
       doc.rect(50, 10, 180, 20);
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
       doc.text("DISA MACHINE OPERATOR CHECK SHEET", 140, 22, { align: 'center' });
 
-      // Box 3: Meta (DISA & Month)
       doc.rect(230, 10, 57, 20);
       doc.setFontSize(11);
       doc.text(headerData.disaMachine, 258.5, 16, { align: 'center' });
       doc.line(230, 20, 287, 20);
       doc.setFontSize(10);
       doc.text(`Month: ${monthName}`, 258.5, 26, { align: 'center' });
-      // ==============================================================
 
       const days = Array.from({ length: 31 }, (_, i) => (i + 1).toString());
 
       const tableBody = checklist.map((item, rowIndex) => {
         const row = [String(item.SlNo), item.CheckPointDesc, item.CheckMethod];
-
         for (let i = 1; i <= 31; i++) {
           if (holidayDays.has(i)) {
             if (rowIndex === 0) row.push({ content: 'H\nO\nL\nI\nD\nA\nY', rowSpan: checklist.length, styles: { halign: 'center', valign: 'middle', fillColor: [230, 230, 230], fontStyle: 'bold', textColor: [100, 100, 100] } });
@@ -429,7 +448,6 @@ const DisaMachineCheckList = () => {
       doc.setFontSize(8); doc.setFont('helvetica', 'normal');
       doc.text("Note: If any deviation noticed during the verification, corrective actions should be taken and recorded in the NCR (back-side).", 10, finalY);
       
-      // 🔥 RENDER DYNAMIC QF VALUE ON PAGE 1 🔥
       doc.text(currentPageQfValue, 10, 200);
       doc.text("Page 1 of 2", 270, 200);
 
@@ -439,25 +457,22 @@ const DisaMachineCheckList = () => {
       doc.addPage();
       doc.setDrawColor(0); doc.setLineWidth(0.3);
       
-      // Box 1: Logo
       doc.rect(10, 10, 40, 20);
-      try {
-        doc.addImage(logo, 'PNG', 12, 11, 36, 18);
-      } catch (err) {
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } 
+      catch (err) {
         doc.setFontSize(14); doc.setFont('helvetica', 'bold');
         doc.text("SAKTHI", 30, 18, { align: 'center' });
         doc.text("AUTO", 30, 26, { align: 'center' });
       }
 
-      // Box 2: Title (Full width till end of page margin)
       doc.rect(50, 10, 237, 20);
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
       doc.text("DISA MACHINE OPERATOR CHECK SHEET", 168.5, 18, { align: 'center' });
       doc.setFontSize(14);
       doc.text("Non-Conformance Report", 168.5, 26, { align: 'center' });
-      // ==============================================================
 
+      // 🔥 FIX: Passed empty string for Signature column to allow Image drawing
       const ncRows = ncReports.map((report, index) => [
         index + 1,
         new Date(report.ReportDate).toLocaleDateString('en-GB'),
@@ -467,7 +482,7 @@ const DisaMachineCheckList = () => {
         report.CorrectiveAction || '',
         report.TargetDate ? new Date(report.TargetDate).toLocaleDateString('en-GB') : '',
         report.Responsibility || '',
-        report.Sign || '',
+        '', // <--- Replaced report.Sign with empty string so the Supervisor Signature draws correctly
         report.Status || ''
       ]);
 
@@ -477,17 +492,30 @@ const DisaMachineCheckList = () => {
 
       autoTable(doc, {
         startY: 35,
-        head: [['S.No', 'Date', 'Non-Conformities Details', 'Correction', 'Root Cause', 'Corrective Action', 'Target Date', 'Responsibility', 'Name', 'Status']],
+        head: [['S.No', 'Date', 'Non-Conformities Details', 'Correction', 'Root Cause', 'Corrective Action', 'Target Date', 'Responsibility', 'Signature', 'Status']],
         body: ncRows,
         theme: 'grid',
         styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'top', overflow: 'linebreak' },
         headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', valign: 'middle' },
-        columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 40 }, 3: { cellWidth: 35 }, 4: { cellWidth: 35 }, 5: { cellWidth: 35 }, 6: { cellWidth: 20, halign: 'center' }, 7: { cellWidth: 25 }, 8: { cellWidth: 20 }, 9: { cellWidth: 20, halign: 'center' } }
+        columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 40 }, 3: { cellWidth: 35 }, 4: { cellWidth: 35 }, 5: { cellWidth: 35 }, 6: { cellWidth: 20, halign: 'center' }, 7: { cellWidth: 25 }, 8: { cellWidth: 20 }, 9: { cellWidth: 20, halign: 'center' } },
+        didDrawCell: function (data) {
+          if (data.section === 'body' && data.column.index === 8) {
+            const rowData = ncReports[data.row.index];
+            if (rowData && rowData.SupervisorSignature && rowData.SupervisorSignature.startsWith('data:image')) {
+               try { doc.addImage(rowData.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { } 
+            }
+          }
+        },
+        didParseCell: function (data) {
+          if (data.section === 'body' && data.column.index === 9) {
+            const statusText = (data.cell.text || [])[0] || '';
+            if (statusText === 'Completed') { data.cell.styles.textColor = [0, 150, 0]; data.cell.styles.fontStyle = 'bold'; } 
+            else if (statusText === 'Pending') { data.cell.styles.textColor = [200, 0, 0]; data.cell.styles.fontStyle = 'bold'; }
+          }
+        }
       });
 
       doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-      
-      // 🔥 RENDER DYNAMIC QF VALUE ON PAGE 2 🔥
       doc.text(currentPageQfValue, 10, 200);
       doc.text("Page 2 of 2", 270, 200);
 
@@ -500,7 +528,9 @@ const DisaMachineCheckList = () => {
     }
   };
 
-  const inputStyle = "w-full border-2 border-gray-300 bg-white rounded-lg p-3 text-sm text-gray-900 font-medium focus:border-red-500 outline-none shadow-sm placeholder-gray-500";
+  // Check if form is locked via supervisor
+  const isCompleted = ncForm.status === 'Completed';
+  const inputStyle = "w-full border-2 border-gray-300 bg-white rounded-lg p-3 text-sm text-gray-900 font-medium focus:border-orange-500 outline-none shadow-sm placeholder-gray-400 disabled:bg-gray-100 disabled:cursor-not-allowed";
 
   return (
     <>
@@ -650,26 +680,65 @@ const DisaMachineCheckList = () => {
           </div>
         </div>
 
+        {/* 🔥 DYNAMIC MODAL (WITH DISABLED STATES) */}
         {isModalOpen && modalItem && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95">
-              <div className="bg-red-600 p-5 flex justify-between items-center text-white">
-                <div><h3 className="font-bold uppercase text-sm">Non-Conformance Report</h3><p className="text-xs opacity-80 mt-1">Item #{modalItem.SlNo}</p></div>
-                <button onClick={() => setIsModalOpen(false)} className="hover:bg-red-700 rounded-full p-1"><X size={24} /></button>
-              </div>
-              <div className="p-8 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
-                <div className="bg-red-50 p-4 rounded-lg border border-red-100 flex justify-between"><p className="font-bold text-gray-800">{modalItem.CheckPointDesc}</p><span className="text-[10px] bg-orange-200 text-orange-800 px-2 py-1 rounded font-bold">{ncForm.status}</span></div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="col-span-2"><label className="text-xs font-bold text-gray-500 block mb-1">NC Details</label><textarea rows="2" className={inputStyle} placeholder="Type '-' if empty" value={ncForm.ncDetails} onChange={e => setNcForm({ ...ncForm, ncDetails: e.target.value })} /></div>
-                  <div><label className="text-xs font-bold text-gray-500 block mb-1">Correction</label><input className={inputStyle} placeholder="Type '-' if empty" value={ncForm.correction} onChange={e => setNcForm({ ...ncForm, correction: e.target.value })} /></div>
-                  <div><label className="text-xs font-bold text-gray-500 block mb-1">Root Cause</label><input className={inputStyle} placeholder="Type '-' if empty" value={ncForm.rootCause} onChange={e => setNcForm({ ...ncForm, rootCause: e.target.value })} /></div>
-                  <div className="col-span-2"><label className="text-xs font-bold text-gray-500 block mb-1">Corrective Action</label><textarea rows="2" className={inputStyle} placeholder="Type '-' if empty" value={ncForm.correctiveAction} onChange={e => setNcForm({ ...ncForm, correctiveAction: e.target.value })} /></div>
-                  <div className="col-span-1">
-                    <SearchableSelect label="Responsibility" options={[{ OperatorName: "Maintenance" }, { OperatorName: "Production" }, { OperatorName: "Quality" }]} displayKey="OperatorName" value={ncForm.responsibility} onSelect={(op) => setNcForm(prev => ({ ...prev, responsibility: op.OperatorName }))} />
-                  </div>
-                  <div className="col-span-1"><label className="text-xs font-bold text-gray-500 block mb-1">Target Date</label><input type="date" className={inputStyle} value={ncForm.targetDate} onChange={e => setNcForm({ ...ncForm, targetDate: e.target.value })} /></div>
+              
+              <div className={`p-5 flex justify-between items-center text-white ${isCompleted ? 'bg-green-600' : 'bg-red-600'}`}>
+                <div>
+                  <h3 className="font-bold uppercase text-sm">Non-Conformance Report</h3>
+                  <p className="text-xs opacity-80 mt-1">Item #{modalItem.SlNo}</p>
                 </div>
-                <div className="pt-4 border-t border-gray-100"><button onClick={submitReport} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-lg uppercase shadow-lg transition-colors">Save Report</button></div>
+                <button onClick={() => setIsModalOpen(false)} className="hover:bg-black/20 rounded-full p-1 transition-colors"><X size={24} /></button>
+              </div>
+              
+              <div className="p-8 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                
+                <div className={`p-4 rounded-lg border flex justify-between ${isCompleted ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}`}>
+                  <p className="font-bold text-gray-800">{modalItem.CheckPointDesc}</p>
+                  <span className={`text-[10px] px-3 py-1 rounded font-black uppercase tracking-wider ${isCompleted ? 'bg-green-200 text-green-800' : 'bg-orange-200 text-orange-800'}`}>
+                    {ncForm.status}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="col-span-2">
+                    <label className="text-xs font-bold text-gray-500 block mb-1">NC Details</label>
+                    <textarea rows="2" className={inputStyle} disabled={isCompleted} placeholder="Type '-' if empty" value={ncForm.ncDetails} onChange={e => setNcForm({ ...ncForm, ncDetails: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 block mb-1">Correction</label>
+                    <input className={inputStyle} disabled={isCompleted} placeholder="Type '-' if empty" value={ncForm.correction} onChange={e => setNcForm({ ...ncForm, correction: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 block mb-1">Root Cause</label>
+                    <input className={inputStyle} disabled={isCompleted} placeholder="Type '-' if empty" value={ncForm.rootCause} onChange={e => setNcForm({ ...ncForm, rootCause: e.target.value })} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs font-bold text-gray-500 block mb-1">Corrective Action</label>
+                    <textarea rows="2" className={inputStyle} disabled={isCompleted} placeholder="Type '-' if empty" value={ncForm.correctiveAction} onChange={e => setNcForm({ ...ncForm, correctiveAction: e.target.value })} />
+                  </div>
+                  <div className="col-span-1">
+                    <label className="text-xs font-bold text-gray-500 block mb-1">Responsibility</label>
+                    {isCompleted ? (
+                      <input className={inputStyle} disabled value={ncForm.responsibility} />
+                    ) : (
+                      <SearchableSelect options={supervisors} displayKey="OperatorName" value={ncForm.responsibility} onSelect={(op) => setNcForm(prev => ({ ...prev, responsibility: op.OperatorName }))} />
+                    )}
+                  </div>
+                  <div className="col-span-1">
+                    <label className="text-xs font-bold text-gray-500 block mb-1">Target Date</label>
+                    <input type="date" className={inputStyle} disabled={isCompleted} value={ncForm.targetDate} onChange={e => setNcForm({ ...ncForm, targetDate: e.target.value })} />
+                  </div>
+                </div>
+
+                {/* Only render Save button if it has NOT been completed by Supervisor */}
+                {!isCompleted && (
+                  <div className="pt-4 border-t border-gray-100">
+                    <button onClick={submitReport} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-lg uppercase shadow-lg transition-colors">Save Report</button>
+                  </div>
+                )}
               </div>
             </div>
           </div>

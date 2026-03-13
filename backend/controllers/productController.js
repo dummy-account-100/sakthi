@@ -466,6 +466,9 @@ exports.updateDisamaticReport = async (req, res) => {
 // ==========================================
 //          DOWNLOAD ALL REPORTS (PDF)
 // ==========================================
+// ==========================================
+//          DOWNLOAD ALL REPORTS (PDF)
+// ==========================================
 exports.downloadAllReports = async (req, res) => {
   try {
     const { reportId, date, disa, fromDate, toDate } = req.query;
@@ -542,7 +545,6 @@ exports.downloadAllReports = async (req, res) => {
     const doc = new PDFDocument({ margin: 30, size: 'A4', bufferPages: true });
     res.setHeader("Content-Type", "application/pdf");
     
-    // Dynamic naming depending on if it's bulk range or a single date
     let fName = (fromDate && toDate) 
         ? `Disamatic_Report_${fromDate}_to_${toDate}.pdf` 
         : date && disa ? `Disamatic_Report_${date}_DISA-${disa}.pdf` : `Disamatic_Report.pdf`;
@@ -564,7 +566,6 @@ exports.downloadAllReports = async (req, res) => {
 
     const drawCellText = (text, x, y, w, h, align = 'center', font = 'Helvetica', fontSize = 9) => {
       const content = (text !== null && text !== undefined && text !== "") ? text.toString() : "-";
-      
       const finalAlign = (content === "-") ? 'center' : align;
       const finalFont = (content === "-") ? 'Helvetica-Bold' : font;
 
@@ -582,7 +583,6 @@ exports.downloadAllReports = async (req, res) => {
 
       const textHeight = doc.heightOfString(content, { width: innerWidth });
       const topPad = h > textHeight ? (h - textHeight) / 2 : 5; 
-      
       doc.text(content, x + 5, y + topPad, { width: innerWidth, align: finalAlign });
     };
 
@@ -626,14 +626,12 @@ exports.downloadAllReports = async (req, res) => {
       // 🔥 FIND CORRECT QF VALUE FOR THIS SPECIFIC PAGE DATE 🔥
       let currentPageQfValue = "QF/07/FBP-03, Rev.No: 02 dt 01.10.2024"; // System Default
       const currentReportDate = new Date(g.date);
-      currentReportDate.setHours(0, 0, 0, 0); // Strip time for fair date comparison
+      currentReportDate.setHours(0, 0, 0, 0);
 
       for (let qf of qfHistory) {
           if (!qf.date) continue;
           const qfDate = new Date(qf.date);
           qfDate.setHours(0, 0, 0, 0);
-
-          // Because it's ordered DESC, the FIRST one that is <= reportDate is the matching active QF
           if (qfDate <= currentReportDate) {
               currentPageQfValue = qf.qfValue;
               break; 
@@ -700,18 +698,15 @@ exports.downloadAllReports = async (req, res) => {
           data.forEach((row, idx) => {
             const sno = idx + 1; 
             let maxH = 20; 
-            
             let processedRow = { ...row, sno: sno.toString() };
 
             doc.font('Helvetica').fontSize(9);
             columns.forEach(col => {
               let val = col.key === 'sno' ? sno.toString() : (row[col.key] || "-").toString();
-              
               if (col.key === 'componentName' || col.key === 'delay' || col.key === 'penetrationPP' || col.key === 'penetrationSP' || col.key === 'bScalePP' || col.key === 'bScaleSP') {
                  val = enforceWrap(val, col.w - 10);
                  processedRow[col.key] = val;
               }
-
               const textH = doc.heightOfString(val, { width: col.w - 10 }); 
               if (textH + 12 > maxH) maxH = textH + 12;
             });
@@ -732,7 +727,6 @@ exports.downloadAllReports = async (req, res) => {
             let totals = {};
             totalConfig.sumCols.forEach(k => totals[k] = 0);
             let totalTonnage = 0;
-
             data.forEach(r => {
               totalConfig.sumCols.forEach(k => {
                 let val = Number(r[k]);
@@ -767,7 +761,6 @@ exports.downloadAllReports = async (req, res) => {
                 }
                 cellText = `${tonnageStr}\nUnpoured %: ${unpouredPerc}`; 
               }
-              
               drawCellText(cellText, rX, currentY, col.w, rowHeight, align, 'Helvetica-Bold');
               doc.rect(rX, currentY, col.w, rowHeight).stroke();
               rX += col.w;
@@ -816,21 +809,16 @@ exports.downloadAllReports = async (req, res) => {
 
       const ptResult = await sql.query(`SELECT * FROM DisamaticPatternTemp WHERE reportId IN (${idsList}) ORDER BY id ASC`);
       const ptData = getFilteredData(ptResult.recordset, 'componentName');
-      
       const sigEventText = Array.from(g.sigEvents).join(' | ') || "-";
-      doc.font('Helvetica').fontSize(9);
-      const sigH = doc.heightOfString(sigEventText, { width: 240 }) + 35; 
 
       let ptTableHeight = 15;
       let ptRowHeights = [];
-
       if (ptData.length === 0) {
         ptTableHeight += 20;
         ptRowHeights.push(20);
       } else {
         ptData.forEach(pt => {
           let h = 20;
-          doc.font('Helvetica').fontSize(9);
           let cnH = doc.heightOfString(enforceWrap(pt.componentName, 140), { width: 140 }); 
           if (cnH + 12 > h) h = cnH + 12;
           ptTableHeight += h;
@@ -838,6 +826,8 @@ exports.downloadAllReports = async (req, res) => {
         });
       }
 
+      doc.font('Helvetica').fontSize(9);
+      const sigH = doc.heightOfString(sigEventText, { width: 240 }) + 35; 
       const splitBlockH = Math.max(sigH, ptTableHeight, 50);
 
       if (checkPageBreak(splitBlockH + 40)) currentY = 50;
@@ -887,12 +877,24 @@ exports.downloadAllReports = async (req, res) => {
       
       currentY = blockStartY + splitBlockH;
 
+      // ==========================================
+      // 🔥 FIXED FOOTER BLOCK (Maintenance + Sign + QF)
+      // ==========================================
       const maintText = Array.from(g.maintenances).join(' | ') || "-";
+      const totalFooterHeight = 40 + 50; // Maintenance (40) + Sign/QF block (50)
+
+      // Check if the entire block fits, if not, move EVERYTHING to the next page
+      if (checkPageBreak(totalFooterHeight + 10)) {
+        currentY = 50;
+      }
+
+      // Draw Maintenance Box
       doc.rect(startX, currentY, tableWidth, 40).stroke();
       doc.font('Helvetica-Bold').fontSize(8).text("Maintenance :", startX + 5, currentY + 5);
       doc.font('Helvetica').fontSize(9).text(maintText, startX + 5, currentY + 15, { width: tableWidth - 10 });
       currentY += 40;
 
+      // Draw Supervisor & QF Box
       const footerHeight = 50; 
       doc.rect(startX, currentY, tableWidth, footerHeight).stroke(); 
       doc.font('Helvetica-Bold').fontSize(9).text(`Supervisor Name : ${g.supervisorName || "-"}`, startX + 330, currentY + 10);
@@ -908,13 +910,14 @@ exports.downloadAllReports = async (req, res) => {
         doc.text("Pending", startX + 390, currentY + 30);
       }
 
-      // 🔥 3. PRINT THE DYNAMIC QF VALUE FOR THIS SPECIFIC REPORT DATE 🔥
+      // Print QF Value INSIDE the bottom left of the SAME block
       doc.fontSize(7).font('Helvetica').text(currentPageQfValue, startX + 5, currentY + 35);
+      // ==========================================
     }
     
     doc.end();
 
-  } catch (error) {
+  }catch (error) {
     console.error("PDF Generation Error:", error);
     if (!res.headersSent) res.status(500).json({ error: "Failed to generate PDF" });
   }

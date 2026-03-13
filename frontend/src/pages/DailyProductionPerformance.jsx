@@ -380,7 +380,13 @@ const DailyProductionPerformance = () => {
         responseType: "blob"
       });
 
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      // 🔥 FIX: If the backend returns JSON, it means no data was found
+      if (response.data.type === "application/json") {
+        toast.error("No saved report found for this Date & DISA. Please submit the form first.");
+        return;
+      }
+
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
       const link = document.createElement("a");
       link.href = url;
       link.setAttribute("download", `Daily_Performance_${productionDate}_${disa}.pdf`);
@@ -391,11 +397,7 @@ const DailyProductionPerformance = () => {
       toast.success("PDF Downloaded successfully!");
     } catch (err) {
       console.error("Download failed", err);
-      if (err.response && err.response.status === 404) {
-        toast.error("No saved report found for this Date & DISA. Please submit the form first.");
-      } else {
-        toast.error("Failed to download PDF.");
-      }
+      toast.error("Failed to download PDF. Ensure the server is running.");
     }
   };
 

@@ -296,11 +296,12 @@ router.delete("/records/:id", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  PDF REPORT (OPERATOR VIEW) - UPDATED FOR DYNAMIC QF
+//  PDF REPORT (OPERATOR VIEW) - DYNAMIC QF WITH PAGE BREAKS
 // ══════════════════════════════════════════════════════════════════════════════
 router.get("/report", async (req, res) => {
     try {
         const request = new sql.Request();
+        // Using DESC so the query returns in the order you currently have it
         const result = await request.query(`
             SELECT id, recordDate, mouldCountNo, noOfMoulds,
                    workCarriedOut, preventiveWorkCarried, remarks, operatorSignature
@@ -410,17 +411,28 @@ router.get("/report", async (req, res) => {
             return text;
         };
 
-        // 🔥 FIX: ALWAYS USE THE MOST RECENT QF VALUE REGARDLESS OF DATE
-        const dynamicQfString = (qfHistory && qfHistory.length > 0) 
-            ? qfHistory[0].qfValue 
-            : "QF/07/FBP-02, Rev. No.01 Dt 14.05.2025";
-
         let y = drawHeaders(startY);
+        let lastAppliedQf = null; // Track the QF of the previous row
 
-        result.recordset.forEach((row) => {
+        result.recordset.forEach((row, index) => {
             const formattedDate = new Date(row.recordDate).toLocaleDateString("en-GB");
             const customData = customCols.map(c => customValMap[row.id]?.[c.id] || "");
             
+            // 🔥 1. CALCULATE QF SPECIFIC TO THIS ROW'S DATE 🔥
+            let currentRowQf = "QF/07/FBP-02, Rev. No.01 Dt 14.05.2025"; // System Default
+            const rowDate = new Date(row.recordDate);
+            rowDate.setHours(0, 0, 0, 0);
+
+            for (let qf of qfHistory) {
+                if (!qf.date) continue;
+                const qfDate = new Date(qf.date);
+                qfDate.setHours(0, 0, 0, 0);
+                if (qfDate <= rowDate) {
+                    currentRowQf = qf.qfValue;
+                    break;
+                }
+            }
+
             const rowData = [
                 formattedDate, row.mouldCountNo, row.noOfMoulds,
                 processText(row.workCarriedOut), processText(row.preventiveWorkCarried),
@@ -437,8 +449,11 @@ router.get("/report", async (req, res) => {
                 if (h + 20 > maxRowHeight) maxRowHeight = h + 20;
             });
 
-            if (y + maxRowHeight > doc.page.height - 70) {
-                drawFooter(y, dynamicQfString);
+            // 🔥 2. PAGE BREAK LOGIC: Break if height is exceeded OR if QF value changed 🔥
+            const qfChanged = lastAppliedQf !== null && lastAppliedQf !== currentRowQf;
+
+            if (y + maxRowHeight > doc.page.height - 70 || qfChanged) {
+                drawFooter(y, lastAppliedQf || currentRowQf);
                 doc.addPage({ size: "A4", layout: "landscape", margin: 30 }); 
                 y = drawHeaders(30);
             }
@@ -459,14 +474,17 @@ router.get("/report", async (req, res) => {
                 } else if (i !== 5) {
                     doc.text(String(cell || ""), x + 3, y + 10, { width: colWidths[i] - 6, align: "center" });
                 }
-                
                 x += colWidths[i];
             });
+
             y += maxRowHeight;
+            lastAppliedQf = currentRowQf; // Update tracker
         });
 
-        drawFooter(y, dynamicQfString);
+        // Final footer for the last page
+        drawFooter(y, lastAppliedQf || "QF/07/FBP-02, Rev. No.01 Dt 14.05.2025");
         doc.end();
+
     } catch (err) {
         console.error("Error generating DISA report:", err);
         res.status(500).json({ message: "Report generation failed" });

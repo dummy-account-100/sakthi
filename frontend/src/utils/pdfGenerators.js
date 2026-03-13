@@ -228,7 +228,6 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
 export const generateDmmSettingPDF = async (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
 
-    // 🔥 FIX: Extract qfHistory safely from data payload
     const qfHistory = data.qfHistory || [];
 
     let metaRecords = [];
@@ -416,7 +415,6 @@ export const generateDmmSettingPDF = async (data, dateRange) => {
 export const generateChecklistPDF = (data, dateRange, title1, title2) => {
     const doc = new jsPDF('l', 'mm', 'a4');
 
-    // 🔥 Extract qfHistory 
     const { master, trans, ncr, qfHistory = [] } = data;
 
     if (!trans || trans.length === 0) {
@@ -469,7 +467,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
         const [year, month] = monthKey.split('-');
         const reportMonthDate = new Date(year, parseInt(month) - 1, 1);
 
-        // 🔥 MATCH QF VALUE TO CURRENT FORM DATE 🔥
+        // 🔥 MATCH QF VALUE TO CURRENT FORM DATE
         let reportDateStr = monthKey + '-01';
         if (machineTrans && machineTrans.length > 0) {
             reportDateStr = machineTrans[0].LogDate || machineTrans[0].RecordDate || machineTrans[0].date;
@@ -614,11 +612,11 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
             doc.setFont('helvetica', 'normal');
         }
 
-        // 🔥 PRINT DYNAMIC QF VALUE ON PAGE 1
         doc.text(currentPageQfValue, 10, 200);
 
         if (machineNc.length > 0) {
             doc.addPage();
+            
             // 🔥 PAGE 2 HEADER (NCR) 🔥
             doc.setLineWidth(0.3);
             doc.rect(10, 10, 40, 20);
@@ -636,16 +634,19 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
             const ncRows = machineNc.map((report, index) => [
                 index + 1, formatDate(report.ReportDate || report.RecordDate || report.date), report.NonConformityDetails || '', report.Correction || '',
                 report.RootCause || '', report.CorrectiveAction || '', report.TargetDate ? formatDate(report.TargetDate) : '',
-                report.Responsibility || '', '', report.Status || ''
+                report.Responsibility || '', report.Sign || '', report.Status || ''
             ]);
 
             autoTable(doc, {
-                startY: 35, head: [['S.No', 'Date', 'Non-Conformities Details', 'Correction', 'Root Cause', 'Corrective Action', 'Target Date', 'Responsibility', isLPA ? 'Signature' : 'Name', 'Status']],
+                startY: 35, 
+                // 🔥 Always use Signature column header, removed the isLPA restriction
+                head: [['S.No', 'Date', 'Non-Conformities Details', 'Correction', 'Root Cause', 'Corrective Action', 'Target Date', 'Responsibility', 'Signature', 'Status']],
                 body: ncRows, theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'top', overflow: 'linebreak' },
                 headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], lineWidth: 0.1, lineColor: [0, 0, 0], fontStyle: 'bold', halign: 'center', valign: 'middle' },
                 columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 40 }, 3: { cellWidth: 35 }, 4: { cellWidth: 35 }, 5: { cellWidth: 35 }, 6: { cellWidth: 20, halign: 'center' }, 7: { cellWidth: 25 }, 8: { cellWidth: 20, halign: 'center' }, 9: { cellWidth: 20, halign: 'center' } },
                 didDrawCell: function (data) {
-                    if (isLPA && data.section === 'body' && data.column.index === 8) {
+                    // 🔥 Removed the isLPA check so both LPA and Checklists can draw the Signature image
+                    if (data.section === 'body' && data.column.index === 8) {
                         const rowData = machineNc[data.row.index];
                         if (rowData && rowData.SupervisorSignature && rowData.SupervisorSignature.startsWith('data:image')) {
                             try { doc.addImage(rowData.SupervisorSignature, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { }
@@ -653,8 +654,12 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
                     }
                 },
                 didParseCell: function (data) {
-                    if (isLPA && data.section === 'body' && data.column.index === 8) {
-                        data.cell.text = [];
+                    // 🔥 If a signature image exists, wipe out the cell text so it doesn't overlap the drawing
+                    if (data.section === 'body' && data.column.index === 8) {
+                        const rowData = machineNc[data.row.index];
+                        if (rowData && rowData.SupervisorSignature && rowData.SupervisorSignature.startsWith('data:image')) {
+                            data.cell.text = [];
+                        }
                     }
                     if (data.section === 'body' && data.column.index === 9) {
                         const statusText = (data.cell.text || [])[0] || '';
@@ -664,7 +669,6 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
                 }
             });
 
-            // 🔥 PRINT DYNAMIC QF VALUE ON PAGE 2
             doc.setFontSize(8); doc.setFont('helvetica', 'normal');
             let ncrDateStr = monthKey + '-01';
             if (machineNc && machineNc.length > 0) {

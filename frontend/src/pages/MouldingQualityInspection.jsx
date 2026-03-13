@@ -33,6 +33,19 @@ const getShiftInfo = () => {
   return { dateStr, shift };
 };
 
+// --- HELPER: VALIDATE COMMA-SEPARATED NUMBERS ---
+// Ignored if empty or just a hyphen. Fails if ANY number is below the minLimit.
+const validateMultipleNumbers = (valString, minLimit) => {
+  if (!valString || valString === "-" || String(valString).trim() === "") return true; 
+  
+  const parts = String(valString).split(',');
+  for (let part of parts) {
+    const num = Number(part.trim());
+    if (isNaN(num) || num < minLimit) return false;
+  }
+  return true;
+};
+
 // ==========================================
 // COMPONENT: SearchableSelect (For Table Cells)
 // ==========================================
@@ -98,7 +111,7 @@ const MouldingQualityInspection = () => {
 
   const [operatorList, setOperatorList] = useState([]);
   const [supervisorList, setSupervisorList] = useState([]);
-  const [components, setComponents] = useState([]); // State for component parts
+  const [components, setComponents] = useState([]); 
   const [verifiedBy, setVerifiedBy] = useState("");
   const [approvedBy, setApprovedBy] = useState("");
 
@@ -115,7 +128,6 @@ const MouldingQualityInspection = () => {
   const [rows, setRows] = useState([getEmptyRow(1)]);
 
   useEffect(() => {
-    // Fetch Users
     axios.get(`${process.env.REACT_APP_API_URL}/api/mould-quality/users`)
       .then(res => {
         setOperatorList(res.data.operators || []);
@@ -123,7 +135,6 @@ const MouldingQualityInspection = () => {
       })
       .catch(err => console.error("Failed to fetch users", err));
 
-    // Fetch Components for Part Name dropdown
     axios.get(`${process.env.REACT_APP_API_URL}/api/mould-quality/components`)
       .then(res => setComponents(res.data || []))
       .catch(err => console.error("Failed to fetch components", err));
@@ -147,7 +158,6 @@ const MouldingQualityInspection = () => {
     }
   };
 
-  // Dynamically update the shift for all rows when changed at the header level
   const handleShiftChange = (e) => {
     const newShift = e.target.value;
     setCurrentShift(newShift);
@@ -174,7 +184,6 @@ const MouldingQualityInspection = () => {
   };
 
   const handleSubmit = async () => {
-    // --- Empty field validation ---
     let hasEmpty = false;
     rows.forEach(row => {
       const keysToCheck = [
@@ -215,23 +224,22 @@ const MouldingQualityInspection = () => {
     }
   };
 
-  // Increased row height (h-16) and minimum width (min-w-[90px]), bumped font size to text-base
   const inputStyle = "w-full h-16 bg-transparent outline-none text-center px-3 min-w-[90px] focus:bg-orange-100 placeholder:text-[10px] placeholder:text-gray-400 text-base font-bold text-gray-800";
 
+  // 🔥 UPDATED: Uses the comma-separated validation function instead of basic number checking
   const renderThresholdInput = (index, field, value, minVal) => {
-    const isBelow = value !== "" && !isNaN(value) && Number(value) < minVal;
+    const isValid = validateMultipleNumbers(value, minVal);
 
     return (
-      <div className={`w-full h-16 flex flex-col items-center justify-center ${isBelow ? 'bg-red-50' : ''}`}>
+      <div className={`w-full h-16 min-w-[120px] flex flex-col items-center justify-center ${!isValid ? 'bg-red-50' : ''}`}>
         <input
           type="text"
-          placeholder="Type '-' if empty"
-          className={`w-full h-full bg-transparent outline-none text-center px-2 focus:bg-orange-100 placeholder:text-[10px] placeholder:text-gray-400 text-base font-bold transition-colors ${isBelow ? 'text-red-600' : 'text-gray-800'
-            }`}
+          placeholder="Ex: 21.5, 23.2"
+          className={`w-full h-full bg-transparent outline-none text-center px-2 focus:bg-orange-100 placeholder:text-[10px] placeholder:text-gray-400 text-base font-bold transition-colors ${!isValid ? 'text-red-600' : 'text-gray-800'}`}
           value={value}
           onChange={e => updateRow(index, field, e.target.value)}
         />
-        {isBelow && (
+        {!isValid && (
           <span className="text-xs text-red-600 font-bold leading-none pb-1.5 whitespace-nowrap">
             Min: {minVal}
           </span>
@@ -349,7 +357,7 @@ const MouldingQualityInspection = () => {
                     <td className="border border-gray-300 p-0 min-w-[140px]"><input className={inputStyle} placeholder="Type '-' if empty" value={row.drDateHeatCode} onChange={e => updateRow(index, 'drDateHeatCode', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.drFilterSize} onChange={e => updateRow(index, 'drFilterSize', e.target.value)} /></td>
 
-                    {/* Values with MIN thresholds */}
+                    {/* Values with MIN thresholds using new logic */}
                     <td className="border border-gray-300 p-0 align-top">{renderThresholdInput(index, 'drSurfaceHardnessPP', row.drSurfaceHardnessPP, 85)}</td>
                     <td className="border border-gray-300 p-0 align-top">{renderThresholdInput(index, 'drSurfaceHardnessSP', row.drSurfaceHardnessSP, 85)}</td>
                     <td className="border border-gray-300 p-0 align-top">{renderThresholdInput(index, 'drInsideMouldPP', row.drInsideMouldPP, 20)}</td>

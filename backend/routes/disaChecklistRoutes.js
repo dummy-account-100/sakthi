@@ -12,7 +12,11 @@ router.post('/submit-batch', controller.saveBatchChecklist);
 router.get('/hod/:name', controller.getReportsByHOD);
 router.post('/sign', controller.signReportByHOD);
 
-// 🔥 ADD THIS MISSING ROUTE FOR THE ADMIN PDF EXPORT:
+// ADMIN PDF EXPORT:
 router.get('/bulk-data', controller.getBulkData);
+
+// 🔥 ADD THESE TWO NEW ROUTES FOR SUPERVISOR NCR:
+router.get('/supervisor-ncr/:name', controller.getNcrReportsBySupervisor);
+router.post('/sign-ncr', controller.signNcrBySupervisor);
 
 module.exports = router;
