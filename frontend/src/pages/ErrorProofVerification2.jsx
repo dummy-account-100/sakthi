@@ -73,6 +73,9 @@ const ErrorProofVerification2 = () => {
   const [hofList, setHofList] = useState([]);
   const [operatorList, setOperatorList] = useState([]);
   const [supervisorList, setSupervisorList] = useState([]);
+  
+  // 🔥 Store QF History
+  const [qfHistory, setQfHistory] = useState([]);
 
   const [recordDate, setRecordDate] = useState(new Date().toISOString().split('T')[0]);
   const currentDate = new Date(recordDate).toLocaleDateString('en-GB').replace(/\//g, '-');
@@ -90,6 +93,7 @@ const ErrorProofVerification2 = () => {
     setHofList(res.data.hofs || []);
     setOperatorList(res.data.operators || []);
     setSupervisorList(res.data.supervisors || []);
+    setQfHistory(res.data.qfHistory || []); // 🔥 Set QF History
 
     const masterData = res.data.masterConfig || [];
     const transData = res.data.verifications || [];
@@ -229,6 +233,21 @@ const ErrorProofVerification2 = () => {
     try {
       const doc = new jsPDF('l', 'mm', 'a4');
 
+      // 🔥 MATCH QF VALUE TO CURRENT FORM DATE 🔥
+      let currentPageQfValue = "QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023";
+      const repDate = new Date(recordDate);
+      repDate.setHours(0, 0, 0, 0);
+
+      for (let qf of qfHistory) {
+          if (!qf.date) continue;
+          const qfDate = new Date(qf.date);
+          qfDate.setHours(0, 0, 0, 0);
+          if (qfDate <= repDate) {
+              currentPageQfValue = qf.qfValue;
+              break; 
+          }
+      }
+
       // ==============================================================
       // 🔥 STANDARDIZED HEADER WITH IMAGE LOGO (PAGE 1)
       // ==============================================================
@@ -300,6 +319,10 @@ const ErrorProofVerification2 = () => {
         doc.addImage(headerData.hofSignature, 'PNG', 131, finalY + 3, 38, 13);
       }
 
+      // 🔥 Print QF Value at the end of page 1
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+      doc.text(currentPageQfValue, 10, doc.internal.pageSize.getHeight() - 10);
+
       if (reactionPlans.length > 0) {
         doc.addPage();
         
@@ -359,6 +382,10 @@ const ErrorProofVerification2 = () => {
             }
           }
         });
+
+        // 🔥 Print QF Value at the end of page 2
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+        doc.text(currentPageQfValue, 10, doc.internal.pageSize.getHeight() - 10);
       }
 
       doc.save(`Error_Proof_Verification_${headerData.disaMachine}.pdf`);

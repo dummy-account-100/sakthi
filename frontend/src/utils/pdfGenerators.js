@@ -684,7 +684,11 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
 // ============================================================================
 export const generateErrorProofPDF = (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
-    const { verifications, plans, qfHistory = [] } = data;
+    
+    // 🔥 Extract verifications, plans, and qfHistory from the passed data 🔥
+    const verifications = data.verifications || [];
+    const plans = data.plans || [];
+    const qfHistory = data.qfHistory || [];
 
     if (!verifications || verifications.length === 0) {
         doc.setFontSize(14); doc.text("No data found for the selected date range.", 148.5, 40, { align: 'center' });
@@ -712,12 +716,27 @@ export const generateErrorProofPDF = (data, dateRange) => {
     }
 
     let isFirstPage = true;
-    const PAGE_HEIGHT = 210;
+    const PAGE_HEIGHT = 210; 
 
     Object.keys(groupedByDateAndMachine).sort().forEach(dateKey => {
         Object.keys(groupedByDateAndMachine[dateKey]).sort().forEach(machine => {
             if (!isFirstPage) doc.addPage();
             isFirstPage = false;
+
+            // 🔥 FIND DYNAMIC QF VALUE FOR THIS SPECIFIC DATE 🔥
+            let currentPageQfValue = "QF/07/FBP-13, Rev.No:06 dt 08.10.2025"; // Fallback System Default
+            const reportDate = new Date(dateKey);
+            reportDate.setHours(0, 0, 0, 0);
+
+            for (let qf of qfHistory) {
+                if (!qf.date) continue;
+                const qfDate = new Date(qf.date);
+                qfDate.setHours(0, 0, 0, 0);
+                if (qfDate <= reportDate) {
+                    currentPageQfValue = qf.qfValue;
+                    break; 
+                }
+            }
 
             const records = groupedByDateAndMachine[dateKey][machine];
             const headerData = { date: dateKey, disaMachine: machine, reviewedBy: records.v[0]?.ReviewedByHOF || '', approvedBy: records.v[0]?.ApprovedBy || '' };
@@ -728,7 +747,7 @@ export const generateErrorProofPDF = (data, dateRange) => {
                 doc.addImage(logo, 'PNG', 12, 11, 36, 18);
             } catch (err) {
                 doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-                doc.text("SAKTHI", 30, 18, { align: 'center' });
+                doc.text("SAKTHI", 30, 18, { align: 'center' }); 
                 doc.text("AUTO", 30, 26, { align: 'center' });
             }
             doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
@@ -736,7 +755,7 @@ export const generateErrorProofPDF = (data, dateRange) => {
             doc.rect(230, 10, 57, 20); doc.setFontSize(11);
             doc.text(`${machine}`, 258.5, 16, { align: 'center' });
             doc.line(230, 20, 287, 20);
-            doc.setFontSize(10); doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10); doc.setFont('helvetica', 'normal'); 
             doc.text(`DATE: ${formatDate(dateKey)}`, 258.5, 26, { align: 'center' });
 
             const vRows = records.v.map((item, index) => [
@@ -754,7 +773,7 @@ export const generateErrorProofPDF = (data, dateRange) => {
             });
 
             let currentY = doc.lastAutoTable.finalY + 10;
-
+            
             if (records.r && records.r.length > 0) {
                 doc.setFontSize(14); doc.setFont('helvetica', 'bold');
                 doc.text("Reaction Plan", 148.5, currentY, { align: 'center' });
@@ -778,9 +797,9 @@ export const generateErrorProofPDF = (data, dateRange) => {
                 styles: { fontSize: 10, cellPadding: 4, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', minCellHeight: 15 }, headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
             });
 
-            // 🔥 DYNAMIC QF VALUE 🔥
-            const dynamicQf = getDynamicQfString(dateKey, qfHistory, "QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023");
-            doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text(dynamicQf, 10, 200);
+            // 🔥 PRINT DYNAMIC QF VALUE 🔥
+            doc.setFontSize(8); doc.setFont('helvetica', 'normal'); 
+            doc.text(currentPageQfValue, 10, 200);
         });
     });
 

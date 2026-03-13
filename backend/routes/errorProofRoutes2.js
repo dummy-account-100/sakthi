@@ -49,13 +49,21 @@ router.get("/details", async (req, res) => {
     const operatorsRes = await sql.query`SELECT username AS name FROM dbo.Users WHERE role = 'operator' ORDER BY username`;
     const supervisorsRes = await sql.query`SELECT username AS name FROM dbo.Users WHERE role = 'supervisor' ORDER BY username`;
 
+    // 🔥 FETCH QF HISTORY 🔥
+    let qfHistory = [];
+    try {
+        const qfRes = await sql.query`SELECT qfValue, date FROM ErrorProof2QFvalues WHERE formName = 'error-proof2' ORDER BY date DESC, id DESC`;
+        qfHistory = qfRes.recordset;
+    } catch(e) {}
+
     res.json({
       masterConfig: masterRes.recordset,
       verifications: mainRes.recordset,
       reactionPlans: reactionRes.recordset,
       hofs: hofsRes.recordset,
       operators: operatorsRes.recordset,
-      supervisors: supervisorsRes.recordset
+      supervisors: supervisorsRes.recordset,
+      qfHistory // send to frontend
     });
 
   } catch (err) {
@@ -250,20 +258,26 @@ router.get('/bulk-data', async (req, res) => {
             INNER JOIN ErrorProofVerifications epv ON rp.VerificationId = epv.Id
             WHERE CAST(epv.RecordDate AS DATE) BETWEEN CAST(${fromDate} AS DATE) AND CAST(${toDate} AS DATE)`;
 
-        res.json({ verifications: verifications.recordset, plans: plans.recordset });
+        // 🔥 FETCH QF HISTORY 🔥
+        let qfHistory = [];
+        try {
+            const qfRes = await sql.query`SELECT qfValue, date FROM ErrorProof2QFvalues WHERE formName = 'error-proof2' ORDER BY date DESC, id DESC`;
+            qfHistory = qfRes.recordset;
+        } catch(e) {}
+
+        res.json({ verifications: verifications.recordset, plans: plans.recordset, qfHistory });
     } catch (err) {
         res.status(500).json({ error: "Bulk data failed" });
     }
 });
 
 /* =====================================================
-   🔥 6️⃣ NEW: ADMIN BULK UPDATE (Fixes the 404 Error)
+   🔥 6️⃣ NEW: ADMIN BULK UPDATE
 ===================================================== */
 router.post("/bulk-update", async (req, res) => {
   try {
     const { verifications, reactionPlans } = req.body;
     
-    // Update Verifications (Shift 1, 2, 3 values)
     for (let v of verifications) {
         if (v.Id) {
             await sql.query`
@@ -276,9 +290,7 @@ router.post("/bulk-update", async (req, res) => {
         }
     }
     
-    // Update Reaction Plans (Problem, Root Cause, Status, etc)
     for (let rp of reactionPlans) {
-        // Checking for rp.Id or rp.SNo depending on how the frontend mapped it
         const planId = rp.Id || rp.SNo;
         if (planId) {
             await sql.query`
@@ -301,7 +313,7 @@ router.post("/bulk-update", async (req, res) => {
 });
 
 /* =====================================================
-   7️⃣ PDF GENERATOR LOGIC V2
+   7️⃣ PDF GENERATOR LOGIC V2 (SERVER RENDERED)
 ===================================================== */
 router.get("/report", async (req, res) => {
   try {
@@ -320,8 +332,15 @@ router.get("/report", async (req, res) => {
     const verificationResult = await sql.query(verificationQuery);
     const reactionResult = await sql.query(reactionQuery);
 
+    // 🔥 FETCH QF HISTORY 🔥
+    let qfHistory = [];
+    try {
+        const qfRes = await sql.query`SELECT qfValue, date FROM ErrorProof2QFvalues WHERE formName = 'error-proof2' ORDER BY date DESC, id DESC`;
+        qfHistory = qfRes.recordset;
+    } catch(e) {}
+
     const doc = new PDFDocument({ margin: 30, size: "A4", layout: "landscape", autoPageBreak: false, bufferPages: true });
-    const PAGE_HEIGHT = 595.28;
+    const PAGE_HEIGHT = 595.28; // Standard A4 Landscape height in points
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "inline; filename=Error_Proof_Check_List_V2.pdf");
@@ -357,6 +376,23 @@ router.get("/report", async (req, res) => {
     const allRecords = verificationResult.recordset;
     const allUniqueDates = [...new Set(allRecords.map(r => getISODate(r.RecordDate)))].sort();
     const last3Dates = allUniqueDates.slice(-3);
+
+    // 🔥 DETERMINE CURRENT QF FOR THIS DOCUMENT BATCH 🔥
+    let currentPageQfValue = "QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023";
+    const maxDateStr = last3Dates.length > 0 ? last3Dates[last3Dates.length - 1] : null;
+    if (maxDateStr) {
+        const maxDate = new Date(maxDateStr);
+        maxDate.setHours(0,0,0,0);
+        for (let qf of qfHistory) {
+            if (!qf.date) continue;
+            const qfDate = new Date(qf.date);
+            qfDate.setHours(0,0,0,0);
+            if (qfDate <= maxDate) {
+                currentPageQfValue = qf.qfValue; 
+                break;
+            }
+        }
+    }
 
     const filteredRecords = allRecords.filter(r => last3Dates.includes(getISODate(r.RecordDate)));
     const uniqueProofsMap = new Map();
@@ -496,7 +532,9 @@ router.get("/report", async (req, res) => {
     for (let i = range.start; i < (range.start + range.count); i++) {
       doc.switchToPage(i);
       doc.font("Helvetica-Bold").fontSize(9).fillColor('black');
-      doc.text("QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023", 30, PAGE_HEIGHT - 35, { align: "left", lineBreak: false });
+      
+      // 🔥 PRINT DYNAMIC QF VALUE 🔥
+      doc.text(currentPageQfValue, 30, PAGE_HEIGHT - 35, { align: "left", lineBreak: false });
     }
 
     doc.end();

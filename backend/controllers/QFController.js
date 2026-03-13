@@ -47,6 +47,12 @@ exports.getFormSettings = async (req, res) => {
                 SELECT id, formName, qfValue, date, ROW_NUMBER() OVER(PARTITION BY formName ORDER BY date DESC, id DESC) as rn
                 FROM FourMChangeQFvalues
             ) t9 WHERE rn = 1
+            UNION ALL
+            -- ✅ ADDED ERROR PROOF HERE
+            SELECT id, formName, qfValue, date FROM (
+                SELECT id, formName, qfValue, date, ROW_NUMBER() OVER(PARTITION BY formName ORDER BY date DESC, id DESC) as rn
+                FROM ErrorProof2QFvalues
+            ) t10 WHERE rn = 1
             ORDER BY formName ASC
         `;
         res.json(result.recordset);
@@ -80,7 +86,15 @@ exports.updateFormSettings = async (req, res) => {
             await sql.query`INSERT INTO MouldQualityQFvalues (formName, qfValue, date) VALUES (${setting.formName}, ${setting.qfValue}, ${safeDate})`;
         } else if (setting.formName === '4m-change') {
             await sql.query`INSERT INTO FourMChangeQFvalues (formName, qfValue, date) VALUES (${setting.formName}, ${setting.qfValue}, ${safeDate})`;
-        } else {
+        } 
+        // ✅ ERROR PROOF ALREADY PRESENT (kept unchanged)
+        else if (setting.formName === 'error-proof2') {
+            await sql.query`
+                INSERT INTO ErrorProof2QFvalues (formName, qfValue, date)
+                VALUES (${setting.formName}, ${setting.qfValue}, ${safeDate})
+            `;
+        }
+        else {
             await sql.query`INSERT INTO DisamaticReportQFvalues (formName, qfValue, date) VALUES (${setting.formName}, ${setting.qfValue}, ${safeDate})`;
         }
         
