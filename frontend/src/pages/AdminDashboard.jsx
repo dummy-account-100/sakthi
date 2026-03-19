@@ -622,6 +622,7 @@ const AdminDashboard = () => {
                                             <option value="" disabled className="text-gray-500">Select Access Level</option>
                                             <option value="operator">Operator</option>
                                             <option value="supervisor">Supervisor</option>
+                                            <option value="pp operator">PP Operator</option>
                                             <option value="hof">Head of Foundry (HOF)</option>
                                             <option value="hod">Head of Department (HOD)</option>
                                             <option value="admin">System Admin</option>
