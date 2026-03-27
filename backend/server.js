@@ -18,7 +18,8 @@ const dailyPerformanceRoutes = require("./routes/dailyPerformanceRoutes");
 const configRoutes = require("./routes/configRoutes");
 const mouldQualityRoutes = require('./routes/mouldQualityRoutes');
 const verifyToken = require('./middleware/authMiddleware');
-const qfRoutes = require("./routes/QFRoutes"); // 🔥 ADDED IMPORT
+const qfRoutes = require("./routes/QFRoutes");
+const componentRoutes = require("./routes/componentRoutes");
 
 const app = express();
 
@@ -49,6 +50,7 @@ app.use('/api/dmm-settings', dmmRoutes);
 app.use('/api/bottom-level-audit', bottomLevelRoutes);
 app.use('/api/error-proof2', errorProofRoutes2);
 app.use("/api/users", userRoutes);
+app.use("/api/components", componentRoutes);
 app.use("/api", dailyPerformanceRoutes);
 app.use("/api/config", configRoutes);
 app.use('/api/mould-quality', mouldQualityRoutes);

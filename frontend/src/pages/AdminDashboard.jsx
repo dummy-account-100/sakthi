@@ -4,9 +4,9 @@ import axios from 'axios';
 import { ArrowLeft } from 'lucide-react';
 import {
     FileDown, Calendar, Users, X, Loader, AlertTriangle, CheckCircle,
-    Settings, FileText, LogOut, Edit, Trash2, UserPlus, Eye, BookOpen,
+    Settings, Edit, Trash2, UserPlus, Eye, BookOpen,
     BarChart3, Factory, Layers, Cpu, ListChecks, FileSearch, ShieldCheck, 
-    ShieldAlert, SlidersHorizontal, Activity, ClipboardCheck
+    ShieldAlert, SlidersHorizontal, Activity, ClipboardCheck, Package, PlusSquare
 } from 'lucide-react';
 
 import {
@@ -80,6 +80,18 @@ const AdminDashboard = () => {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [newUser, setNewUser] = useState({ username: "", employeeId: "", password: "", role: "" });
 
+    // === NEW COMPONENT STATES ===
+    const [components, setComponents] = useState([]);
+    const [loadingComponents, setLoadingComponents] = useState(false);
+
+    const [isEditCompModalOpen, setIsEditCompModalOpen] = useState(false);
+    const [editComponent, setEditComponent] = useState({ code: "", description: "", pouredWeight: "", cavity: "", castedWeight: "" });
+
+    const [isAddCompModalOpen, setIsAddCompModalOpen] = useState(false);
+    // === CUSTOM DELETE MODAL STATE ===
+    const [deleteModal, setDeleteModal] = useState({ isOpen: false, codeToDelete: null });
+    const [newComponent, setNewComponent] = useState({ code: "", description: "", pouredWeight: "", cavity: "", castedWeight: "" });
+
     // 🔥 State for QF Settings Manager
     const [qfSettings, setQfSettings] = useState([]);
     const [savingId, setSavingId] = useState(null);
@@ -97,6 +109,9 @@ const AdminDashboard = () => {
         { name: "4M Monitoring", id: "4m-change", icon: Activity },
         { name: "Mould Quality Inspection", id: "mould-quality", icon: ClipboardCheck },
         { name: "Manage QF Values", id: "qf-settings", isSpecial: true, icon: BookOpen },
+        { name: "Add / Manage Users", id: "users", isSpecial: true, icon: Users },
+        { name: "Manage QF Values", id: "qf-settings", isSpecial: true, icon: BookOpen },
+        { name: "Add / Manage Components", id: "components", isSpecial: true, icon: Package }, // <-- ADDED
         { name: "Add / Manage Users", id: "users", isSpecial: true, icon: Users }
     ];
 
@@ -105,6 +120,7 @@ const AdminDashboard = () => {
     useEffect(() => {
         if (activeView === 'users') fetchUsers();
         if (activeView === 'qf-settings') fetchQfSettings();
+        if (activeView === 'components') fetchComponents();
     }, [activeView]);
 
     const fetchUsers = async () => {
@@ -408,6 +424,68 @@ const AdminDashboard = () => {
 
         setLoading(false);
     };
+    // ==========================================
+    // 🔥 COMPONENT HANDLERS
+    // ==========================================
+    const fetchComponents = async () => {
+        setLoadingComponents(true);
+        try {
+            const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/components`);
+            setComponents(response.data);
+        } catch (error) {
+            setNotification({ show: true, type: 'error', message: 'Failed to load components' });
+        }
+        setLoadingComponents(false);
+    };
+
+    const handleAddComponent = async (e) => {
+        e.preventDefault();
+        try {
+            await axios.post(`${process.env.REACT_APP_API_URL}/api/components/add`, newComponent);
+            setNotification({ show: true, type: 'success', message: 'Component added successfully!' });
+            setIsAddCompModalOpen(false);
+            setNewComponent({ code: "", description: "", pouredWeight: "", cavity: "", castedWeight: "" });
+            fetchComponents();
+        } catch (error) {
+            const errorMsg = error.response?.data?.error || 'Failed to add component';
+            setNotification({ show: true, type: 'error', message: errorMsg });
+        }
+    };
+
+    const handleUpdateComponent = async (e) => {
+        e.preventDefault();
+        try {
+            await axios.put(`${process.env.REACT_APP_API_URL}/api/components/${encodeURIComponent(editComponent.code)}`, {
+                description: editComponent.description,
+                pouredWeight: editComponent.pouredWeight,
+                cavity: editComponent.cavity,
+                castedWeight: editComponent.castedWeight
+            });
+            setNotification({ show: true, type: 'success', message: 'Component updated successfully!' });
+            setIsEditCompModalOpen(false);
+            fetchComponents();
+        } catch (error) {
+            const errorMsg = error.response?.data?.error || 'Failed to update component';
+            setNotification({ show: true, type: 'error', message: errorMsg });
+        }
+    };
+
+   const confirmDeleteComponent = (code) => {
+        setDeleteModal({ isOpen: true, codeToDelete: code });
+    };
+
+    const executeDeleteComponent = async () => {
+        const code = deleteModal.codeToDelete;
+        setDeleteModal({ isOpen: false, codeToDelete: null }); // Close modal immediately
+        
+        try {
+            await axios.delete(`${process.env.REACT_APP_API_URL}/api/components/${encodeURIComponent(code)}`);
+            setNotification({ show: true, type: 'success', message: 'Component deleted successfully!' });
+            fetchComponents();
+        } catch (error) {
+            setNotification({ show: true, type: 'error', message: 'Failed to delete component' });
+        }
+    };
 
     if (adminEditView) {
         return (
@@ -503,7 +581,155 @@ const AdminDashboard = () => {
             </div>
         );
     }
+    // ==========================================
+    // 🔥 MANAGE COMPONENTS UI
+    // ==========================================
+    if (activeView === 'components') {
+        return (
+            <div className="relative w-full min-h-screen bg-[#2d2d2d] flex flex-col font-sans">
+                <Header />
+                <NotificationToast data={notification} onClose={() => setNotification(prev => ({ ...prev, show: false }))} />
 
+                <div className="flex-1 flex flex-col items-center py-10 px-6 relative z-10">
+                    <button onClick={() => setActiveView('grid')} className="self-start mb-6 flex items-center gap-2 text-gray-400 hover:text-white transition-colors bg-[#383838] hover:bg-[#4a4a4a] px-5 py-2.5 rounded-xl border border-[#4a4a4a] hover:border-gray-300 shadow-md font-bold uppercase tracking-wider text-xs">
+                        <ArrowLeft size={16} /> Back to Dashboard
+                    </button>
+
+                    <div className="bg-[#383838] border border-[#4a4a4a] w-full max-w-6xl rounded-2xl p-8 shadow-[0_15px_40px_rgba(0,0,0,0.5)] animate-in fade-in zoom-in-95">
+                        <div className="flex justify-between items-center border-b border-[#4a4a4a] pb-6 mb-6">
+                            <div className="flex items-center gap-4">
+                                <div className="bg-blue-900/20 p-3 rounded-xl border border-blue-500/30 shadow-inner">
+                                    <Package size={28} className="text-blue-400" />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-black text-white uppercase tracking-widest leading-tight">Database Components</h1>
+                                    <p className="text-[11px] text-gray-400 font-bold mt-1 uppercase tracking-[0.2em]">Manage Parts & Weights</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setIsAddCompModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-colors shadow-[0_4px_15px_rgba(37,99,235,0.3)] hover:shadow-[0_4px_25px_rgba(37,99,235,0.5)] flex items-center gap-2 border border-blue-400">
+                                <PlusSquare size={16} /> Add Component
+                            </button>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-xl border border-[#4a4a4a] shadow-inner bg-[#2d2d2d]">
+                            {loadingComponents ? (
+                                <div className="flex justify-center items-center py-20">
+                                    <Loader className="animate-spin text-blue-500 w-10 h-10" />
+                                </div>
+                            ) : (
+                                <table className="w-full text-left border-collapse whitespace-nowrap">
+                                    <thead className="bg-[#1A2634] text-gray-300 border-b border-[#4a4a4a]">
+                                        <tr>
+                                            <th className="p-4 uppercase tracking-widest text-[10px] font-black w-48">Code</th>
+                                            <th className="p-4 uppercase tracking-widest text-[10px] font-black">Description</th>
+                                            <th className="p-4 uppercase tracking-widest text-[10px] font-black text-center">Poured Wt</th>
+                                            <th className="p-4 uppercase tracking-widest text-[10px] font-black text-center">Cavity</th>
+                                            <th className="p-4 uppercase tracking-widest text-[10px] font-black text-center">Casted Wt</th>
+                                            <th className="p-4 uppercase tracking-widest text-[10px] font-black text-center w-28">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-[#4a4a4a]">
+                                        {components.length > 0 ? (
+                                            components.map((c) => (
+                                                <tr key={c.code} className="hover:bg-white/5 transition-colors group">
+                                                    <td className="p-4 font-black text-blue-400 font-mono text-sm tracking-wider">{c.code}</td>
+                                                    <td className="p-4 font-bold text-gray-200 text-sm whitespace-normal min-w-[200px]">{c.description}</td>
+                                                    <td className="p-4 text-center text-gray-400 font-mono">{c.pouredWeight ? Number(c.pouredWeight).toFixed(3) : '-'}</td>
+                                                    <td className="p-4 text-center text-gray-400 font-mono">{c.cavity || '-'}</td>
+                                                    <td className="p-4 text-center text-gray-400 font-mono">{c.castedWeight ? Number(c.castedWeight).toFixed(3) : '-'}</td>
+                                                    <td className="p-4">
+                                                        <div className="flex justify-center gap-3">
+                                                            <button onClick={() => { setEditComponent({ ...c }); setIsEditCompModalOpen(true); }} className="bg-[#222] border border-[#4a4a4a] p-2 rounded-lg text-blue-400 hover:text-white hover:bg-blue-600 hover:border-blue-500 transition-all shadow-sm"><Edit size={16} /></button>
+                                                            <button onClick={() => confirmDeleteComponent(c.code)} className="bg-[#222] border border-[#4a4a4a] p-2 rounded-lg text-red-500 hover:text-white hover:bg-red-600 hover:border-red-500 transition-all shadow-sm"><Trash2 size={16} /></button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan="6" className="text-center p-12 text-gray-500 font-black uppercase tracking-widest">No components found.</td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Modals for Add/Edit Component */}
+                    {(isAddCompModalOpen || isEditCompModalOpen) && (
+                        <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                            <div className="bg-[#383838] border border-[#4a4a4a] rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.8)] w-full max-w-lg overflow-hidden scale-in">
+                                <div className={`bg-[#1A2634] px-6 py-5 flex justify-between items-center border-b-2 border-blue-500`}>
+                                    <h3 className="text-white font-black uppercase tracking-widest text-sm flex items-center gap-3">
+                                        {isAddCompModalOpen ? <><PlusSquare size={18} className="text-blue-500" /> Add Component</> : <><Edit size={18} className="text-blue-500" /> Modify Component</>}
+                                    </h3>
+                                    <button onClick={() => isAddCompModalOpen ? setIsAddCompModalOpen(false) : setIsEditCompModalOpen(false)} className="text-gray-400 hover:text-white bg-black/20 hover:bg-black/40 p-1.5 rounded-lg transition-colors"><X size={18} /></button>
+                                </div>
+                                <form onSubmit={isAddCompModalOpen ? handleAddComponent : handleUpdateComponent} className="p-7 flex flex-col gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Component Code</label>
+                                        <input type="text" required disabled={isEditCompModalOpen} value={isAddCompModalOpen ? newComponent.code : editComponent.code} onChange={(e) => isAddCompModalOpen ? setNewComponent({ ...newComponent, code: e.target.value }) : setEditComponent({ ...editComponent, code: e.target.value })} className="w-full bg-[#222] border border-[#4a4a4a] p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors font-bold text-white shadow-inner font-mono disabled:opacity-50" placeholder="e.g. MAR-S-091-..." />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Description</label>
+                                        <input type="text" required value={isAddCompModalOpen ? newComponent.description : editComponent.description} onChange={(e) => isAddCompModalOpen ? setNewComponent({ ...newComponent, description: e.target.value }) : setEditComponent({ ...editComponent, description: e.target.value })} className="w-full bg-[#222] border border-[#4a4a4a] p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors font-bold text-white shadow-inner" placeholder="Enter description" />
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-4">
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Poured Wt</label>
+                                            <input type="number" step="0.001" value={isAddCompModalOpen ? newComponent.pouredWeight : editComponent.pouredWeight} onChange={(e) => isAddCompModalOpen ? setNewComponent({ ...newComponent, pouredWeight: e.target.value }) : setEditComponent({ ...editComponent, pouredWeight: e.target.value })} className="w-full bg-[#222] border border-[#4a4a4a] p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors font-bold text-white shadow-inner font-mono" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Cavity</label>
+                                            <input type="number" value={isAddCompModalOpen ? newComponent.cavity : editComponent.cavity} onChange={(e) => isAddCompModalOpen ? setNewComponent({ ...newComponent, cavity: e.target.value }) : setEditComponent({ ...editComponent, cavity: e.target.value })} className="w-full bg-[#222] border border-[#4a4a4a] p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors font-bold text-white shadow-inner font-mono" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Casted Wt</label>
+                                            <input type="number" step="0.001" value={isAddCompModalOpen ? newComponent.castedWeight : editComponent.castedWeight} onChange={(e) => isAddCompModalOpen ? setNewComponent({ ...newComponent, castedWeight: e.target.value }) : setEditComponent({ ...editComponent, castedWeight: e.target.value })} className="w-full bg-[#222] border border-[#4a4a4a] p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors font-bold text-white shadow-inner font-mono" />
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-3 mt-4 pt-4 border-t border-[#4a4a4a]">
+                                        <button type="button" onClick={() => isAddCompModalOpen ? setIsAddCompModalOpen(false) : setIsEditCompModalOpen(false)} className="flex-1 bg-[#222] border border-[#4a4a4a] hover:bg-[#4a4a4a] text-gray-300 font-black text-xs uppercase tracking-widest py-3.5 rounded-xl transition-colors">Cancel</button>
+                                        <button type="submit" className="flex-1 text-white font-black text-xs uppercase tracking-widest py-3.5 rounded-xl transition-all shadow-lg border bg-blue-600 hover:bg-blue-500 border-blue-400 shadow-[0_0_15px_rgba(37,99,235,0.3)]">
+                                            {isAddCompModalOpen ? 'Save Component' : 'Update Record'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                {/* CUSTOM DELETE CONFIRMATION MODAL */}
+                    {deleteModal.isOpen && (
+                        <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                            <div className="bg-[#383838] border border-red-500/50 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.9)] w-full max-w-sm overflow-hidden scale-in">
+                                <div className="bg-[#2A0D0D] px-6 py-5 border-b-2 border-red-500 flex justify-center items-center">
+                                    <h3 className="text-white font-black uppercase tracking-widest text-sm flex items-center gap-3">
+                                        <AlertTriangle size={20} className="text-red-500" /> Confirm Deletion
+                                    </h3>
+                                </div>
+                                <div className="p-7 text-center">
+                                    <p className="text-gray-300 font-bold mb-6">
+                                        Are you sure you want to delete this component?
+                                        <span className="text-red-400 font-mono block mt-3 text-lg">{deleteModal.codeToDelete}</span>
+                                        <span className="text-xs text-gray-500 uppercase tracking-widest mt-3 block">This action cannot be undone.</span>
+                                    </p>
+                                    <div className="flex gap-3">
+                                        <button onClick={() => setDeleteModal({ isOpen: false, codeToDelete: null })} className="flex-1 bg-[#222] border border-[#4a4a4a] hover:bg-[#4a4a4a] text-gray-300 font-black text-xs uppercase tracking-widest py-3.5 rounded-xl transition-colors">
+                                            Cancel
+                                        </button>
+                                        <button onClick={executeDeleteComponent} className="flex-1 bg-red-600 hover:bg-red-500 border border-red-500 text-white font-black text-xs uppercase tracking-widest py-3.5 rounded-xl transition-all shadow-[0_0_15px_rgba(220,38,38,0.3)]">
+                                            Delete Component
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+            </div>
+        );
+    }
     // ==========================================
     // 🔥 MANAGE USERS UI
     // ==========================================
