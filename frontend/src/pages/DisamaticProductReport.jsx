@@ -315,7 +315,7 @@ const [productions, setProductions] = useState([
       })
       .catch(err => console.error("Failed to fetch PP Operators", err));
 
-    axios.get(`${process.env.REACT_APP_API_URL}/api/components`).then((res) => setComponents(res.data));
+    axios.get(`${process.env.REACT_APP_API_URL}/api/components`).then((res) => setComponents(res.data.filter(c => c.isActive === 'Active')));
     axios.get(`${process.env.REACT_APP_API_URL}/api/supervisors`).then((res) => setSupervisors(res.data));
     axios.get(`${process.env.REACT_APP_API_URL}/api/mould-hardness-remarks`).then((res) => setMouldRemarksList(res.data));
   }, []);

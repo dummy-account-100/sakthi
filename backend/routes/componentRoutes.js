@@ -4,8 +4,10 @@ const componentController = require("../controllers/componentController");
 
 router.get("/", componentController.getComponents);
 router.post("/add", componentController.addComponent);
-// Notice we use encodeURIComponent on the frontend since 'code' has hyphens/special chars
+// Route to update everything
 router.put("/:code", componentController.updateComponent);
+// Quick toggle route
+router.patch("/:code/status", componentController.toggleComponentStatus);
 router.delete("/:code", componentController.deleteComponent);
 
 module.exports = router;

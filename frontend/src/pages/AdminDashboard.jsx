@@ -85,12 +85,13 @@ const AdminDashboard = () => {
     const [loadingComponents, setLoadingComponents] = useState(false);
 
     const [isEditCompModalOpen, setIsEditCompModalOpen] = useState(false);
-    const [editComponent, setEditComponent] = useState({ code: "", description: "", pouredWeight: "", cavity: "", castedWeight: "" });
+    // [EDIT] Added isActive to default state
+    const [editComponent, setEditComponent] = useState({ code: "", description: "", pouredWeight: "", cavity: "", castedWeight: "", isActive: 'Active' });
 
     const [isAddCompModalOpen, setIsAddCompModalOpen] = useState(false);
-    // === CUSTOM DELETE MODAL STATE ===
     const [deleteModal, setDeleteModal] = useState({ isOpen: false, codeToDelete: null });
-    const [newComponent, setNewComponent] = useState({ code: "", description: "", pouredWeight: "", cavity: "", castedWeight: "" });
+    // [EDIT] Added isActive to default state
+    const [newComponent, setNewComponent] = useState({ code: "", description: "", pouredWeight: "", cavity: "", castedWeight: "", isActive: 'Active' });
 
     // 🔥 State for QF Settings Manager
     const [qfSettings, setQfSettings] = useState([]);
@@ -423,14 +424,26 @@ const AdminDashboard = () => {
 
         setLoading(false);
     };
+
     // ==========================================
-    // 🔥 COMPONENT HANDLERS
+    // 🔥 COMPONENT HANDLERS (INTEGRATED `isActive`)
     // ==========================================
     const fetchComponents = async () => {
         setLoadingComponents(true);
         try {
-            const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/components`);
-            setComponents(response.data);
+            // [EDIT] Added timestamp for cache-busting
+            const timestamp = new Date().getTime();
+            const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/components?t=${timestamp}`);
+            
+            // [EDIT] Added normalization for boolean/string/int mismatch safety
+            const normalized = response.data.map(c => ({
+                ...c,
+                isActive: (c.isActive === true || c.isActive === 1 || String(c.isActive).trim().toLowerCase() === 'active')
+                    ? 'Active'
+                    : 'Inactive'
+            }));
+            
+            setComponents(normalized);
         } catch (error) {
             setNotification({ show: true, type: 'error', message: 'Failed to load components' });
         }
@@ -443,7 +456,8 @@ const AdminDashboard = () => {
             await axios.post(`${process.env.REACT_APP_API_URL}/api/components/add`, newComponent);
             setNotification({ show: true, type: 'success', message: 'Component added successfully!' });
             setIsAddCompModalOpen(false);
-            setNewComponent({ code: "", description: "", pouredWeight: "", cavity: "", castedWeight: "" });
+            // [EDIT] Reset state now includes isActive
+            setNewComponent({ code: "", description: "", pouredWeight: "", cavity: "", castedWeight: "", isActive: 'Active' });
             fetchComponents();
         } catch (error) {
             const errorMsg = error.response?.data?.error || 'Failed to add component';
@@ -458,7 +472,8 @@ const AdminDashboard = () => {
                 description: editComponent.description,
                 pouredWeight: editComponent.pouredWeight,
                 cavity: editComponent.cavity,
-                castedWeight: editComponent.castedWeight
+                castedWeight: editComponent.castedWeight,
+                isActive: editComponent.isActive // [EDIT] Included in payload
             });
             setNotification({ show: true, type: 'success', message: 'Component updated successfully!' });
             setIsEditCompModalOpen(false);
@@ -466,6 +481,30 @@ const AdminDashboard = () => {
         } catch (error) {
             const errorMsg = error.response?.data?.error || 'Failed to update component';
             setNotification({ show: true, type: 'error', message: errorMsg });
+        }
+    };
+
+    // [EDIT] New function to handle status toggling
+    const handleToggleComponentStatus = async (code, currentStatus) => {
+        const isCurrentlyActive = currentStatus === 'Active';
+        const newStatus = isCurrentlyActive ? 'Inactive' : 'Active';
+
+        // Optimistic UI update
+        setComponents(prevComponents => prevComponents.map(comp => 
+            comp.code === code ? { ...comp, isActive: newStatus } : comp
+        ));
+
+        try {
+            await axios.patch(`${process.env.REACT_APP_API_URL}/api/components/${encodeURIComponent(code)}/status`, {
+                isActive: newStatus
+            });
+            setNotification({ show: true, type: 'success', message: 'Status updated!' });
+        } catch (error) {
+            // Rollback on failure
+            setComponents(prevComponents => prevComponents.map(comp => 
+                comp.code === code ? { ...comp, isActive: currentStatus } : comp
+            ));
+            setNotification({ show: true, type: 'error', message: 'Failed to update status' });
         }
     };
 
@@ -624,6 +663,8 @@ const AdminDashboard = () => {
                                             <th className="p-4 uppercase tracking-widest text-[10px] font-black text-center">Poured Wt</th>
                                             <th className="p-4 uppercase tracking-widest text-[10px] font-black text-center">Cavity</th>
                                             <th className="p-4 uppercase tracking-widest text-[10px] font-black text-center">Casted Wt</th>
+                                            {/* [EDIT] Added Status Column Header */}
+                                            <th className="p-4 uppercase tracking-widest text-[10px] font-black text-center">Status</th>
                                             <th className="p-4 uppercase tracking-widest text-[10px] font-black text-center w-28">Actions</th>
                                         </tr>
                                     </thead>
@@ -636,6 +677,19 @@ const AdminDashboard = () => {
                                                     <td className="p-4 text-center text-gray-400 font-mono">{c.pouredWeight ? Number(c.pouredWeight).toFixed(3) : '-'}</td>
                                                     <td className="p-4 text-center text-gray-400 font-mono">{c.cavity || '-'}</td>
                                                     <td className="p-4 text-center text-gray-400 font-mono">{c.castedWeight ? Number(c.castedWeight).toFixed(3) : '-'}</td>
+                                                    {/* [EDIT] Added Status Toggle Button Column */}
+                                                    <td className="p-4 text-center">
+                                                        <button
+                                                            onClick={() => handleToggleComponentStatus(c.code, c.isActive)}
+                                                            className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-colors w-24 inline-block text-center shadow-inner ${
+                                                                c.isActive === 'Active'
+                                                                ? 'bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30' 
+                                                                : 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30'
+                                                            }`}
+                                                        >
+                                                            {c.isActive === 'Active' ? 'Active' : 'Inactive'}
+                                                        </button>
+                                                    </td>
                                                     <td className="p-4">
                                                         <div className="flex justify-center gap-3">
                                                             <button onClick={() => { setEditComponent({ ...c }); setIsEditCompModalOpen(true); }} className="bg-[#222] border border-[#4a4a4a] p-2 rounded-lg text-blue-400 hover:text-white hover:bg-blue-600 hover:border-blue-500 transition-all shadow-sm"><Edit size={16} /></button>
@@ -646,7 +700,8 @@ const AdminDashboard = () => {
                                             ))
                                         ) : (
                                             <tr>
-                                                <td colSpan="6" className="text-center p-12 text-gray-500 font-black uppercase tracking-widest">No components found.</td>
+                                                {/* [EDIT] Increased colspan to 7 to match new header count */}
+                                                <td colSpan="7" className="text-center p-12 text-gray-500 font-black uppercase tracking-widest">No components found.</td>
                                             </tr>
                                         )}
                                     </tbody>
@@ -687,6 +742,21 @@ const AdminDashboard = () => {
                                             <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Casted Wt</label>
                                             <input type="number" step="0.001" value={isAddCompModalOpen ? newComponent.castedWeight : editComponent.castedWeight} onChange={(e) => isAddCompModalOpen ? setNewComponent({ ...newComponent, castedWeight: e.target.value }) : setEditComponent({ ...editComponent, castedWeight: e.target.value })} className="w-full bg-[#222] border border-[#4a4a4a] p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors font-bold text-white shadow-inner font-mono" />
                                         </div>
+                                    </div>
+                                    {/* [EDIT] Added Component Status Select Input */}
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Component Status</label>
+                                        <select 
+                                            value={isAddCompModalOpen ? newComponent.isActive : editComponent.isActive} 
+                                            onChange={(e) => {
+                                                const val = e.target.value; 
+                                                isAddCompModalOpen ? setNewComponent({ ...newComponent, isActive: val }) : setEditComponent({ ...editComponent, isActive: val });
+                                            }} 
+                                            className="w-full bg-[#222] border border-[#4a4a4a] p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors font-bold text-white shadow-inner appearance-none"
+                                        >
+                                            <option value="Active">Active</option>
+                                            <option value="Inactive">Inactive</option>
+                                        </select>
                                     </div>
                                     <div className="flex gap-3 mt-4 pt-4 border-t border-[#4a4a4a]">
                                         <button type="button" onClick={() => isAddCompModalOpen ? setIsAddCompModalOpen(false) : setIsEditCompModalOpen(false)} className="flex-1 bg-[#222] border border-[#4a4a4a] hover:bg-[#4a4a4a] text-gray-300 font-black text-xs uppercase tracking-widest py-3.5 rounded-xl transition-colors">Cancel</button>

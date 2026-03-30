@@ -104,7 +104,7 @@ const DailyProductionPerformance = () => {
 
   useEffect(() => {
     axios.get(`${process.env.REACT_APP_API_URL}/api/components`)
-      .then((res) => setComponents(res.data))
+      .then((res) => setComponents(res.data.filter(c => c.isActive === 'Active')))
       .catch((err) => console.error("Failed to fetch components", err));
 
     axios.get(`${process.env.REACT_APP_API_URL}/api/daily-performance/users`)

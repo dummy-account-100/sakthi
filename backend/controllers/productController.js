@@ -23,8 +23,18 @@ const safeStr = (val) => {
 // ==========================================
 exports.getComponents = async (req, res) => {
   try {
-    const result = await sql.query("SELECT code, description, pouredWeight, cavity, castedWeight FROM Component");
-    res.json(result.recordset);
+    const result = await sql.query("SELECT code, description, pouredWeight, cavity, castedWeight, isActive FROM Component ORDER BY code ASC");
+    // Normalize isActive to a clean 'Active'/'Inactive' string
+    const normalized = result.recordset.map(row => {
+      const activeKey = Object.keys(row).find(k => k.toLowerCase() === 'isactive');
+      const rawVal = activeKey ? row[activeKey] : undefined;
+      let isActiveStr = 'Inactive';
+      if (rawVal === true || rawVal === 1 || String(rawVal).trim().toLowerCase() === 'active') {
+        isActiveStr = 'Active';
+      }
+      return { ...row, isActive: isActiveStr };
+    });
+    res.json(normalized);
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch components" });
   }
