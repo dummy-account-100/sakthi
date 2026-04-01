@@ -10,7 +10,10 @@ router.post('/save', dmmController.saveDetails);
 router.get('/supervisor/:name', dmmController.getSupervisorReports);
 router.post('/sign', dmmController.signSupervisorReport);
 
-// 🔥 THIS IS THE ROUTE IT CANNOT FIND. ADD IT!
+// Bulk Data Route
 router.get('/bulk-data', dmmController.getBulkData);
+
+// 🔥 NEW: HOF Dashboard Route
+router.get('/hof-reports/:name', dmmController.getReportsByHOF);
 
 module.exports = router;

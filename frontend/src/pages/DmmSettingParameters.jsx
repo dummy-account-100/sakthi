@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { X, CheckCircle, AlertTriangle, FileDown, Loader, Save, PlusCircle, Trash2, Lock } from 'lucide-react';
+import { X, CheckCircle, AlertTriangle, FileDown, Loader, Save, PlusCircle, Trash2, Lock, Send } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import SignatureCanvas from 'react-signature-canvas';
@@ -35,14 +35,14 @@ const SearchableSelect = ({ label, options, displayKey, onSelect, value, placeho
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
 
-  useEffect(() => { if (value) setSearch(value); }, [value]);
+  useEffect(() => { if (value) setSearch(value); else setSearch(''); }, [value]);
 
   const filtered = options.filter((item) =>
     item[displayKey]?.toLowerCase().includes((search || '').toLowerCase())
   );
 
   return (
-    <div className="relative w-full">
+    <div className="relative w-full text-left">
       {label && <label className="text-[11px] font-black text-gray-800 uppercase block mb-1 tracking-wider">{label}</label>}
       <input
         type="text"
@@ -51,7 +51,7 @@ const SearchableSelect = ({ label, options, displayKey, onSelect, value, placeho
         onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="w-full p-1.5 text-xs font-bold border-2 border-gray-300 bg-white text-gray-900 rounded outline-none focus:border-orange-500 placeholder-gray-400 disabled:bg-gray-100 disabled:cursor-not-allowed"
+        className="w-full p-2 text-xs font-bold border-2 border-gray-300 bg-white text-gray-900 rounded outline-none focus:border-orange-500 placeholder-gray-400 disabled:bg-gray-100 disabled:cursor-not-allowed shadow-sm"
         placeholder={placeholder || 'Search...'}
       />
       {open && !disabled && (
@@ -108,7 +108,12 @@ const createEmptyRow = () => {
 };
 
 const DmmSettingParameters = () => {
-  const [headerData, setHeaderData] = useState({ date: getShiftDate(), disaMachine: 'DISA - I' });
+  const [headerData, setHeaderData] = useState({ 
+    date: getShiftDate(), 
+    disaMachine: 'DISA - I',
+    assignedHOF: '', // 🔥 NEW
+    isHofSent: false // 🔥 NEW
+  });
   const [allColumns, setAllColumns] = useState([...baseColumns]);
 
   const [shiftsMeta, setShiftsMeta] = useState({
@@ -118,9 +123,8 @@ const DmmSettingParameters = () => {
   });
 
   const [shiftsData, setShiftsData] = useState({ 1: [], 2: [], 3: [] });
-  // submittedShifts: Set of shift numbers (1|2|3) that already exist in DB for current date+DISA
   const [submittedShifts, setSubmittedShifts] = useState(new Set());
-  const [dropdowns, setDropdowns] = useState({ operators: [], supervisors: [] });
+  const [dropdowns, setDropdowns] = useState({ operators: [], supervisors: [], hofs: [] }); // 🔥 ADDED HOFS
   const [qfHistory, setQfHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState({ show: false, type: '', message: '' });
@@ -132,7 +136,6 @@ const DmmSettingParameters = () => {
   const loadSchemaAndData = async () => {
     setLoading(true);
     try {
-      // 1. Fetch Admin Custom Columns
       const configRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/config/dmm-setting-parameters/master`);
       const customCols = (configRes.data.config || []).map(c => ({
         key: `custom_${c.id}`, id: c.id, label: c.columnLabel.replace('\\n', '\n'),
@@ -141,17 +144,26 @@ const DmmSettingParameters = () => {
       const mergedColumns = [...baseColumns, ...customCols];
       setAllColumns(mergedColumns);
 
-      // 2. Fetch Shift Data
       const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/dmm-settings/details`, {
         params: { date: headerData.date, disa: headerData.disaMachine }
       });
 
-      setDropdowns({ operators: res.data.operators, supervisors: res.data.supervisors });
+      setDropdowns({ 
+        operators: res.data.operators || [], 
+        supervisors: res.data.supervisors || [], 
+        hofs: res.data.hofs || [] // 🔥 NEW
+      });
+
+      // Track assignment state
+      setHeaderData(prev => ({ 
+        ...prev, 
+        assignedHOF: res.data.assignedHOF || '',
+        isHofSent: !!res.data.assignedHOF 
+      }));
+
       setQfHistory(res.data.qfHistory || []);
 
-      // Track which shifts already have data in the DB
       const newSubmittedShifts = new Set();
-
       const loadedMeta = {
         1: { operator: '', supervisor: '', supervisorSignature: '', isIdle: false },
         2: { operator: '', supervisor: '', supervisorSignature: '', isIdle: false },
@@ -167,7 +179,6 @@ const DmmSettingParameters = () => {
       const loadedData = { 1: [], 2: [], 3: [] };
       [1, 2, 3].forEach(shift => {
         if (res.data.shiftsData[shift] && res.data.shiftsData[shift].length > 0) {
-          // This shift has existing DB data → mark as submitted/locked
           newSubmittedShifts.add(shift);
           loadedData[shift] = res.data.shiftsData[shift].map(dbRow => {
             const uiRow = { id: crypto.randomUUID(), customValues: dbRow.customValues || {} };
@@ -211,28 +222,33 @@ const DmmSettingParameters = () => {
     setShiftsData(prev => ({ ...prev, [shift]: prev[shift].length > 1 ? prev[shift].filter(row => row.id !== rowId) : prev[shift] }));
   };
 
-  /**
-   * Determine which shifts are "active" for this submit:
-   *  - NOT already submitted in DB (those are locked)
-   *  - operator is selected OR isIdle is true
-   */
   const getActiveShifts = () => {
     return [1, 2, 3].filter(shift => {
-      if (submittedShifts.has(shift)) return false; // already submitted → locked, skip
+      if (submittedShifts.has(shift)) return false; 
       const meta = shiftsMeta[shift];
       return meta.isIdle || (meta.operator && meta.operator.trim() !== '');
     });
   };
 
-  const handleSave = async () => {
+  // 🔥 NEW: Dynamic Save Handler with Shift 3 Validation for HOF Submission
+  const saveToServer = async (isHofSubmission = false) => {
     const activeShifts = getActiveShifts();
 
-    if (activeShifts.length === 0) {
-      setNotification({
-        show: true, type: 'error',
-        message: 'Please select an operator (or mark as Line Idle) for at least one new shift before submitting.'
-      });
-      return;
+    // Specific logic when sending to HOF
+    if (isHofSubmission) {
+      // Must have Shift 3 completed (either actively saving now or already locked in DB)
+      const shift3Done = activeShifts.includes(3) || submittedShifts.has(3);
+      if (!shift3Done) {
+        return setNotification({ show: true, type: 'error', message: 'You can only send to the HOF after completing the 3rd shift.' });
+      }
+      if (!headerData.assignedHOF) {
+        document.getElementById('checklist-footer')?.scrollIntoView({ behavior: 'smooth' });
+        return setNotification({ show: true, type: 'error', message: 'Please Assign an HOF before sending.' });
+      }
+    }
+
+    if (activeShifts.length === 0 && !isHofSubmission) {
+      return setNotification({ show: true, type: 'error', message: 'Please select an operator (or mark as Line Idle) for at least one new shift before submitting.' });
     }
 
     // Validate only active (non-submitted) shifts
@@ -240,7 +256,7 @@ const DmmSettingParameters = () => {
     let emptyShift = null;
 
     for (const shift of activeShifts) {
-      if (shiftsMeta[shift].isIdle) continue; // idle rows don't need field-level validation
+      if (shiftsMeta[shift].isIdle) continue;
       for (const row of shiftsData[shift]) {
         for (const col of allColumns) {
           const val = col.isCustom ? row.customValues[col.id] : row[col.key];
@@ -256,23 +272,19 @@ const DmmSettingParameters = () => {
     }
 
     if (hasEmpty) {
-      setNotification({
-        show: true, type: 'error',
-        message: `Shift ${emptyShift} has empty fields. Type '-' for any field with no data.`
-      });
-      return;
+      return setNotification({ show: true, type: 'error', message: `Shift ${emptyShift} has empty fields. Type '-' for any field with no data.` });
     }
 
-    // Also validate: if operator is selected for a shift, supervisor must be selected too
     for (const shift of activeShifts) {
       if (shiftsMeta[shift].isIdle) continue;
       if (!shiftsMeta[shift].supervisor || shiftsMeta[shift].supervisor.trim() === '') {
-        setNotification({
-          show: true, type: 'error',
-          message: `Please select a Supervisor for Shift ${shift}.`
-        });
-        return;
+        return setNotification({ show: true, type: 'error', message: `Please select a Supervisor for Shift ${shift}.` });
       }
+    }
+
+    let finalHOF = headerData.isHofSent ? headerData.assignedHOF : '';
+    if (isHofSubmission) {
+      finalHOF = headerData.assignedHOF;
     }
 
     setLoading(true);
@@ -282,13 +294,17 @@ const DmmSettingParameters = () => {
         disa: headerData.disaMachine,
         shiftsData,
         shiftsMeta,
-        shiftsToSave: activeShifts  // tell backend which shifts to upsert
+        shiftsToSave: activeShifts,
+        assignedHOF: finalHOF // 🔥 Pass HOF selection to Backend
       });
 
-      const shiftLabels = activeShifts.map(s => `Shift ${s}`).join(', ');
-      setNotification({ show: true, type: 'success', message: `${shiftLabels} sent to Supervisor successfully!` });
+      if (isHofSubmission) {
+        setHeaderData(prev => ({ ...prev, isHofSent: true }));
+      }
+
+      setNotification({ show: true, type: 'success', message: isHofSubmission ? 'Sent to HOF Successfully!' : 'Shift Data Saved Successfully!' });
       setTimeout(() => setNotification({ show: false }), 3000);
-      loadSchemaAndData(); // Refresh to lock the newly submitted shifts
+      loadSchemaAndData(); 
     } catch (error) {
       setNotification({ show: true, type: 'error', message: 'Failed to save data.' });
     }
@@ -300,7 +316,6 @@ const DmmSettingParameters = () => {
     try {
       const doc = new jsPDF('l', 'mm', 'a4');
 
-      // Determine correct QF value
       let currentPageQfValue = 'QF/07/FBP-13, Rev.No:06 dt 08.10.2025';
       const reportDateObj = new Date(headerData.date);
       reportDateObj.setHours(0, 0, 0, 0);
@@ -314,23 +329,17 @@ const DmmSettingParameters = () => {
 
       doc.setLineWidth(0.3);
 
-      // Box 1: Logo
       doc.rect(10, 10, 40, 20);
-      try {
-        doc.addImage(logo, 'PNG', 12, 11, 36, 18);
-      } catch (err) {
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } catch (err) {
         doc.setFontSize(14); doc.setFont('helvetica', 'bold');
         doc.text('SAKTHI', 30, 18, { align: 'center' });
         doc.text('AUTO', 30, 26, { align: 'center' });
       }
 
-      // Box 2: Title
       doc.rect(50, 10, 197, 20);
-      doc.setFontSize(16);
-      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16); doc.setFont('helvetica', 'bold');
       doc.text('DMM SETTING PARAMETERS CHECK SHEET', 148.5, 22, { align: 'center' });
 
-      // Box 3: Meta
       doc.rect(247, 10, 40, 20);
       doc.setFontSize(11);
       doc.text(headerData.disaMachine, 267, 16, { align: 'center' });
@@ -340,8 +349,7 @@ const DmmSettingParameters = () => {
       doc.text(`DATE: ${formattedDate}`, 267, 26, { align: 'center' });
 
       autoTable(doc, {
-        startY: 35,
-        margin: { left: 10, right: 10 },
+        startY: 35, margin: { left: 10, right: 10 },
         head: [['SHIFT', 'OPERATOR NAME', 'VERIFIED BY', 'SIGNATURE']],
         body: [
           ['SHIFT I', shiftsMeta[1].operator || '-', shiftsMeta[1].supervisor || '-', ''],
@@ -463,26 +471,23 @@ const DmmSettingParameters = () => {
               <tbody className="text-sm font-semibold text-slate-800">
                 {[1, 2, 3].map(shift => {
                   const isIdle = shiftsMeta[shift].isIdle;
-                  const isLocked = submittedShifts.has(shift); // already submitted, read-only
+                  const isLocked = submittedShifts.has(shift); 
                   const zClass = shift === 1 ? 'z-40' : shift === 2 ? 'z-30' : 'z-20';
 
                   return (
                     <React.Fragment key={`shift-${shift}`}>
-                      {/* ── Shift Header Row ── */}
                       <tr className={`border-y-2 ${isLocked ? 'bg-green-50/70 border-green-300' : 'bg-orange-50/50 border-orange-200'}`}>
                         <td colSpan={allColumns.length + 2} className={`p-3 text-left sticky left-0 ${zClass}`}>
                           <div className="flex items-center justify-between w-[950px]">
                             <div className="flex items-center gap-6">
                               <span className="font-black text-gray-800 text-lg">SHIFT {shift}</span>
 
-                              {/* Locked badge for already-submitted shifts */}
                               {isLocked && (
                                 <span className="flex items-center gap-1.5 bg-green-100 border border-green-400 text-green-700 text-xs font-black px-3 py-1 rounded-full">
                                   <Lock size={12} /> SUBMITTED – READ ONLY
                                 </span>
                               )}
 
-                              {/* Line Idle toggle – only for non-locked shifts */}
                               {!isLocked && (
                                 <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded border-2 border-gray-300 hover:border-orange-500 transition-colors shadow-sm">
                                   <input
@@ -495,7 +500,6 @@ const DmmSettingParameters = () => {
                                 </label>
                               )}
 
-                              {/* Operator selector */}
                               <div className={`flex items-center gap-2 transition-opacity ${isIdle && !isLocked ? 'opacity-40 pointer-events-none' : ''}`}>
                                 <span className="text-xs font-bold text-gray-600 uppercase">Operator:</span>
                                 <div className="w-48 relative">
@@ -510,7 +514,6 @@ const DmmSettingParameters = () => {
                                 </div>
                               </div>
 
-                              {/* Supervisor selector */}
                               <div className={`flex items-center gap-2 transition-opacity ${isIdle && !isLocked ? 'opacity-40 pointer-events-none' : ''}`}>
                                 <span className="text-xs font-bold text-gray-600 uppercase">Supervisor:</span>
                                 <div className="w-48 relative">
@@ -539,7 +542,6 @@ const DmmSettingParameters = () => {
                         </td>
                       </tr>
 
-                      {/* ── Data Rows ── */}
                       {shiftsData[shift].map((row, index) => (
                         <tr
                           key={row.id}
@@ -587,25 +589,33 @@ const DmmSettingParameters = () => {
             </table>
           </div>
 
-          <div id="checklist-footer" className="bg-slate-100 p-8 border-t border-gray-200 mt-6 flex justify-end gap-6 rounded-xl shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-            <button
-              onClick={generatePDF}
-              className="bg-white border-2 border-gray-900 text-gray-900 hover:bg-gray-200 font-bold py-3 px-6 rounded-lg shadow-md uppercase flex items-center gap-2 mt-auto transition-colors"
-            >
-              <FileDown size={20} /> PDF
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={loading || activeShifts.length === 0}
-              title={activeShifts.length === 0 ? 'All shifts are already submitted. No new shifts to send.' : ''}
-              className={`font-bold py-3 px-12 rounded-lg shadow-lg uppercase mt-auto transition-colors flex items-center gap-3 ${activeShifts.length === 0
-                  ? 'bg-gray-400 cursor-not-allowed text-white'
-                  : 'bg-gray-900 hover:bg-orange-600 text-white'
-                }`}
-            >
-              {loading ? <Loader className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}
-              {loading ? 'Saving...' : `Send to Supervisor${activeShifts.length > 0 ? ` (Shift${activeShifts.length > 1 ? 's' : ''} ${activeShifts.join(', ')})` : ''}`}
-            </button>
+          <div id="checklist-footer" className="bg-slate-100 p-8 border-t border-gray-200 mt-6 flex flex-col md:flex-row justify-between items-end gap-6 rounded-xl shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+            <div className="w-full md:w-1/3">
+               <SearchableSelect 
+                  label="Assign to HOF (Verification)" 
+                  options={dropdowns.hofs} 
+                  displayKey="OperatorName" 
+                  value={headerData.assignedHOF} 
+                  onSelect={(op) => setHeaderData(prev => ({ ...prev, assignedHOF: op.OperatorName }))} 
+                  placeholder="Select HOF..." 
+               />
+            </div>
+
+            <div className="flex flex-wrap gap-4 w-full md:w-auto justify-end">
+              <button onClick={generatePDF} className="bg-white border-2 border-gray-900 text-gray-900 hover:bg-gray-200 font-bold py-3 px-6 rounded-lg shadow-md uppercase flex items-center gap-2 mt-auto transition-colors">
+                <FileDown size={20} /> PDF
+              </button>
+              
+              <button onClick={() => saveToServer(false)} disabled={loading} className="bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 px-8 rounded-lg shadow-lg uppercase mt-auto transition-colors flex items-center gap-3">
+                {loading ? <Loader className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}
+                {loading ? 'Saving...' : 'Save Shifts Data'}
+              </button>
+
+              <button onClick={() => saveToServer(true)} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg uppercase mt-auto transition-colors flex items-center gap-3">
+                {loading ? <Loader className="animate-spin w-5 h-5" /> : <Send className="w-5 h-5" />}
+                {loading ? 'Sending...' : 'Send to HOF'}
+              </button>
+            </div>
           </div>
 
         </div>

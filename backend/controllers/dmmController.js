@@ -6,6 +6,8 @@ exports.getDetails = async (req, res) => {
 
     const operatorsRes = await sql.query`SELECT username AS OperatorName FROM dbo.Users WHERE role IN ('operator', 'supervisor') ORDER BY username`;
     const supervisorsRes = await sql.query`SELECT username AS supervisorName FROM dbo.Users WHERE role = 'supervisor' ORDER BY username`;
+    // 🔥 NEW: Fetch HOF Users
+    const hofRes = await sql.query`SELECT username AS OperatorName FROM dbo.Users WHERE role = 'hof' ORDER BY username`;
 
     const recordsRes = await sql.query`
       SELECT * FROM DmmSettingParameters 
@@ -15,6 +17,9 @@ exports.getDetails = async (req, res) => {
 
     const records = recordsRes.recordset || [];
     const recordIds = records.map(r => r.id).filter(id => id != null);
+    
+    // Extract existing HOF if already assigned
+    const assignedHOF = records.length > 0 ? records[0].AssignedHOF : '';
 
     let customValuesMap = {};
     if (recordIds.length > 0) {
@@ -54,7 +59,6 @@ exports.getDetails = async (req, res) => {
       };
     });
 
-    // 🔥 FETCH QF HISTORY 
     let qfHistory = [];
     try {
       const qfRes = await sql.query`SELECT qfValue, date FROM DmmSettingQFvalues WHERE formName = 'dmm-setting-parameters' ORDER BY date DESC, id DESC`;
@@ -64,9 +68,11 @@ exports.getDetails = async (req, res) => {
     res.json({
       operators: operatorsRes.recordset,
       supervisors: supervisorsRes.recordset,
+      hofs: hofRes.recordset, // 🔥 Added
+      assignedHOF, // 🔥 Added
       shiftsData,
       shiftsMeta,
-      qfHistory // 🔥 Included in response
+      qfHistory
     });
   } catch (err) {
     console.error('DMM Details Fetch Error:', err);
@@ -74,12 +80,9 @@ exports.getDetails = async (req, res) => {
   }
 };
 
-// --- Operator Save (Per-Shift Upsert) ---
 exports.saveDetails = async (req, res) => {
   try {
-    const { date, disa, shiftsData, shiftsMeta, shiftsToSave } = req.body;
-    // shiftsToSave is an array like [1, 3] telling backend which shifts to process.
-    // If not provided, fall back to old behaviour (all shifts).
+    const { date, disa, shiftsData, shiftsMeta, shiftsToSave, assignedHOF } = req.body; // 🔥 Added assignedHOF
     const targetShifts = Array.isArray(shiftsToSave) ? shiftsToSave : [1, 2, 3];
 
     const transaction = new sql.Transaction();
@@ -91,7 +94,6 @@ exports.saveDetails = async (req, res) => {
         const rows = shiftsData[shift] || [];
         const isIdleVal = meta.isIdle ? 1 : 0;
 
-        // 1. Fetch existing rows for this specific shift
         const existingReq = new sql.Request(transaction);
         const existingRes = await existingReq.query`
           SELECT id, SupervisorSignature FROM DmmSettingParameters 
@@ -99,12 +101,10 @@ exports.saveDetails = async (req, res) => {
         `;
         const existingRows = existingRes.recordset;
 
-        // Preserve the existing supervisor signature if already signed
         const existingSignature = existingRows.length > 0
           ? (existingRows[0].SupervisorSignature || '')
           : '';
 
-        // 2. Delete old custom values for this shift's rows
         if (existingRows.length > 0) {
           const idList = existingRows.map(r => r.id).join(',');
           await new sql.Request(transaction).query(
@@ -112,22 +112,21 @@ exports.saveDetails = async (req, res) => {
           );
         }
 
-        // 3. Delete old base rows for this shift only
         await new sql.Request(transaction).query`
           DELETE FROM DmmSettingParameters 
           WHERE RecordDate = ${date} AND DisaMachine = ${disa} AND Shift = ${shift}
         `;
 
-        // 4. Insert fresh rows for this shift
         const rowsToSave = rows.length > 0 ? rows : [{}];
         for (let i = 0; i < rowsToSave.length; i++) {
           const row = rowsToSave[i];
           const insertReq = new sql.Request(transaction);
 
+          // 🔥 UPDATED: Added AssignedHOF to INSERT
           const insertRes = await insertReq.query`
             INSERT INTO DmmSettingParameters (
               RecordDate, DisaMachine, Shift, OperatorName, SupervisorName,
-              IsIdle, RowIndex, SupervisorSignature,
+              IsIdle, RowIndex, SupervisorSignature, AssignedHOF,
               Customer, ItemDescription, Time, PpThickness, PpHeight,
               SpThickness, SpHeight, CoreMaskOut, CoreMaskIn,
               SandShotPressure, CorrectionShotTime, SqueezePressure,
@@ -138,7 +137,7 @@ exports.saveDetails = async (req, res) => {
             VALUES (
               ${date}, ${disa}, ${shift}, ${meta.operator || ''},
               ${meta.supervisor || ''}, ${isIdleVal}, ${i},
-              ${existingSignature},
+              ${existingSignature}, ${assignedHOF || null},
               ${row.Customer || ''}, ${row.ItemDescription || ''},
               ${row.Time || ''}, ${row.PpThickness || ''}, ${row.PpHeight || ''},
               ${row.SpThickness || ''}, ${row.SpHeight || ''},
@@ -153,7 +152,6 @@ exports.saveDetails = async (req, res) => {
 
           const newRowId = insertRes.recordset[0].id;
 
-          // 5. Insert custom column values
           if (row.customValues && Object.keys(row.customValues).length > 0) {
             for (const [colId, val] of Object.entries(row.customValues)) {
               if (val !== '' && val !== null && val !== undefined) {
@@ -166,6 +164,12 @@ exports.saveDetails = async (req, res) => {
             }
           }
         }
+      }
+
+      // 🔥 CRITICAL: Update AssignedHOF for ALL shifts on this date/machine, not just targetShifts, to ensure the form links completely to HOF Dashboard.
+      if (assignedHOF) {
+        const updateHofReq = new sql.Request(transaction);
+        await updateHofReq.query`UPDATE DmmSettingParameters SET AssignedHOF = ${assignedHOF} WHERE RecordDate = ${date} AND DisaMachine = ${disa}`;
       }
 
       await transaction.commit();
@@ -231,7 +235,6 @@ exports.getBulkData = async (req, res) => {
       }
     }
 
-    // 🔥 FETCH QF HISTORY FOR BULK EXPORT 
     let qfHistory = [];
     try {
       const qfRes = await sql.query`SELECT qfValue, date FROM DmmSettingQFvalues WHERE formName = 'dmm-setting-parameters' ORDER BY date DESC, id DESC`;
@@ -241,7 +244,7 @@ exports.getBulkData = async (req, res) => {
     res.json({
       master: masterRes.recordset || [],
       trans: mergedRecords,
-      qfHistory // 🔥 Included in response
+      qfHistory 
     });
 
   } catch (error) {
@@ -250,12 +253,9 @@ exports.getBulkData = async (req, res) => {
   }
 };
 
-// --- Supervisor Fetch (one entry per shift, no duplicates) ---
 exports.getSupervisorReports = async (req, res) => {
   try {
     const { name } = req.params;
-    // Use MIN(id) to pick the first-ever submission per shift so the supervisor
-    // only sees one sign-off request per (date, DISA, shift).
     const records = await sql.query`
       SELECT 
         RecordDate as reportDate, 
@@ -272,7 +272,6 @@ exports.getSupervisorReports = async (req, res) => {
   } catch (err) { res.status(500).send('Failed to fetch reports'); }
 };
 
-// --- Supervisor Sign ---
 exports.signSupervisorReport = async (req, res) => {
   try {
     const { date, disaMachine, shift, signature } = req.body;
@@ -283,4 +282,24 @@ exports.signSupervisorReport = async (req, res) => {
     `;
     res.json({ success: true, message: 'Signed successfully' });
   } catch (err) { res.status(500).send('Failed to sign report'); }
+};
+
+// ========================================== 
+// 🔥 NEW API: HOF DASHBOARD VERIFICATION 🔥
+// ==========================================
+exports.getReportsByHOF = async (req, res) => {
+  try {
+    const { name } = req.params;
+    const result = await sql.query`
+      SELECT t1.RecordDate as reportDate, t1.DisaMachine as disa, t1.AssignedHOF as hofName
+      FROM DmmSettingParameters t1
+      WHERE t1.AssignedHOF = ${name}
+      GROUP BY t1.RecordDate, t1.DisaMachine, t1.AssignedHOF
+      ORDER BY t1.RecordDate DESC
+    `;
+    res.json(result.recordset);
+  } catch (error) {
+    console.error("Error in getReportsByHOF for DMM:", error);
+    res.status(500).json({ error: "Failed to fetch DMM HOF reports" });
+  }
 };

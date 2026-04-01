@@ -61,6 +61,29 @@ const unpouredBaseColumns = [
   { key: 'others', label: 'OTHERS', group: 'OTHERS' }
 ];
 
+// 🔥 BASE COLUMNS FOR DMM SETTING PDF GENERATION
+const dmmBaseColumns = [
+  { key: 'Customer', label: 'CUSTOMER', width: 'w-32', inputType: 'text' },
+  { key: 'ItemDescription', label: 'ITEM\nDESCRIPTION', width: 'w-40', inputType: 'text' },
+  { key: 'Time', label: 'TIME', width: 'w-24', inputType: 'time' },
+  { key: 'PpThickness', label: 'PP\nTHICKNESS\n(mm)', width: 'w-20', inputType: 'number' },
+  { key: 'PpHeight', label: 'PP\nHEIGHT\n(mm)', width: 'w-20', inputType: 'number' },
+  { key: 'SpThickness', label: 'SP\nTHICKNESS\n(mm)', width: 'w-20', inputType: 'number' },
+  { key: 'SpHeight', label: 'SP\nHEIGHT\n(mm)', width: 'w-20', inputType: 'number' },
+  { key: 'CoreMaskOut', label: 'CORE MASK\nHEIGHT\n(OUTSIDE) mm', width: 'w-24', inputType: 'number' },
+  { key: 'CoreMaskIn', label: 'CORE MASK\nHEIGHT\n(INSIDE) mm', width: 'w-24', inputType: 'number' },
+  { key: 'SandShotPressure', label: 'SAND SHOT\nPRESSURE\nBAR', width: 'w-24', inputType: 'number', step: '0.01' },
+  { key: 'CorrectionShotTime', label: 'CORRECTION\nOF SHOT TIME\n(SEC)', width: 'w-28', inputType: 'number' },
+  { key: 'SqueezePressure', label: 'SQUEEZE\nPRESSURE\nKp/Cm2 / bar', width: 'w-28', inputType: 'number' },
+  { key: 'PpStripAccel', label: 'PP STRIPPING\nACCELERATION', width: 'w-28', inputType: 'number' },
+  { key: 'PpStripDist', label: 'PP STRIPPING\nDISTANCE', width: 'w-28', inputType: 'number' },
+  { key: 'SpStripAccel', label: 'SP STRIPPING\nACCELERATION', width: 'w-28', inputType: 'number' },
+  { key: 'SpStripDist', label: 'SP STRIPPING\nDISTANCE', width: 'w-28', inputType: 'number' },
+  { key: 'MouldThickness', label: 'MOULD\nTHICKNESS\n(± 10mm)', width: 'w-28', inputType: 'number' },
+  { key: 'CloseUpForce', label: 'CLOSE UP\nFORCE (Kp)', width: 'w-24', inputType: 'number' },
+  { key: 'Remarks', label: 'REMARKS', width: 'w-48', inputType: 'text' }
+];
+
 const Hof = () => {
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
@@ -89,11 +112,17 @@ const Hof = () => {
   const [isDailyPdfLoading, setIsDailyPdfLoading] = useState(false);
   const dailySigCanvas = useRef({});
 
-  // States for Unpoured Mould Details (Signature Canvas Removed)
+  // States for Unpoured Mould Details (VIEW ONLY)
   const [unpouredReports, setUnpouredReports] = useState([]);
   const [selectedUnpouredReport, setSelectedUnpouredReport] = useState(null);
   const [unpouredPdfUrl, setUnpouredPdfUrl] = useState(null);
   const [isUnpouredPdfLoading, setIsUnpouredPdfLoading] = useState(false);
+
+  // 🔥 NEW: States for DMM Setting Parameters (VIEW ONLY)
+  const [dmmReports, setDmmReports] = useState([]);
+  const [selectedDmmReport, setSelectedDmmReport] = useState(null);
+  const [dmmPdfUrl, setDmmPdfUrl] = useState(null);
+  const [isDmmPdfLoading, setIsDmmPdfLoading] = useState(false);
 
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const currentHOF = storedUser.username || "hof_user";
@@ -103,6 +132,7 @@ const Hof = () => {
   const ERR_API_BASE_V2 = `${process.env.REACT_APP_API_URL}/api/error-proof2`; 
   const DAILY_API_BASE = `${process.env.REACT_APP_API_URL}/api/daily-performance`; 
   const UNPOURED_API_BASE = `${process.env.REACT_APP_API_URL}/api/unpoured-moulds`; 
+  const DMM_API_BASE = `${process.env.REACT_APP_API_URL}/api/dmm-settings`; // 🔥 ADDED
 
   useEffect(() => {
     fetchReports();
@@ -110,6 +140,7 @@ const Hof = () => {
     fetchErrorReportsV2(); 
     fetchDailyReports(); 
     fetchUnpouredReports(); 
+    fetchDmmReports(); // 🔥 ADDED
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -146,6 +177,14 @@ const Hof = () => {
       const res = await axios.get(`${UNPOURED_API_BASE}/hof-reports/${currentHOF}`);
       setUnpouredReports(res.data);
     } catch (err) { toast.error("Failed to load Unpoured Mould reports."); }
+  };
+
+  // 🔥 NEW: Fetch DMM Settings
+  const fetchDmmReports = async () => {
+    try {
+      const res = await axios.get(`${DMM_API_BASE}/hof-reports/${currentHOF}`);
+      setDmmReports(res.data);
+    } catch (err) { toast.error("Failed to load DMM Settings reports."); }
   };
 
   const handleOpenDailyModal = async (report) => {
@@ -490,7 +529,7 @@ const Hof = () => {
   };
 
   // =======================================================================
-  // 🔥 NEW: UNPOURED MOULD DETAILS VERIFICATION PDF GENERATION 
+  // 🔥 UNPOURED MOULD DETAILS VERIFICATION PDF GENERATION 
   // =======================================================================
   const handleOpenUnpouredModal = async (report) => {
     setSelectedUnpouredReport(report); 
@@ -681,8 +720,6 @@ const Hof = () => {
         }
       });
 
-      // 🔥 Note: HOF Verification Box Removed from Unpoured Mould Details PDF per request
-
       doc.setFontSize(8); doc.setFont('helvetica', 'normal');
       doc.text(currentPageQfValue, 10, 200);
 
@@ -691,6 +728,128 @@ const Hof = () => {
 
     } catch (error) { toast.error("Failed to generate Unpoured Moulds PDF."); }
     setIsUnpouredPdfLoading(false);
+  };
+
+
+  // =======================================================================
+  // 🔥 NEW: DMM SETTING PARAMETERS PDF GENERATION (VIEW ONLY)
+  // =======================================================================
+  const handleOpenDmmModal = async (report) => {
+    setSelectedDmmReport(report); 
+    setDmmPdfUrl(null); 
+    setIsDmmPdfLoading(true);
+
+    try {
+      const dateStr = getSafeDateStr(report.reportDate);
+      const disaMachine = report.disa;
+
+      const [detailsRes, configRes] = await Promise.all([
+        axios.get(`${DMM_API_BASE}/details`, { params: { date: dateStr, disa: disaMachine } }),
+        axios.get(`${process.env.REACT_APP_API_URL}/api/config/dmm-setting-parameters/master`)
+      ]);
+
+      const customCols = (configRes.data.config || []).map(c => ({
+        key: `custom_${c.id}`, id: c.id, label: c.columnLabel.replace('\\n', '\n'),
+        inputType: c.inputType, width: c.columnWidth, isCustom: true
+      }));
+
+      const mergedColumns = [...dmmBaseColumns, ...customCols];
+      
+      const shiftsData = detailsRes.data.shiftsData;
+      const shiftsMeta = detailsRes.data.shiftsMeta;
+      const qfHistory = detailsRes.data.qfHistory || [];
+
+      const doc = new jsPDF('l', 'mm', 'a4');
+      const currentPageQfValue = getDynamicQfString(dateStr, qfHistory, "QF/07/FBP-13, Rev.No:06 dt 08.10.2025");
+
+      doc.setLineWidth(0.3);
+      doc.rect(10, 10, 40, 20);
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } catch (err) {
+        doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+        doc.text('SAKTHI', 30, 18, { align: 'center' });
+        doc.text('AUTO', 30, 26, { align: 'center' });
+      }
+
+      doc.rect(50, 10, 197, 20);
+      doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+      doc.text('DMM SETTING PARAMETERS CHECK SHEET', 148.5, 22, { align: 'center' });
+
+      doc.rect(247, 10, 40, 20);
+      doc.setFontSize(11);
+      doc.text(disaMachine, 267, 16, { align: 'center' });
+      doc.line(247, 20, 287, 20);
+      doc.setFontSize(10);
+      doc.text(`DATE: ${formatDate(dateStr)}`, 267, 26, { align: 'center' });
+
+      autoTable(doc, {
+        startY: 35, margin: { left: 10, right: 10 },
+        head: [['SHIFT', 'OPERATOR NAME', 'VERIFIED BY', 'SIGNATURE']],
+        body: [
+          ['SHIFT I', shiftsMeta[1]?.operator || '-', shiftsMeta[1]?.supervisor || '-', ''],
+          ['SHIFT II', shiftsMeta[2]?.operator || '-', shiftsMeta[2]?.supervisor || '-', ''],
+          ['SHIFT III', shiftsMeta[3]?.operator || '-', shiftsMeta[3]?.supervisor || '-', '']
+        ],
+        theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle' },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+        didDrawCell: function (data) {
+          if (data.section === 'body' && data.column.index === 3) {
+            const shiftNum = data.row.index + 1;
+            const sigData = shiftsMeta[shiftNum]?.supervisorSignature;
+            if (sigData && sigData.startsWith('data:image')) {
+              try { doc.addImage(sigData, 'PNG', data.cell.x + 2, data.cell.y + 1, data.cell.width - 4, data.cell.height - 2); } catch (e) { }
+            }
+          }
+        }
+      });
+
+      let currentY = doc.lastAutoTable.finalY + 8;
+
+      [1, 2, 3].forEach((shift, index) => {
+        const isIdle = shiftsMeta[shift]?.isIdle;
+        const shiftLabel = shift === 1 ? 'I' : shift === 2 ? 'II' : 'III';
+
+        const tableHeader = [
+          [{ content: `SHIFT ${shiftLabel}`, colSpan: mergedColumns.length + 1, styles: { halign: 'center', fontStyle: 'bold', fillColor: [200, 200, 200], textColor: [0, 0, 0] } }],
+          [{ content: 'S.No', styles: { cellWidth: 8 } }, ...mergedColumns.map(col => ({ content: col.label, styles: { cellWidth: 'wrap' } }))]
+        ];
+
+        let tableBody = [];
+        if (isIdle) {
+          tableBody.push([{ content: 'L I N E   I D L E', colSpan: mergedColumns.length + 1, styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', fontSize: 14, textColor: [100, 100, 100], fillColor: [245, 245, 245], minCellHeight: 15 } }]);
+        } else if (shiftsData[shift] && shiftsData[shift].length > 0) {
+          tableBody = shiftsData[shift].map((row, idx) => {
+            const pdfRow = [(idx + 1).toString()];
+            mergedColumns.forEach(col => {
+              const val = col.isCustom ? row.customValues[col.id] : row[col.key];
+              pdfRow.push(val === '' || val === null || val === undefined ? '-' : val.toString());
+            });
+            return pdfRow;
+          });
+        } else {
+            tableBody.push([{ content: 'N / A', colSpan: mergedColumns.length + 1, styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', fontSize: 14, textColor: [100, 100, 100], fillColor: [250, 250, 250], minCellHeight: 15 } }]);
+        }
+
+        autoTable(doc, {
+          startY: currentY, margin: { left: 5, right: 5 }, head: tableHeader, body: tableBody, theme: 'grid',
+          styles: { fontSize: 5.5, cellPadding: 0.8, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
+          headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 5 },
+          columnStyles: { 0: { cellWidth: 8 } }
+        });
+
+        currentY = doc.lastAutoTable.finalY + 5;
+        if (currentY > 175 && index < 2) {
+          doc.setFontSize(8); doc.text(currentPageQfValue, 10, 200);
+          doc.addPage(); currentY = 15;
+        }
+      });
+
+      doc.setFontSize(8); doc.text(currentPageQfValue, 10, 200);
+
+      const pdfBlobUrl = doc.output('bloburl');
+      setDmmPdfUrl(pdfBlobUrl);
+
+    } catch (error) { toast.error("Failed to generate DMM PDF."); }
+    setIsDmmPdfLoading(false);
   };
 
 
@@ -818,7 +977,7 @@ const Hof = () => {
           )}
         </div>
 
-        {/* 🔥 SECTION 5: UNPOURED MOULD DETAILS (VIEW ONLY) */}
+        {/* SECTION 5: UNPOURED MOULD DETAILS (VIEW ONLY) */}
         <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl p-8 border-t-4 border-orange-500">
           <div className="flex justify-between items-center mb-8 border-b pb-4">
             <h1 className="text-3xl font-bold text-gray-800">Unpoured Mould Details</h1>
@@ -838,11 +997,43 @@ const Hof = () => {
                       <td className="p-3 border border-gray-300 font-medium">{formatDate(report.reportDate)}</td>
                       <td className="p-3 border border-gray-300 font-bold">{report.disa}</td>
                       <td className="p-3 border border-gray-300">
-                        {/* HOF Signature is not required, display as Available for Review */}
                         <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold">Available for Review</span>
                       </td>
                       <td className="p-3 border border-gray-300 text-center">
                         <button onClick={() => handleOpenUnpouredModal(report)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow transition-colors">View Report</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* 🔥 SECTION 6: DMM SETTING PARAMETERS (VIEW ONLY) */}
+        <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl p-8 border-t-4 border-amber-500">
+          <div className="flex justify-between items-center mb-8 border-b pb-4">
+            <h1 className="text-3xl font-bold text-gray-800">DMM Setting Parameters</h1>
+          </div>
+
+          {dmmReports.length === 0 ? (
+            <p className="text-gray-500 italic">No DMM Setting reports found for your review.</p>
+          ) : (
+            <table className="w-full text-left border-collapse border border-gray-300">
+              <thead className="bg-gray-800 text-white">
+                <tr><th className="p-3 border border-gray-300">Date</th><th className="p-3 border border-gray-300">Machine</th><th className="p-3 border border-gray-300">Status</th><th className="p-3 border border-gray-300 text-center">Action</th></tr>
+              </thead>
+              <tbody>
+                {dmmReports.map((report, idx) => {
+                  return (
+                    <tr key={idx} className="hover:bg-amber-50">
+                      <td className="p-3 border border-gray-300 font-medium">{formatDate(report.reportDate)}</td>
+                      <td className="p-3 border border-gray-300 font-bold">{report.disa}</td>
+                      <td className="p-3 border border-gray-300">
+                        <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold">Available for Review</span>
+                      </td>
+                      <td className="p-3 border border-gray-300 text-center">
+                        <button onClick={() => handleOpenDmmModal(report)} className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow transition-colors">View Report</button>
                       </td>
                     </tr>
                   );
@@ -1002,7 +1193,7 @@ const Hof = () => {
         </div>
       )}
 
-      {/* 5. 🔥 NEW: UNPOURED MOULD DETAILS MODAL (VIEW ONLY) */}
+      {/* 5. UNPOURED MOULD DETAILS MODAL (VIEW ONLY) */}
       {selectedUnpouredReport && (
         <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
           <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
@@ -1024,6 +1215,37 @@ const Hof = () => {
                 </div>
                 <div className="mt-auto">
                   <button onClick={() => { setSelectedUnpouredReport(null); setUnpouredPdfUrl(null); }} className="w-full bg-gray-600 hover:bg-gray-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
+                    Close Viewer
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. 🔥 NEW: DMM SETTING PARAMETERS MODAL (VIEW ONLY) */}
+      {selectedDmmReport && (
+        <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
+          <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
+            <h3 className="font-bold text-xl uppercase tracking-wider">View DMM Setting Parameters</h3>
+            <button onClick={() => { setSelectedDmmReport(null); setDmmPdfUrl(null); }} className="text-gray-400 hover:text-red-400 transition-colors">
+              <X size={28} />
+            </button>
+          </div>
+          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+            <div className="flex-1 h-full bg-[#525659] relative flex items-center justify-center">
+              {isDmmPdfLoading && <Loader className="animate-spin text-white w-12 h-12 absolute" />}
+              {dmmPdfUrl && <iframe src={`${dmmPdfUrl}#toolbar=0&view=FitH`} className="w-full h-full border-none relative z-10" title="PDF" />}
+            </div>
+            <div className="w-full lg:w-[400px] bg-gray-50 border-l border-gray-300 flex flex-col shrink-0 shadow-2xl z-10 overflow-y-auto">
+              <div className="p-6 flex-1 flex flex-col">
+                <div className="bg-amber-100 p-4 rounded-xl border border-amber-200 mb-6 text-sm flex flex-col gap-2 shadow-sm text-amber-900">
+                  <p><span className="font-bold">Date:</span> {formatDate(selectedDmmReport.reportDate)}</p>
+                  <p><span className="font-bold">Machine:</span> {selectedDmmReport.disa}</p>
+                </div>
+                <div className="mt-auto">
+                  <button onClick={() => { setSelectedDmmReport(null); setDmmPdfUrl(null); }} className="w-full bg-gray-600 hover:bg-gray-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
                     Close Viewer
                   </button>
                 </div>
