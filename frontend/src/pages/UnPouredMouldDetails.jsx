@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { CheckCircle, AlertTriangle, Save, Loader, FileDown } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Save, Loader, FileDown, Send } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import SignatureCanvas from 'react-signature-canvas';
@@ -23,6 +23,24 @@ const NotificationModal = ({ data, onClose }) => {
         </div>
         {!isLoading && <button onClick={onClose} className="mt-4 px-4 py-2 bg-gray-900 text-white rounded text-sm font-bold float-right">Close</button>}
       </div>
+    </div>
+  );
+};
+
+const SearchableSelect = ({ label, options, displayKey, onSelect, value, placeholder }) => {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  useEffect(() => { if (value) setSearch(value); else setSearch(""); }, [value]);
+  const filtered = options.filter((item) => item[displayKey]?.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <div className="relative w-full text-left">
+      {label && <label className="text-[11px] font-black text-gray-600 uppercase block mb-1 tracking-wider">{label}</label>}
+      <input type="text" value={search} onChange={(e) => { setSearch(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} className="w-full p-3 text-sm font-bold border-2 border-gray-300 bg-white text-gray-900 rounded-lg outline-none focus:border-orange-500 placeholder-gray-500 shadow-sm" placeholder={placeholder || "Search..."} />
+      {open && <ul className="absolute bottom-full mb-1 z-50 bg-white border-2 border-gray-300 w-full max-h-60 overflow-y-auto rounded-lg shadow-2xl">
+        {filtered.length > 0 ? filtered.map((item, index) => (
+          <li key={index} onMouseDown={(e) => { e.preventDefault(); setSearch(item[displayKey]); setOpen(false); onSelect(item); }} className="p-3 hover:bg-orange-100 cursor-pointer text-sm font-bold border-b border-gray-200 text-gray-900">{item[displayKey]}</li>
+        )) : <li className="p-3 text-gray-500 text-sm font-medium">No results</li>}
+      </ul>}
     </div>
   );
 };
@@ -62,16 +80,18 @@ const baseColumns = [
   { key: 'others', label: 'OTHERS', group: 'OTHERS' }
 ];
 
-// Initialize with empty strings so placeholders show up on initial load
 const emptyShift = baseColumns.reduce((acc, col) => ({ ...acc, [col.key]: '' }), {});
 
 const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa = null }) => {
   const [headerData, setHeaderData] = useState({
     date: adminDate || getShiftDate(),
-    disaMachine: adminDisa || 'DISA - I'
+    disaMachine: adminDisa || 'DISA - I',
+    assignedHOF: '',
+    isHofSent: false // 🔥 NEW: Tracks if the form has been sent to the HOF already
   });
 
   const [columns, setColumns] = useState([...baseColumns]);
+  const [hofs, setHofs] = useState([]);
   const [shiftsData, setShiftsData] = useState({
     1: { ...emptyShift, customValues: {}, operatorSignature: '' },
     2: { ...emptyShift, customValues: {}, operatorSignature: '' },
@@ -86,7 +106,7 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
 
   useEffect(() => {
     if (isAdminMode && adminDate && adminDisa) {
-      setHeaderData({ date: adminDate, disaMachine: adminDisa });
+      setHeaderData({ date: adminDate, disaMachine: adminDisa, assignedHOF: '', isHofSent: false });
     }
   }, [isAdminMode, adminDate, adminDisa]);
 
@@ -122,6 +142,14 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
         params: { date: headerData.date, disa: headerData.disaMachine }
       });
 
+      setHofs(res.data.hofs || []);
+      // If the backend returns an assigned HOF, it means it was previously sent to them
+      setHeaderData(prev => ({ 
+        ...prev, 
+        assignedHOF: res.data.assignedHOF || '',
+        isHofSent: !!res.data.assignedHOF 
+      }));
+
       const loadedData = {
         1: { ...emptyShift, customValues: {}, operatorSignature: '' },
         2: { ...emptyShift, customValues: {}, operatorSignature: '' },
@@ -130,12 +158,9 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
 
       [1, 2, 3].forEach(shift => {
         const dbShift = res.data.shiftsData && res.data.shiftsData[shift];
-        
-        // VERIFY IF SHIFT IS SAVED:
         const isShiftSaved = dbShift && dbShift.patternChange !== undefined;
 
         if (isShiftSaved) {
-          // If the shift WAS saved, populate empty values with '-'
           mergedColumns.forEach(col => {
             if (col.isCustom) {
               const val = dbShift.customValues?.[col.id];
@@ -153,7 +178,6 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
             sigRefs[shift].current.clear();
           }
         } else {
-          // If the shift was NOT saved, force everything to be an empty string '' so the placeholder shows!
           mergedColumns.forEach(col => {
             if (col.isCustom) {
               loadedData[shift].customValues[col.id] = '';
@@ -223,10 +247,10 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
   const totalRunningHours = getSummarySum("runningHours").toFixed(2);
   const getDisaData = (disaName) => unpouredSummary.find(d => d.disa === disaName) || {};
 
-  const handleSave = async () => {
+  // 🔥 NEW: Main Save Handler which dictates whether it's a simple save or an HOF Submission
+  const saveToServer = async (isHofSubmission = false) => {
     setLoading(true);
     
-    // 🔥 NEW: We will dynamically build the payload to ONLY include shifts that have data.
     const payloadData = {};
     let hasAnyData = false;
 
@@ -234,15 +258,14 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
       let shiftHasData = false;
       const shiftData = shiftsData[s];
 
-      // Check if any standard or custom column has a value
       columns.forEach(col => {
         const val = col.isCustom ? shiftData.customValues?.[col.id] : shiftData[col.key];
-        if (val !== undefined && val !== null && String(val).trim() !== '') {
+        // Make sure we only flag the shift if an actual number is typed (ignore hyphens and empty strings)
+        if (val !== undefined && val !== null && String(val).trim() !== '' && String(val).trim() !== '-') {
           shiftHasData = true;
         }
       });
 
-      // Check if a signature exists
       const sigBase64 = (sigRefs[s].current && !sigRefs[s].current.isEmpty())
         ? sigRefs[s].current.getCanvas().toDataURL('image/png') 
         : (shiftData.operatorSignature || '');
@@ -251,7 +274,6 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
         shiftHasData = true;
       }
 
-      // If the shift has ANY data, include it in the save payload
       if (shiftHasData) {
         hasAnyData = true;
         payloadData[s] = { 
@@ -262,24 +284,52 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
       }
     });
 
-    // 🔥 NEW: Prevent submission if the user completely ignored all fields
     if (!hasAnyData) {
       setLoading(false);
-      setNotification({ show: true, type: 'error', message: 'Please enter data for at least one shift before submitting.' });
-      return;
+      return setNotification({ show: true, type: 'error', message: 'Please enter data for at least one shift before submitting.' });
+    }
+
+    // 🔥 NEW: Check constraints if sending to HOF
+    if (isHofSubmission) {
+      if (!payloadData[3]) {
+        setLoading(false);
+        return setNotification({ show: true, type: 'error', message: 'You can only send to the HOF after completing the 3rd shift.' });
+      }
+      if (!headerData.assignedHOF) {
+        setLoading(false);
+        document.getElementById('checklist-footer')?.scrollIntoView({ behavior: 'smooth' });
+        return setNotification({ show: true, type: 'error', message: 'Please Assign an HOF before sending.' });
+      }
+    }
+
+    // 🔥 This logic ensures the DB remains unassigned until they physically hit "Send to HOF"
+    let finalHOF = headerData.isHofSent ? headerData.assignedHOF : '';
+    if (isHofSubmission) {
+      finalHOF = headerData.assignedHOF;
     }
 
     try {
       await axios.post(`${process.env.REACT_APP_API_URL}/api/unpoured-moulds/save`, {
-        date: headerData.date, disa: headerData.disaMachine, shiftsData: payloadData
+        date: headerData.date, 
+        disa: headerData.disaMachine, 
+        shiftsData: payloadData,
+        assignedHOF: finalHOF 
       });
-      setNotification({ show: true, type: 'success', message: 'Shift Data Saved Successfully!' });
+
+      if (isHofSubmission) {
+        setHeaderData(prev => ({ ...prev, isHofSent: true }));
+      }
+
+      setNotification({ show: true, type: 'success', message: isHofSubmission ? 'Sent to HOF Successfully!' : 'Shift Data Saved Successfully!' });
       setTimeout(() => setNotification({ show: false }), 3000);
     } catch (error) {
       setNotification({ show: true, type: 'error', message: 'Failed to save data.' });
     }
     setLoading(false);
   };
+
+  const handleSave = () => saveToServer(false);
+  const handleSendToHOF = () => saveToServer(true);
 
   const generatePDF = () => {
     setNotification({ show: true, type: 'loading', message: 'Generating PDF...' });
@@ -668,9 +718,30 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
             </div>
           </div>
 
-          <div id="checklist-footer" className="bg-slate-100 p-8 border-t border-gray-200 bottom-0 z-20 flex justify-end gap-6 rounded-b-xl shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-            <button onClick={generatePDF} className="bg-white border-2 border-gray-900 text-gray-900 hover:bg-gray-200 font-bold py-3 px-6 rounded-lg shadow-md uppercase flex items-center gap-2 mt-auto transition-colors"><FileDown size={20} /> PDF</button>
-            <button onClick={handleSave} disabled={loading} className="bg-gray-900 hover:bg-orange-600 text-white font-bold py-3 px-12 rounded-lg shadow-lg uppercase mt-auto transition-colors flex items-center gap-3">{loading ? <Loader className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}{loading ? 'Saving...' : 'Save Shifts Data'}</button>
+          <div id="checklist-footer" className="bg-slate-100 p-8 border-t border-gray-200 bottom-0 z-20 flex flex-col md:flex-row justify-between items-end gap-6 rounded-b-xl shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+            <div className="w-full md:w-1/3">
+               <SearchableSelect 
+                  label="Assign to HOF (Verification)" 
+                  options={hofs} 
+                  displayKey="OperatorName" 
+                  value={headerData.assignedHOF} 
+                  onSelect={(op) => setHeaderData(prev => ({ ...prev, assignedHOF: op.OperatorName }))} 
+                  placeholder="Select HOF..." 
+               />
+            </div>
+
+            {/* 🔥 NEW: Added separate Save and Send to HOF buttons */}
+            <div className="flex flex-wrap gap-4 w-full md:w-auto justify-end">
+              <button onClick={generatePDF} className="bg-white border-2 border-gray-900 text-gray-900 hover:bg-gray-200 font-bold py-3 px-6 rounded-lg shadow-md uppercase flex items-center gap-2 mt-auto transition-colors"><FileDown size={20} /> PDF</button>
+              
+              <button onClick={handleSave} disabled={loading} className="bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 px-8 rounded-lg shadow-lg uppercase mt-auto transition-colors flex items-center gap-3">
+                {loading ? <Loader className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}{loading ? 'Saving...' : 'Save Shifts Data'}
+              </button>
+              
+              <button onClick={handleSendToHOF} disabled={loading} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg uppercase mt-auto transition-colors flex items-center gap-3">
+                {loading ? <Loader className="animate-spin w-5 h-5" /> : <Send className="w-5 h-5" />}{loading ? 'Sending...' : 'Send to HOF'}
+              </button>
+            </div>
           </div>
 
         </div>

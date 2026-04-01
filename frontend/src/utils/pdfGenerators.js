@@ -368,20 +368,21 @@ export const generateDmmSettingPDF = async (data, dateRange) => {
                 let tableBody = [];
                 if (isIdle) {
                     tableBody.push([{ content: 'L I N E   I D L E', colSpan: allColumns.length + 1, styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', fontSize: 14, textColor: [100, 100, 100], fillColor: [245, 245, 245], minCellHeight: 15 } }]);
+                } else if (t.length === 0) {
+                    // No rows for this shift – show a placeholder
+                    tableBody.push([{ content: '-', colSpan: allColumns.length + 1, styles: { halign: 'center' } }]);
                 } else {
-                    const rowsObj = {};
-                    t.forEach(record => {
-                        if (!rowsObj[record.RowUUID]) rowsObj[record.RowUUID] = {};
-                        rowsObj[record.RowUUID][record.MasterId] = record.Value;
-                    });
-
-                    const rowsArr = Object.values(rowsObj);
-                    if (rowsArr.length === 0) rowsArr.push({});
-
-                    tableBody = rowsArr.map((row, idx) => {
+                    // t is an array of flat row objects: { Customer, ItemDescription, ..., customValues: { colId: val } }
+                    tableBody = t.map((row, idx) => {
                         const pdfRow = [(idx + 1).toString()];
                         allColumns.forEach(col => {
-                            const val = row[col.MasterId || col.id];
+                            let val;
+                            if (col.isCustom) {
+                                // custom columns stored in row.customValues keyed by column id
+                                val = row.customValues ? row.customValues[col.id] : undefined;
+                            } else {
+                                val = row[col.key];
+                            }
                             pdfRow.push(val === '' || val === null || val === undefined ? '-' : val.toString());
                         });
                         return pdfRow;
@@ -616,7 +617,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
 
         if (machineNc.length > 0) {
             doc.addPage();
-            
+
             // 🔥 PAGE 2 HEADER (NCR) 🔥
             doc.setLineWidth(0.3);
             doc.rect(10, 10, 40, 20);
@@ -638,7 +639,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
             ]);
 
             autoTable(doc, {
-                startY: 35, 
+                startY: 35,
                 // 🔥 Always use Signature column header, removed the isLPA restriction
                 head: [['S.No', 'Date', 'Non-Conformities Details', 'Correction', 'Root Cause', 'Corrective Action', 'Target Date', 'Responsibility', 'Signature', 'Status']],
                 body: ncRows, theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], valign: 'top', overflow: 'linebreak' },
@@ -688,7 +689,7 @@ export const generateChecklistPDF = (data, dateRange, title1, title2) => {
 // ============================================================================
 export const generateErrorProofPDF = (data, dateRange) => {
     const doc = new jsPDF('l', 'mm', 'a4');
-    
+
     const verifications = data.verifications || [];
     const plans = data.plans || [];
     const qfHistory = data.qfHistory || [];
@@ -722,13 +723,13 @@ export const generateErrorProofPDF = (data, dateRange) => {
                 machine = matchV.DisaMachine || matchV.Line;
                 dateKey = getSafeDateStr(matchV.RecordDate || matchV.recordDate);
             }
-        } 
+        }
         // V1 Fallback (Maps by exact Date + Error Proof Name)
         else {
             const planDateKey = getSafeDateStr(plan.recordDate || plan.RecordDate);
             const planName = plan.errorProofName || plan.ErrorProofName;
-            
-            let matchV = verifications.find(v => 
+
+            let matchV = verifications.find(v =>
                 getSafeDateStr(v.recordDate || v.RecordDate) === planDateKey &&
                 (v.errorProofName || v.ErrorProofName) === planName
             );
@@ -736,7 +737,7 @@ export const generateErrorProofPDF = (data, dateRange) => {
             if (!matchV) {
                 matchV = verifications.find(v => (v.errorProofName || v.ErrorProofName) === planName);
             }
-            
+
             if (matchV) {
                 machine = matchV.line || matchV.DisaMachine;
                 dateKey = getSafeDateStr(matchV.recordDate || matchV.RecordDate);
@@ -836,7 +837,7 @@ export const generateErrorProofPDF = (data, dateRange) => {
                 // V2 REACTION PLAN PAGE
                 if (records.r.length > 0) {
                     doc.addPage();
-                    
+
                     doc.setLineWidth(0.3);
                     doc.rect(10, 10, 40, 20);
                     try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); }
@@ -886,7 +887,7 @@ export const generateErrorProofPDF = (data, dateRange) => {
                     doc.setFontSize(8); doc.setFont('helvetica', 'normal');
                     doc.text(currentPageQfValue, 10, doc.internal.pageSize.getHeight() - 10);
                 }
-            } 
+            }
             // ==============================================================
             // 🔥 V1 EXACT LAYOUT (Fallback for older data if triggered)
             // ==============================================================
@@ -904,16 +905,16 @@ export const generateErrorProofPDF = (data, dateRange) => {
                 doc.rect(230, 10, 57, 20); doc.setFontSize(11);
                 doc.text(machine, 258.5, 16, { align: 'center' });
                 doc.line(230, 20, 287, 20);
-                doc.setFontSize(10); doc.setFont('helvetica', 'normal'); 
+                doc.setFontSize(10); doc.setFont('helvetica', 'normal');
                 doc.text(`DATE: ${formatDate(dateKey)}`, 258.5, 26, { align: 'center' });
 
                 const vRows = records.v.map((item, index) => {
                     const obs = item.observationResult === 'NOT_OK' ? 'NOT OK' : (item.observationResult || '-');
                     return [
-                        index + 1, 
-                        item.line || item.DisaMachine, 
-                        item.errorProofName || item.ErrorProofName, 
-                        item.natureOfErrorProof || item.NatureOfErrorProof, 
+                        index + 1,
+                        item.line || item.DisaMachine,
+                        item.errorProofName || item.ErrorProofName,
+                        item.natureOfErrorProof || item.NatureOfErrorProof,
                         item.frequency || item.Frequency,
                         obs
                     ];
@@ -928,33 +929,33 @@ export const generateErrorProofPDF = (data, dateRange) => {
                 });
 
                 let currentY = doc.lastAutoTable.finalY + 10;
-                
+
                 if (records.r && records.r.length > 0) {
                     doc.setFontSize(14); doc.setFont('helvetica', 'bold');
                     doc.text("Reaction Plan", 148.5, currentY, { align: 'center' });
                     currentY += 5;
 
                     const rRows = records.r.map((item, index) => [
-                        index + 1, 
-                        item.errorProofNo || '-', 
-                        item.errorProofName || item.ErrorProofName, 
-                        formatDate(dateKey), 
-                        item.problem || item.Problem, 
-                        item.rootCause || item.RootCause, 
-                        item.correctiveAction || item.CorrectiveAction, 
-                        item.status || item.Status, 
+                        index + 1,
+                        item.errorProofNo || '-',
+                        item.errorProofName || item.ErrorProofName,
+                        formatDate(dateKey),
+                        item.problem || item.Problem,
+                        item.rootCause || item.RootCause,
+                        item.correctiveAction || item.CorrectiveAction,
+                        item.status || item.Status,
                         item.remarks || item.Remarks
                     ]);
-                    
+
                     autoTable(doc, {
                         startY: currentY,
-                        margin: { left: 10, right: 10 }, 
+                        margin: { left: 10, right: 10 },
                         head: [['S.No', 'Ep.No', 'Error Proof Name', 'Verification Date', 'Problem', 'Root Cause', 'Corrective action taken \n (Temporary)', 'Status', 'Remarks']],
                         body: rRows, theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
                         headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', halign: 'center' },
-                        columnStyles: { 
-                            0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 12 }, 2: { cellWidth: 35 }, 3: { cellWidth: 20 }, 
-                            4: { cellWidth: 35 }, 5: { cellWidth: 35 }, 6: { cellWidth: 40 }, 7: { cellWidth: 15 }, 8: { cellWidth: 'auto' } 
+                        columnStyles: {
+                            0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 12 }, 2: { cellWidth: 35 }, 3: { cellWidth: 20 },
+                            4: { cellWidth: 35 }, 5: { cellWidth: 35 }, 6: { cellWidth: 40 }, 7: { cellWidth: 15 }, 8: { cellWidth: 'auto' }
                         }
                     });
                     currentY = doc.lastAutoTable.finalY + 10;
@@ -963,19 +964,19 @@ export const generateErrorProofPDF = (data, dateRange) => {
                 if (currentY + 30 > 210) { doc.addPage(); currentY = 20; }
 
                 autoTable(doc, {
-                    startY: currentY, margin: { left: 10, right: 10 }, head: [['REVIEWED BY (OP/HOF)', 'APPROVED BY (SUP)']], 
+                    startY: currentY, margin: { left: 10, right: 10 }, head: [['REVIEWED BY (OP/HOF)', 'APPROVED BY (SUP)']],
                     body: [['SIG1', 'SIG2']], theme: 'grid',
-                    styles: { fontSize: 10, cellPadding: 4, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', minCellHeight: 15 }, 
+                    styles: { fontSize: 10, cellPadding: 4, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', minCellHeight: 15 },
                     headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
                     didDrawCell: function (data) {
                         if (data.section === 'body') {
                             const reviewedBy = records.v[0]?.ReviewedByHOF || records.v[0]?.HOFSignature || '';
                             const approvedBy = records.v[0]?.ApprovedBy || records.v[0]?.OperatorSignature || '';
                             if (data.column.index === 0 && reviewedBy.startsWith('data:image')) {
-                                try { doc.addImage(reviewedBy, 'PNG', data.cell.x + 2, data.cell.y + 2, 40, 10); } catch (e) {}
+                                try { doc.addImage(reviewedBy, 'PNG', data.cell.x + 2, data.cell.y + 2, 40, 10); } catch (e) { }
                             }
                             if (data.column.index === 1 && approvedBy.startsWith('data:image')) {
-                                try { doc.addImage(approvedBy, 'PNG', data.cell.x + 2, data.cell.y + 2, 40, 10); } catch (e) {}
+                                try { doc.addImage(approvedBy, 'PNG', data.cell.x + 2, data.cell.y + 2, 40, 10); } catch (e) { }
                             }
                         }
                     },
@@ -990,7 +991,7 @@ export const generateErrorProofPDF = (data, dateRange) => {
                     }
                 });
 
-                doc.setFontSize(8); doc.setFont('helvetica', 'normal'); 
+                doc.setFontSize(8); doc.setFont('helvetica', 'normal');
                 doc.text(currentPageQfValue, 10, 200);
             }
         });

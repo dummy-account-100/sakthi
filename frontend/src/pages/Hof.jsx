@@ -7,7 +7,7 @@ import "react-toastify/dist/ReactToastify.css";
 import { Loader, X } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import logo from '../Assets/logo.png'; // 🔥 ADDED LOGO IMPORT FOR PDF HEADER
+import logo from '../Assets/logo.png'; 
 
 // 🔥 Dynamic QF Helpers
 const getSafeDateStr = (val) => {
@@ -32,6 +32,34 @@ const formatDate = (dateString) => {
   if (!dateString) return "";
   return new Date(dateString).toLocaleDateString("en-GB"); 
 };
+
+// 🔥 BASE COLUMNS FOR UNPOURED MOULDS PDF GENERATION
+const unpouredBaseColumns = [
+  { key: 'patternChange', label: 'PATTERN\nCHANGE', group: 'MOULDING' },
+  { key: 'heatCodeChange', label: 'HEAT CODE\nCHANGE', group: 'MOULDING' },
+  { key: 'mouldBroken', label: 'MOULD\nBROKEN', group: 'MOULDING' },
+  { key: 'amcCleaning', label: 'AMC\nCLEANING', group: 'MOULDING' },
+  { key: 'mouldCrush', label: 'MOULD\nCRUSH', group: 'MOULDING' },
+  { key: 'coreFalling', label: 'CORE\nFALLING', group: 'MOULDING' },
+  { key: 'sandDelay', label: 'SAND\nDELAY', group: 'SAND PLANT' },
+  { key: 'drySand', label: 'DRY\nSAND', group: 'SAND PLANT' },
+  { key: 'nozzleChange', label: 'NOZZLE\nCHANGE', group: 'PREESPOUR' },
+  { key: 'nozzleLeakage', label: 'NOZZLE\nLEAKAGE', group: 'PREESPOUR' },
+  { key: 'spoutPocking', label: 'SPOUT\nPOCKING', group: 'PREESPOUR' },
+  { key: 'stRod', label: 'ST\nROD', group: 'PREESPOUR' },
+  { key: 'qcVent', label: 'QC\nVENT', group: 'QUALITY CONTROL' },
+  { key: 'outMould', label: 'OUT\nMOULD', group: 'QUALITY CONTROL' },
+  { key: 'lowMg', label: 'LOW\nMG', group: 'QUALITY CONTROL' },
+  { key: 'gradeChange', label: 'GRADE\nCHANGE', group: 'QUALITY CONTROL' },
+  { key: 'msiProblem', label: 'MSI\nPROBLEM', group: 'QUALITY CONTROL' },
+  { key: 'brakeDown', label: 'BRAKE\nDOWN', group: 'MAINTENANCE' },
+  { key: 'wom', label: 'WOM', group: 'FURNACE' },
+  { key: 'devTrail', label: 'DEV\nTRAIL', group: 'TOOLING' },
+  { key: 'powerCut', label: 'POWER\nCUT', group: 'OTHERS' },
+  { key: 'plannedOff', label: 'PLANNED\nOFF', group: 'OTHERS' },
+  { key: 'vatCleaning', label: 'VAT\nCLEANING', group: 'OTHERS' },
+  { key: 'others', label: 'OTHERS', group: 'OTHERS' }
+];
 
 const Hof = () => {
   const [reports, setReports] = useState([]);
@@ -61,6 +89,12 @@ const Hof = () => {
   const [isDailyPdfLoading, setIsDailyPdfLoading] = useState(false);
   const dailySigCanvas = useRef({});
 
+  // States for Unpoured Mould Details (Signature Canvas Removed)
+  const [unpouredReports, setUnpouredReports] = useState([]);
+  const [selectedUnpouredReport, setSelectedUnpouredReport] = useState(null);
+  const [unpouredPdfUrl, setUnpouredPdfUrl] = useState(null);
+  const [isUnpouredPdfLoading, setIsUnpouredPdfLoading] = useState(false);
+
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const currentHOF = storedUser.username || "hof_user";
 
@@ -68,16 +102,17 @@ const Hof = () => {
   const ERR_API_BASE = `${process.env.REACT_APP_API_URL}/api/error-proof`;
   const ERR_API_BASE_V2 = `${process.env.REACT_APP_API_URL}/api/error-proof2`; 
   const DAILY_API_BASE = `${process.env.REACT_APP_API_URL}/api/daily-performance`; 
+  const UNPOURED_API_BASE = `${process.env.REACT_APP_API_URL}/api/unpoured-moulds`; 
 
   useEffect(() => {
     fetchReports();
     fetchErrorReports();
     fetchErrorReportsV2(); 
     fetchDailyReports(); 
+    fetchUnpouredReports(); 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- EXISTING FETCH FUNCTIONS ---
   const fetchReports = async () => {
     try {
       const res = await axios.get(`${API_BASE}/hof/${currentHOF}`);
@@ -104,6 +139,13 @@ const Hof = () => {
       const res = await axios.get(`${DAILY_API_BASE}/hof/${currentHOF}`);
       setDailyReports(res.data);
     } catch (err) { toast.error("Failed to load Daily Performance reports."); }
+  };
+
+  const fetchUnpouredReports = async () => {
+    try {
+      const res = await axios.get(`${UNPOURED_API_BASE}/hof-reports/${currentHOF}`);
+      setUnpouredReports(res.data);
+    } catch (err) { toast.error("Failed to load Unpoured Mould reports."); }
   };
 
   const handleOpenDailyModal = async (report) => {
@@ -258,9 +300,6 @@ const Hof = () => {
     } catch (err) { toast.error("Failed to save Error Proof signature."); }
   };
 
-  // =======================================================================
-  // 🔥 FIX: POLISHED V2 PDF GENERATION (MATCHING ErrorProofVerification2)
-  // =======================================================================
   const handleOpenErrorModalV2 = async (report) => {
     setSelectedErrorReportV2(report); 
     setErrorPdfUrlV2(null); 
@@ -271,14 +310,12 @@ const Hof = () => {
       const displayDate = formatDate(report.reportDate);
       const machine = report.disa;
 
-      // Fetch the raw details to generate the PDF client-side
       const res = await axios.get(`${ERR_API_BASE_V2}/details`, { params: { machine, date: reportDateStr } });
       const masterData = res.data.masterConfig || [];
       const transData = res.data.verifications || [];
       const reactionPlans = res.data.reactionPlans || [];
       const qfHistory = res.data.qfHistory || [];
 
-      // Reconstruct merged verifications exactly like the frontend form
       const verifications = [];
       if (transData.length > 0) {
         transData.forEach((transItem, index) => {
@@ -293,11 +330,9 @@ const Hof = () => {
         });
       }
 
-      // Generate the PDF Document
       const doc = new jsPDF('l', 'mm', 'a4');
       const PAGE_HEIGHT = doc.internal.pageSize.getHeight();
 
-      // Dynamic QF Value
       let currentPageQfValue = "QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023";
       const repDateObj = new Date(reportDateStr);
       repDateObj.setHours(0, 0, 0, 0);
@@ -312,7 +347,6 @@ const Hof = () => {
           }
       }
 
-      // Box 1: Logo
       doc.setLineWidth(0.3);
       doc.rect(10, 10, 40, 20);
       try {
@@ -323,13 +357,11 @@ const Hof = () => {
         doc.text("AUTO", 30, 26, { align: 'center' });
       }
 
-      // Box 2: Title
       doc.rect(50, 10, 187, 20);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
       doc.text("ERROR PROOF VERIFICATION CHECK LIST - FDY", 143.5, 22, { align: 'center' });
 
-      // Box 3: Meta
       doc.rect(237, 10, 50, 20);
       doc.setFontSize(11);
       doc.text(machine, 262, 16, { align: 'center' });
@@ -337,7 +369,6 @@ const Hof = () => {
       doc.setFontSize(10);
       doc.text(`Date: ${displayDate}`, 262, 26, { align: 'center' });
 
-      // Table Header
       const mainHead = [
         [
           { content: 'Line', rowSpan: 3, styles: { halign: 'center', valign: 'middle' } },
@@ -350,7 +381,6 @@ const Hof = () => {
         [{ content: 'Observation Result', styles: { halign: 'center', fontSize: 6 } }, { content: 'Observation Result', styles: { halign: 'center', fontSize: 6 } }, { content: 'Observation Result', styles: { halign: 'center', fontSize: 6 } }]
       ];
 
-      // Table Body
       const mainBody = verifications.map(row => {
         const pdfRow = [row.Line || '-', row.ErrorProofName || '-', row.NatureOfErrorProof || '-', row.Frequency || '-'];
         [1, 2, 3].forEach(s => { const res = row[`Date1_Shift${s}_Res`] || '-'; pdfRow.push(res); });
@@ -367,7 +397,6 @@ const Hof = () => {
       let finalY = doc.lastAutoTable.finalY + 8;
       doc.setFontSize(8); doc.setFont('helvetica', 'bold');
 
-      // Operator Signature Box
       doc.text("Verified By Moulding Incharge", 20, finalY);
       doc.rect(20, finalY + 2, 40, 15);
       const opSigToDraw = transData.length > 0 ? transData[0].OperatorSignature : '';
@@ -375,10 +404,8 @@ const Hof = () => {
         doc.addImage(opSigToDraw, 'PNG', 21, finalY + 3, 38, 13);
       }
 
-      // HOF Signature Box
       doc.text("Reviewed By HOF", 130, finalY);
       doc.rect(130, finalY + 2, 40, 15);
-      // 🔥 If HOF has signed, it will be in the report object passed to this function
       const hofSigToDraw = report.hofSignature; 
       if (hofSigToDraw && hofSigToDraw.startsWith('data:image')) {
         doc.addImage(hofSigToDraw, 'PNG', 131, finalY + 3, 38, 13);
@@ -387,11 +414,9 @@ const Hof = () => {
         doc.text("Pending", 143, finalY + 10);
       }
 
-      // Page 1 QF
       doc.setFontSize(8); doc.setFont('helvetica', 'normal');
       doc.text(currentPageQfValue, 10, PAGE_HEIGHT - 10);
 
-      // Reaction Plan Page
       if (reactionPlans.length > 0) {
         doc.addPage();
         
@@ -441,12 +466,10 @@ const Hof = () => {
           }
         });
 
-        // Page 2 QF
         doc.setFontSize(8); doc.setFont('helvetica', 'normal');
         doc.text(currentPageQfValue, 10, PAGE_HEIGHT - 10);
       }
 
-      // Convert to blob and set to viewer
       const pdfBlobUrl = doc.output('bloburl');
       setErrorPdfUrlV2(pdfBlobUrl);
 
@@ -465,6 +488,211 @@ const Hof = () => {
       setSelectedErrorReportV2(null); fetchErrorReportsV2(); 
     } catch (err) { toast.error("Failed to save Error Proof V2 signature."); }
   };
+
+  // =======================================================================
+  // 🔥 NEW: UNPOURED MOULD DETAILS VERIFICATION PDF GENERATION 
+  // =======================================================================
+  const handleOpenUnpouredModal = async (report) => {
+    setSelectedUnpouredReport(report); 
+    setUnpouredPdfUrl(null); 
+    setIsUnpouredPdfLoading(true);
+
+    try {
+      const dateStr = getSafeDateStr(report.reportDate);
+      const disaMachine = report.disa;
+
+      const [detailsRes, summaryRes, configRes] = await Promise.all([
+        axios.get(`${UNPOURED_API_BASE}/details`, { params: { date: dateStr, disa: disaMachine } }),
+        axios.get(`${UNPOURED_API_BASE}/summary`, { params: { date: dateStr } }),
+        axios.get(`${process.env.REACT_APP_API_URL}/api/config/unpoured-mould-details/master`)
+      ]);
+
+      const customCols = (configRes.data.config || []).map(c => ({
+        key: `custom_${c.id}`, id: c.id, label: c.reasonName.toUpperCase().replace(' ', '\n'),
+        group: c.department.toUpperCase(), isCustom: true
+      }));
+
+      const mergedColumns = [...unpouredBaseColumns, ...customCols];
+      let currentGroup = mergedColumns[0]?.group;
+      for (let i = 1; i < mergedColumns.length; i++) {
+        if (mergedColumns[i].group !== currentGroup) {
+          mergedColumns[i - 1].isLastInGroup = true;
+          currentGroup = mergedColumns[i].group;
+        }
+      }
+      if (mergedColumns.length > 0) mergedColumns[mergedColumns.length - 1].isLastInGroup = true;
+
+      const shiftsData = { 1: {}, 2: {}, 3: {} };
+      [1, 2, 3].forEach(shift => {
+        const dbShift = detailsRes.data.shiftsData[shift] || {};
+        shiftsData[shift] = { customValues: {}, operatorSignature: dbShift.operatorSignature || '' };
+        mergedColumns.forEach(col => {
+          if (col.isCustom) shiftsData[shift].customValues[col.id] = (dbShift.customValues?.[col.id] !== undefined && dbShift.customValues?.[col.id] !== null) ? dbShift.customValues[col.id] : '-';
+          else shiftsData[shift][col.key] = (dbShift[col.key] !== undefined && dbShift[col.key] !== null) ? dbShift[col.key] : '-';
+        });
+      });
+
+      const unpouredSummary = summaryRes.data.summary || [];
+      const qfHistory = summaryRes.data.qfHistory || [];
+
+      const getRowTotal = (shift) => mergedColumns.reduce((sum, col) => { const val = col.isCustom ? shiftsData[shift].customValues[col.id] : shiftsData[shift][col.key]; return sum + (parseInt(val) || 0); }, 0);
+      const getColTotal = (col) => [1, 2, 3].reduce((sum, shift) => { const val = col.isCustom ? shiftsData[shift].customValues[col.id] : shiftsData[shift][col.key]; return sum + (parseInt(val) || 0); }, 0);
+      const getGrandTotal = () => [1, 2, 3].reduce((sum, shift) => sum + getRowTotal(shift), 0);
+      const getDisaData = (dName) => unpouredSummary.find(d => d.disa === dName) || {};
+      const getSummarySum = (key) => unpouredSummary.reduce((acc, curr) => acc + (Number(curr[key]) || 0), 0);
+      const totalProduced = getSummarySum("producedMould");
+      const totalPoured = getSummarySum("pouredMould");
+      const totalUnpoured = getSummarySum("unpouredMould");
+      const totalPercentage = totalProduced > 0 ? ((totalUnpoured / totalProduced) * 100).toFixed(2) : 0;
+      const totalDelays = getSummarySum("delays");
+      const totalRunningHours = getSummarySum("runningHours").toFixed(2);
+
+      const doc = new jsPDF('l', 'mm', 'a4');
+      const currentPageQfValue = getDynamicQfString(dateStr, qfHistory, "QF/07/FBP-13, Rev.No:06 dt 08.10.2025");
+
+      doc.setLineWidth(0.3);
+      doc.rect(10, 10, 40, 20);
+      try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } catch (err) {
+        doc.setFontSize(14); doc.setFont('helvetica', 'bold');
+        doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' });
+      }
+
+      doc.rect(50, 10, 197, 20);
+      doc.setFontSize(16); doc.setFont('helvetica', 'bold');
+      doc.text("UN POURED MOULD DETAILS", 148.5, 22, { align: 'center' });
+
+      doc.rect(247, 10, 40, 20);
+      doc.setFontSize(11);
+      doc.text(disaMachine, 267, 16, { align: 'center' });
+      doc.line(247, 20, 287, 20);
+      doc.setFontSize(10);
+      doc.text(`DATE: ${formatDate(dateStr)}`, 267, 26, { align: 'center' });
+
+      const pdfGroups = [];
+      mergedColumns.forEach(col => {
+        if (pdfGroups.length === 0 || pdfGroups[pdfGroups.length - 1].name !== col.group) {
+          pdfGroups.push({ name: col.group, count: 1 });
+        } else { pdfGroups[pdfGroups.length - 1].count++; }
+      });
+
+      const headRow1 = [
+        { content: 'SHIFT', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+        ...pdfGroups.map(g => ({ content: g.name, colSpan: g.count, styles: { halign: 'center' } })),
+        { content: 'TOTAL', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: [220, 220, 220] } }
+      ];
+
+      const headRow2 = mergedColumns.map(col => ({ content: col.label.replace(' ', '\n'), styles: { halign: 'center', valign: 'middle', fontSize: 5.5 } }));
+
+      const bodyRows = [1, 2, 3].map(shift => {
+        const row = [shift.toString()];
+        mergedColumns.forEach(col => {
+          const val = col.isCustom ? shiftsData[shift].customValues[col.id] : shiftsData[shift][col.key];
+          row.push(val === '' || val === null || val === undefined ? '-' : val.toString());
+        });
+        row.push(getRowTotal(shift) === 0 ? '-' : getRowTotal(shift).toString());
+        return row;
+      });
+
+      const totalRow = ['TOTAL'];
+      mergedColumns.forEach(col => {
+        const colTotal = getColTotal(col);
+        totalRow.push(colTotal === 0 ? '-' : colTotal.toString());
+      });
+      totalRow.push(getGrandTotal() === 0 ? '-' : getGrandTotal().toString());
+      bodyRows.push(totalRow);
+
+      autoTable(doc, {
+        startY: 35, margin: { left: 5, right: 5 }, head: [headRow1, headRow2], body: bodyRows, theme: 'grid',
+        styles: { fontSize: 8, cellPadding: { top: 3.5, right: 1, bottom: 3.5, left: 1 }, lineColor: [0, 0, 0], lineWidth: 0.15, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold', minCellHeight: 12 }, bodyStyles: { minCellHeight: 10 },
+        didParseCell: function (data) {
+          if (data.section === 'body' && data.row.index === bodyRows.length - 1) {
+            data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240];
+          }
+        }
+      });
+
+      let sigY = doc.lastAutoTable.finalY + 10;
+      if (sigY + 30 > 210) { doc.addPage(); sigY = 20; }
+
+      const shiftLabels = ["1st shift", "2nd shift", "3rd shift"];
+      const xPositions = [50, 148.5, 247]; 
+
+      doc.setFontSize(10).setFont('helvetica', 'bold');
+      [1, 2, 3].forEach((shift, index) => {
+          const x = xPositions[index];
+          doc.text(shiftLabels[index], x, sigY + 20, { align: 'center' });
+          let sig = shiftsData[shift].operatorSignature;
+          if (sig && sig.startsWith('data:image')) {
+              try { doc.addImage(sig, 'PNG', x - 20, sigY, 40, 15); } catch (e) { }
+          }
+      });
+
+      const summaryStartY = sigY + 30; 
+      const summaryBodyRows = ['I', 'II', 'III', 'IV', 'V', 'VI'].map(disa => {
+        const r = getDisaData(disa);
+        return [
+          disa, r.mouldCounterClose ?? '-', r.mouldCounterOpen ?? '-', r.producedMould ?? '0',
+          r.pouredMould ?? '0', r.unpouredMould ?? '0', r.percentage !== undefined ? `${r.percentage}%` : '0%',
+          r.delays ?? '0', r.producedMhr ?? '-', r.pouredMhr ?? '-', r.runningHours ?? '0'
+        ];
+      });
+      summaryBodyRows.push(['TOTAL', '-', '-', totalProduced, totalPoured, totalUnpoured, `${totalPercentage}%`, totalDelays, '-', '-', totalRunningHours]);
+
+      autoTable(doc, {
+        startY: summaryStartY, margin: { right: 5, left: 5 },
+        head: [['DISA', 'MOULD\nCLOSE', 'MOULD\nOPEN', 'PRODUCED', 'POURED', 'UNPOURED', '%', 'DELAYS', 'PROD\nM/HR', 'POURED\nM/HR', 'RUN HRS']],
+        body: summaryBodyRows, theme: 'grid',
+        styles: { fontSize: 6, lineColor: [0, 0, 0], lineWidth: 0.15, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+        didParseCell: function (data) { if (data.section === 'body' && data.row.index === summaryBodyRows.length - 1) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240]; } }
+      });
+
+      let bottomTablesStartY = doc.lastAutoTable.finalY + 10;
+      if (bottomTablesStartY + 40 > 210) { doc.addPage(); bottomTablesStartY = 20; }
+
+      autoTable(doc, {
+        startY: bottomTablesStartY, margin: { left: 5 }, tableWidth: 140, pageBreak: 'avoid',
+        head: [[{ content: 'NO. OF MOULDS/DAY', colSpan: 7, styles: { halign: 'left' } }], ['', 'DISA 1', 'DISA 2', 'DISA 3', 'DISA 4', 'DISA 5', 'DISA 6']],
+        body: [
+          ['MOULD / DAY', getDisaData('I').producedMould ?? '0', getDisaData('II').producedMould ?? '0', getDisaData('III').producedMould ?? '0', getDisaData('IV').producedMould ?? '0', getDisaData('V').producedMould ?? '0', getDisaData('VI').producedMould ?? '0'],
+          ['TOTAL', { content: totalProduced, colSpan: 6 }]
+        ],
+        theme: 'grid', styles: { fontSize: 6, lineColor: [0, 0, 0], lineWidth: 0.15, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+        didParseCell: function (data) {
+          if (data.section === 'body' && data.row.index === 1) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240]; }
+          if (data.section === 'body' && data.column.index === 0) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [250, 250, 250]; }
+        }
+      });
+
+      autoTable(doc, {
+        startY: bottomTablesStartY, margin: { left: 152 }, tableWidth: 140, pageBreak: 'avoid',
+        head: [[{ content: 'NO. OF QUANTITY/DAY', colSpan: 7, styles: { halign: 'left' } }], ['', 'DISA 1', 'DISA 2', 'DISA 3', 'DISA 4', 'DISA 5', 'DISA 6']],
+        body: [
+          ['QTY / DAY', getDisaData('I').pouredMould ?? '0', getDisaData('II').pouredMould ?? '0', getDisaData('III').pouredMould ?? '0', getDisaData('IV').pouredMould ?? '0', getDisaData('V').pouredMould ?? '0', getDisaData('VI').pouredMould ?? '0'],
+          ['TOTAL', { content: totalPoured, colSpan: 6 }]
+        ],
+        theme: 'grid', styles: { fontSize: 6, lineColor: [0, 0, 0], lineWidth: 0.15, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+        didParseCell: function (data) {
+          if (data.section === 'body' && data.row.index === 1) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [240, 240, 240]; }
+          if (data.section === 'body' && data.column.index === 0) { data.cell.styles.fontStyle = 'bold'; data.cell.styles.fillColor = [250, 250, 250]; }
+        }
+      });
+
+      // 🔥 Note: HOF Verification Box Removed from Unpoured Mould Details PDF per request
+
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+      doc.text(currentPageQfValue, 10, 200);
+
+      const pdfBlobUrl = doc.output('bloburl');
+      setUnpouredPdfUrl(pdfBlobUrl);
+
+    } catch (error) { toast.error("Failed to generate Unpoured Moulds PDF."); }
+    setIsUnpouredPdfLoading(false);
+  };
+
 
   return (
     <>
@@ -582,6 +810,40 @@ const Hof = () => {
                       <td className="p-3 border border-gray-300 font-bold">DISA - {report.disa}</td>
                       <td className="p-3 border border-gray-300">{report.hofSignature ? <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">✓ Approved</span> : <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">Pending Approval</span>}</td>
                       <td className="p-3 border border-gray-300 text-center">{!report.hofSignature && <button onClick={() => handleOpenDailyModal(report)} className="bg-cyan-500 hover:bg-cyan-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow transition-colors">Review & Sign</button>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* 🔥 SECTION 5: UNPOURED MOULD DETAILS (VIEW ONLY) */}
+        <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl p-8 border-t-4 border-orange-500">
+          <div className="flex justify-between items-center mb-8 border-b pb-4">
+            <h1 className="text-3xl font-bold text-gray-800">Unpoured Mould Details</h1>
+          </div>
+
+          {unpouredReports.length === 0 ? (
+            <p className="text-gray-500 italic">No Unpoured Mould reports found for your review.</p>
+          ) : (
+            <table className="w-full text-left border-collapse border border-gray-300">
+              <thead className="bg-gray-800 text-white">
+                <tr><th className="p-3 border border-gray-300">Date</th><th className="p-3 border border-gray-300">Machine</th><th className="p-3 border border-gray-300">Status</th><th className="p-3 border border-gray-300 text-center">Action</th></tr>
+              </thead>
+              <tbody>
+                {unpouredReports.map((report, idx) => {
+                  return (
+                    <tr key={idx} className="hover:bg-orange-50">
+                      <td className="p-3 border border-gray-300 font-medium">{formatDate(report.reportDate)}</td>
+                      <td className="p-3 border border-gray-300 font-bold">{report.disa}</td>
+                      <td className="p-3 border border-gray-300">
+                        {/* HOF Signature is not required, display as Available for Review */}
+                        <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold">Available for Review</span>
+                      </td>
+                      <td className="p-3 border border-gray-300 text-center">
+                        <button onClick={() => handleOpenUnpouredModal(report)} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow transition-colors">View Report</button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -732,6 +994,37 @@ const Hof = () => {
                 <div className="mt-auto">
                   <button onClick={submitDailySignature} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
                     Approve & Sign
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. 🔥 NEW: UNPOURED MOULD DETAILS MODAL (VIEW ONLY) */}
+      {selectedUnpouredReport && (
+        <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
+          <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
+            <h3 className="font-bold text-xl uppercase tracking-wider">View Unpoured Mould Details</h3>
+            <button onClick={() => { setSelectedUnpouredReport(null); setUnpouredPdfUrl(null); }} className="text-gray-400 hover:text-red-400 transition-colors">
+              <X size={28} />
+            </button>
+          </div>
+          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+            <div className="flex-1 h-full bg-[#525659] relative flex items-center justify-center">
+              {isUnpouredPdfLoading && <Loader className="animate-spin text-white w-12 h-12 absolute" />}
+              {unpouredPdfUrl && <iframe src={`${unpouredPdfUrl}#toolbar=0&view=FitH`} className="w-full h-full border-none relative z-10" title="PDF" />}
+            </div>
+            <div className="w-full lg:w-[400px] bg-gray-50 border-l border-gray-300 flex flex-col shrink-0 shadow-2xl z-10 overflow-y-auto">
+              <div className="p-6 flex-1 flex flex-col">
+                <div className="bg-orange-100 p-4 rounded-xl border border-orange-200 mb-6 text-sm flex flex-col gap-2 shadow-sm text-orange-900">
+                  <p><span className="font-bold">Date:</span> {formatDate(selectedUnpouredReport.reportDate)}</p>
+                  <p><span className="font-bold">Machine:</span> {selectedUnpouredReport.disa}</p>
+                </div>
+                <div className="mt-auto">
+                  <button onClick={() => { setSelectedUnpouredReport(null); setUnpouredPdfUrl(null); }} className="w-full bg-gray-600 hover:bg-gray-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
+                    Close Viewer
                   </button>
                 </div>
               </div>

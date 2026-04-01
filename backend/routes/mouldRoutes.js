@@ -6,11 +6,11 @@ router.get('/details', mouldController.getMouldDetails);
 router.post('/save', mouldController.saveMouldDetails);
 router.get('/bulk-data', mouldController.getBulkData);
 
-// 🔥 NEW: Routes for the Summary Data (Fixes the 404)
 router.get('/summary', mouldController.getSummaryData);
 router.post('/summary', mouldController.saveSummaryData);
 
-// 🔥 ADD THIS LINE to handle the summary fetch and stop the 404
-
+// 🔥 NEW: Routes for the HOF Assignment and Verification Dashboard
+router.get('/hof-reports/:name', mouldController.getReportsByHOF);
+router.post('/hof-sign', mouldController.signReportByHOF);
 
 module.exports = router;

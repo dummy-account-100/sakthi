@@ -23,12 +23,15 @@ const mouldController = {
         isCustom: true
       }));
 
+      // 🔥 Fetch HOFs list and current Assigned HOF from the DB to send to the frontend
+      const hofResult = await sql.query`SELECT username as OperatorName FROM dbo.Users WHERE role = 'hof' ORDER BY username`;
+      const assignedHOF = transRes.recordset.length > 0 ? transRes.recordset[0].AssignedHOF : '';
+
       const shiftData = { 1: { customValues: {} }, 2: { customValues: {} }, 3: { customValues: {} } };
 
       transRes.recordset.forEach(row => {
           if (shiftData[row.Shift]) {
               const s = shiftData[row.Shift];
-              // 🔥 UPDATED: If the DB value is 0, send a '-' back to the frontend
               s.patternChange = row.PatternChange === 0 ? '-' : row.PatternChange;
               s.heatCodeChange = row.HeatCodeChange === 0 ? '-' : row.HeatCodeChange;
               s.mouldBroken = row.MouldBroken === 0 ? '-' : row.MouldBroken;
@@ -64,12 +67,11 @@ const mouldController = {
       
       customRes.recordset.forEach(row => {
           if (shiftData[row.Shift]) {
-             // 🔥 UPDATED: Also send '-' for custom columns
              shiftData[row.Shift].customValues[row.columnId] = row.value === 0 ? '-' : row.value;
           }
       });
 
-      res.json({ masterCols, shiftsData: shiftData });
+      res.json({ masterCols, shiftsData: shiftData, hofs: hofResult.recordset, assignedHOF });
     } catch (err) {
       console.error('Error fetching mould details:', err);
       res.status(500).send('Server Error');
@@ -78,7 +80,8 @@ const mouldController = {
 
   saveMouldDetails: async (req, res) => {
     try {
-      const { date, disa, shiftsData } = req.body;
+      // 🔥 ADDED assignedHOF extracting from the payload
+      const { date, disa, shiftsData, assignedHOF } = req.body;
       
       const transaction = new sql.Transaction();
       await transaction.begin();
@@ -96,6 +99,7 @@ const mouldController = {
           const data = shiftsData[shift];
           if (!data) continue;
 
+          // 🔥 ADDED AssignedHOF to the INSERT Query below
           const writeReq = new sql.Request(transaction);
           await writeReq.query`
               INSERT INTO UnPouredMouldDetails (
@@ -103,7 +107,7 @@ const mouldController = {
                 PatternChange, HeatCodeChange, MouldBroken, AmcCleaning, MouldCrush, CoreFalling,
                 SandDelay, DrySand, NozzleChange, NozzleLeakage, SpoutPocking, StRod,
                 QcVent, OutMould, LowMg, GradeChange, MsiProblem, BrakeDown, Wom, DevTrail,
-                PowerCut, PlannedOff, VatCleaning, Others, RowTotal, OperatorSignature
+                PowerCut, PlannedOff, VatCleaning, Others, RowTotal, OperatorSignature, AssignedHOF
               ) VALUES (
                 ${date}, ${disa}, ${shift}, 
                 ${getVal(data.patternChange)}, ${getVal(data.heatCodeChange)}, ${getVal(data.mouldBroken)}, ${getVal(data.amcCleaning)}, ${getVal(data.mouldCrush)}, ${getVal(data.coreFalling)},
@@ -111,7 +115,7 @@ const mouldController = {
                 ${getVal(data.qcVent)}, ${getVal(data.outMould)}, ${getVal(data.lowMg)}, ${getVal(data.gradeChange)}, ${getVal(data.msiProblem)},
                 ${getVal(data.brakeDown)}, ${getVal(data.wom)}, ${getVal(data.devTrail)},
                 ${getVal(data.powerCut)}, ${getVal(data.plannedOff)}, ${getVal(data.vatCleaning)}, ${getVal(data.others)}, ${getVal(data.rowTotal)},
-                ${data.operatorSignature || null}
+                ${data.operatorSignature || null}, ${assignedHOF || null}
               )
             `;
 
@@ -320,6 +324,39 @@ const mouldController = {
           console.error("Error saving summary:", error);
           res.status(500).json({ error: "Failed to save summary data" });
       }
+  },
+
+  // ========================================== 
+  // 🔥 NEW APIS: HOF DASHBOARD VERIFICATION 🔥
+  // ==========================================
+  getReportsByHOF: async (req, res) => {
+    try {
+      const { name } = req.params;
+      // Groups by RecordDate and DisaMachine so the HOF verifies the entire daily report
+      const result = await sql.query`
+        SELECT t1.RecordDate as reportDate, t1.DisaMachine as disa, t1.AssignedHOF as hofName, 
+               (SELECT TOP 1 t2.HOFSignature FROM UnPouredMouldDetails t2 WHERE t2.RecordDate = t1.RecordDate AND t2.DisaMachine = t1.DisaMachine AND t2.AssignedHOF = t1.AssignedHOF) as hofSignature
+        FROM UnPouredMouldDetails t1
+        WHERE t1.AssignedHOF = ${name}
+        GROUP BY t1.RecordDate, t1.DisaMachine, t1.AssignedHOF
+        ORDER BY t1.RecordDate DESC
+      `;
+      res.json(result.recordset);
+    } catch (error) {
+      console.error("Error in getReportsByHOF:", error);
+      res.status(500).json({ error: "Failed to fetch Unpoured Mould HOF reports" });
+    }
+  },
+
+  signReportByHOF: async (req, res) => {
+    try {
+      const { date, disaMachine, signature } = req.body;
+      await sql.query`UPDATE UnPouredMouldDetails SET HOFSignature = ${signature} WHERE RecordDate = ${date} AND DisaMachine = ${disaMachine}`;
+      res.json({ message: "HOF Verification Signature saved successfully" });
+    } catch (error) {
+      console.error("Error in signReportByHOF:", error);
+      res.status(500).json({ error: "Failed to save HOF verification signature" });
+    }
   }
 };
 

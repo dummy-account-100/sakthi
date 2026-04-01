@@ -57,9 +57,9 @@ exports.getDetails = async (req, res) => {
     // 🔥 FETCH QF HISTORY 
     let qfHistory = [];
     try {
-       const qfRes = await sql.query`SELECT qfValue, date FROM DmmSettingQFvalues WHERE formName = 'dmm-setting-parameters' ORDER BY date DESC, id DESC`;
-       qfHistory = qfRes.recordset;
-    } catch(e) { console.error("DmmSettingQFvalues fetch error"); }
+      const qfRes = await sql.query`SELECT qfValue, date FROM DmmSettingQFvalues WHERE formName = 'dmm-setting-parameters' ORDER BY date DESC, id DESC`;
+      qfHistory = qfRes.recordset;
+    } catch (e) { console.error("DmmSettingQFvalues fetch error"); }
 
     res.json({
       operators: operatorsRes.recordset,
@@ -74,78 +74,111 @@ exports.getDetails = async (req, res) => {
   }
 };
 
-// --- Operator Save ---
+// --- Operator Save (Per-Shift Upsert) ---
 exports.saveDetails = async (req, res) => {
   try {
-    const { date, disa, shiftsData, shiftsMeta } = req.body;
+    const { date, disa, shiftsData, shiftsMeta, shiftsToSave } = req.body;
+    // shiftsToSave is an array like [1, 3] telling backend which shifts to process.
+    // If not provided, fall back to old behaviour (all shifts).
+    const targetShifts = Array.isArray(shiftsToSave) ? shiftsToSave : [1, 2, 3];
+
     const transaction = new sql.Transaction();
     await transaction.begin();
 
     try {
-      // 1. Find existing IDs to delete their custom values first (Foreign Key cleanup)
-      const existingReq = new sql.Request(transaction);
-      const existingRes = await existingReq.query`SELECT id FROM DmmSettingParameters WHERE RecordDate = ${date} AND DisaMachine = ${disa}`;
-      const existingIds = existingRes.recordset.map(r => r.id).join(',');
-
-      if (existingIds) {
-        await new sql.Request(transaction).query(`DELETE FROM DmmCustomColumnValues WHERE rowId IN (${existingIds})`);
-      }
-
-      // 2. Delete existing base records
-      const deleteReq = new sql.Request(transaction);
-      await deleteReq.query`DELETE FROM DmmSettingParameters WHERE RecordDate = ${date} AND DisaMachine = ${disa}`;
-
-      // 3. Insert fresh data
-      for (const shift of [1, 2, 3]) {
-        const rows = shiftsData[shift] || [];
+      for (const shift of targetShifts) {
         const meta = shiftsMeta[shift] || { operator: '', supervisor: '', isIdle: false };
+        const rows = shiftsData[shift] || [];
         const isIdleVal = meta.isIdle ? 1 : 0;
-        const rowsToSave = rows.length > 0 ? rows : [{}];
 
+        // 1. Fetch existing rows for this specific shift
+        const existingReq = new sql.Request(transaction);
+        const existingRes = await existingReq.query`
+          SELECT id, SupervisorSignature FROM DmmSettingParameters 
+          WHERE RecordDate = ${date} AND DisaMachine = ${disa} AND Shift = ${shift}
+        `;
+        const existingRows = existingRes.recordset;
+
+        // Preserve the existing supervisor signature if already signed
+        const existingSignature = existingRows.length > 0
+          ? (existingRows[0].SupervisorSignature || '')
+          : '';
+
+        // 2. Delete old custom values for this shift's rows
+        if (existingRows.length > 0) {
+          const idList = existingRows.map(r => r.id).join(',');
+          await new sql.Request(transaction).query(
+            `DELETE FROM DmmCustomColumnValues WHERE rowId IN (${idList})`
+          );
+        }
+
+        // 3. Delete old base rows for this shift only
+        await new sql.Request(transaction).query`
+          DELETE FROM DmmSettingParameters 
+          WHERE RecordDate = ${date} AND DisaMachine = ${disa} AND Shift = ${shift}
+        `;
+
+        // 4. Insert fresh rows for this shift
+        const rowsToSave = rows.length > 0 ? rows : [{}];
         for (let i = 0; i < rowsToSave.length; i++) {
           const row = rowsToSave[i];
           const insertReq = new sql.Request(transaction);
 
-          // Insert Base Row and get the new ID
           const insertRes = await insertReq.query`
-                INSERT INTO DmmSettingParameters (
-                    RecordDate, DisaMachine, Shift, OperatorName, SupervisorName, IsIdle, RowIndex,
-                    Customer, ItemDescription, Time, PpThickness, PpHeight, SpThickness, SpHeight,
-                    CoreMaskOut, CoreMaskIn, SandShotPressure, CorrectionShotTime, SqueezePressure,
-                    PpStripAccel, PpStripDist, SpStripAccel, SpStripDist, MouldThickness, CloseUpForce, Remarks
-                ) 
-                OUTPUT INSERTED.id
-                VALUES (
-                    ${date}, ${disa}, ${shift}, ${meta.operator}, ${meta.supervisor}, ${isIdleVal}, ${i},
-                    ${row.Customer || ''}, ${row.ItemDescription || ''}, ${row.Time || ''}, 
-                    ${row.PpThickness || ''}, ${row.PpHeight || ''}, ${row.SpThickness || ''}, ${row.SpHeight || ''},
-                    ${row.CoreMaskOut || ''}, ${row.CoreMaskIn || ''}, ${row.SandShotPressure || ''}, 
-                    ${row.CorrectionShotTime || ''}, ${row.SqueezePressure || ''},
-                    ${row.PpStripAccel || ''}, ${row.PpStripDist || ''}, ${row.SpStripAccel || ''}, 
-                    ${row.SpStripDist || ''}, ${row.MouldThickness || ''}, ${row.CloseUpForce || ''}, ${row.Remarks || ''}
-                )
-              `;
+            INSERT INTO DmmSettingParameters (
+              RecordDate, DisaMachine, Shift, OperatorName, SupervisorName,
+              IsIdle, RowIndex, SupervisorSignature,
+              Customer, ItemDescription, Time, PpThickness, PpHeight,
+              SpThickness, SpHeight, CoreMaskOut, CoreMaskIn,
+              SandShotPressure, CorrectionShotTime, SqueezePressure,
+              PpStripAccel, PpStripDist, SpStripAccel, SpStripDist,
+              MouldThickness, CloseUpForce, Remarks
+            )
+            OUTPUT INSERTED.id
+            VALUES (
+              ${date}, ${disa}, ${shift}, ${meta.operator || ''},
+              ${meta.supervisor || ''}, ${isIdleVal}, ${i},
+              ${existingSignature},
+              ${row.Customer || ''}, ${row.ItemDescription || ''},
+              ${row.Time || ''}, ${row.PpThickness || ''}, ${row.PpHeight || ''},
+              ${row.SpThickness || ''}, ${row.SpHeight || ''},
+              ${row.CoreMaskOut || ''}, ${row.CoreMaskIn || ''},
+              ${row.SandShotPressure || ''}, ${row.CorrectionShotTime || ''},
+              ${row.SqueezePressure || ''}, ${row.PpStripAccel || ''},
+              ${row.PpStripDist || ''}, ${row.SpStripAccel || ''},
+              ${row.SpStripDist || ''}, ${row.MouldThickness || ''},
+              ${row.CloseUpForce || ''}, ${row.Remarks || ''}
+            )
+          `;
 
           const newRowId = insertRes.recordset[0].id;
 
-          // Insert Custom Column Values for this row
+          // 5. Insert custom column values
           if (row.customValues && Object.keys(row.customValues).length > 0) {
             for (const [colId, val] of Object.entries(row.customValues)) {
               if (val !== '' && val !== null && val !== undefined) {
                 const cvReq = new sql.Request(transaction);
                 await cvReq.query`
-                              INSERT INTO DmmCustomColumnValues (rowId, columnId, value)
-                              VALUES (${newRowId}, ${colId}, ${val.toString()})
-                          `;
+                  INSERT INTO DmmCustomColumnValues (rowId, columnId, value)
+                  VALUES (${newRowId}, ${colId}, ${val.toString()})
+                `;
               }
             }
           }
         }
       }
+
       await transaction.commit();
       res.json({ success: true, message: 'Settings saved successfully' });
-    } catch (err) { await transaction.rollback(); res.status(500).send('Database Transaction Error'); }
-  } catch (err) { res.status(500).send('Server Error'); }
+    } catch (err) {
+      await transaction.rollback();
+      console.error('DMM Save Transaction Error:', err);
+      res.status(500).json({ error: 'Database Transaction Error', details: err.message });
+    }
+  } catch (err) {
+    console.error('DMM Save Server Error:', err);
+    res.status(500).json({ error: 'Server Error', details: err.message });
+  }
 };
 
 exports.getBulkData = async (req, res) => {
@@ -201,9 +234,9 @@ exports.getBulkData = async (req, res) => {
     // 🔥 FETCH QF HISTORY FOR BULK EXPORT 
     let qfHistory = [];
     try {
-        const qfRes = await sql.query`SELECT qfValue, date FROM DmmSettingQFvalues WHERE formName = 'dmm-setting-parameters' ORDER BY date DESC, id DESC`;
-        qfHistory = qfRes.recordset;
-    } catch(e) { console.error("DmmSettingQFvalues fetch error"); }
+      const qfRes = await sql.query`SELECT qfValue, date FROM DmmSettingQFvalues WHERE formName = 'dmm-setting-parameters' ORDER BY date DESC, id DESC`;
+      qfHistory = qfRes.recordset;
+    } catch (e) { console.error("DmmSettingQFvalues fetch error"); }
 
     res.json({
       master: masterRes.recordset || [],
@@ -217,15 +250,22 @@ exports.getBulkData = async (req, res) => {
   }
 };
 
-// --- Supervisor Fetch ---
+// --- Supervisor Fetch (one entry per shift, no duplicates) ---
 exports.getSupervisorReports = async (req, res) => {
   try {
     const { name } = req.params;
+    // Use MIN(id) to pick the first-ever submission per shift so the supervisor
+    // only sees one sign-off request per (date, DISA, shift).
     const records = await sql.query`
-      SELECT RecordDate as reportDate, DisaMachine as disa, Shift as shift, OperatorName, SupervisorSignature 
+      SELECT 
+        RecordDate as reportDate, 
+        DisaMachine as disa, 
+        Shift as shift, 
+        MAX(OperatorName) as OperatorName,
+        MAX(SupervisorSignature) as SupervisorSignature
       FROM DmmSettingParameters
       WHERE SupervisorName = ${name}
-      GROUP BY RecordDate, DisaMachine, Shift, OperatorName, SupervisorSignature
+      GROUP BY RecordDate, DisaMachine, Shift
       ORDER BY RecordDate DESC, Shift ASC
     `;
     res.json(records.recordset);

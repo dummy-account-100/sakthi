@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { X, CheckCircle, AlertTriangle, FileDown, Loader, Save, PlusCircle, Trash2 } from 'lucide-react';
+import { X, CheckCircle, AlertTriangle, FileDown, Loader, Save, PlusCircle, Trash2, Lock } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import SignatureCanvas from 'react-signature-canvas';
 import Header from '../components/Header';
 import logo from '../Assets/logo.png';
 
-// --- Upgraded to Toast Notification ---
+// --- Toast Notification ---
 const ToastNotification = ({ data, onClose }) => {
   useEffect(() => {
     if (data.show && data.type !== 'loading') {
@@ -31,33 +31,35 @@ const ToastNotification = ({ data, onClose }) => {
 };
 
 // --- Compact SearchableSelect ---
-const SearchableSelect = ({ label, options, displayKey, onSelect, value, placeholder }) => {
-  const [search, setSearch] = useState("");
+const SearchableSelect = ({ label, options, displayKey, onSelect, value, placeholder, disabled }) => {
+  const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
-  
+
   useEffect(() => { if (value) setSearch(value); }, [value]);
-  
-  const filtered = options.filter((item) => 
-    item[displayKey]?.toLowerCase().includes((search || "").toLowerCase())
+
+  const filtered = options.filter((item) =>
+    item[displayKey]?.toLowerCase().includes((search || '').toLowerCase())
   );
-  
+
   return (
     <div className="relative w-full">
       {label && <label className="text-[11px] font-black text-gray-800 uppercase block mb-1 tracking-wider">{label}</label>}
-      <input 
-        type="text" 
-        value={search} 
-        onChange={(e) => { setSearch(e.target.value); setOpen(true); }} 
-        onFocus={() => setOpen(true)} 
-        className="w-full p-1.5 text-xs font-bold border-2 border-gray-300 bg-white text-gray-900 rounded outline-none focus:border-orange-500 placeholder-gray-400" 
-        placeholder={placeholder || "Search..."} 
+      <input
+        type="text"
+        value={search}
+        disabled={disabled}
+        onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        className="w-full p-1.5 text-xs font-bold border-2 border-gray-300 bg-white text-gray-900 rounded outline-none focus:border-orange-500 placeholder-gray-400 disabled:bg-gray-100 disabled:cursor-not-allowed"
+        placeholder={placeholder || 'Search...'}
       />
-      {open && (
+      {open && !disabled && (
         <ul className="absolute top-full mt-1 z-50 bg-white border-2 border-gray-300 w-full max-h-48 overflow-y-auto rounded shadow-xl text-left">
           {filtered.length > 0 ? filtered.map((item, index) => (
-            <li 
-              key={index} 
-              onMouseDown={(e) => { e.preventDefault(); setSearch(item[displayKey]); setOpen(false); onSelect(item); }} 
+            <li
+              key={index}
+              onMouseDown={(e) => { e.preventDefault(); setSearch(item[displayKey]); setOpen(false); onSelect(item); }}
               className="p-2 hover:bg-orange-100 cursor-pointer text-xs font-bold border-b border-gray-100 text-gray-900 last:border-0"
             >
               {item[displayKey]}
@@ -116,8 +118,10 @@ const DmmSettingParameters = () => {
   });
 
   const [shiftsData, setShiftsData] = useState({ 1: [], 2: [], 3: [] });
+  // submittedShifts: Set of shift numbers (1|2|3) that already exist in DB for current date+DISA
+  const [submittedShifts, setSubmittedShifts] = useState(new Set());
   const [dropdowns, setDropdowns] = useState({ operators: [], supervisors: [] });
-  const [qfHistory, setQfHistory] = useState([]); // 🔥 Added QF History State
+  const [qfHistory, setQfHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState({ show: false, type: '', message: '' });
 
@@ -143,19 +147,28 @@ const DmmSettingParameters = () => {
       });
 
       setDropdowns({ operators: res.data.operators, supervisors: res.data.supervisors });
-      setQfHistory(res.data.qfHistory || []); // 🔥 Store the fetched QF history
+      setQfHistory(res.data.qfHistory || []);
 
+      // Track which shifts already have data in the DB
+      const newSubmittedShifts = new Set();
+
+      const loadedMeta = {
+        1: { operator: '', supervisor: '', supervisorSignature: '', isIdle: false },
+        2: { operator: '', supervisor: '', supervisorSignature: '', isIdle: false },
+        3: { operator: '', supervisor: '', supervisorSignature: '', isIdle: false }
+      };
       if (res.data.shiftsMeta) {
-        const loadedMeta = { ...shiftsMeta };
         for (let i = 1; i <= 3; i++) {
           if (res.data.shiftsMeta[i]) loadedMeta[i] = res.data.shiftsMeta[i];
         }
-        setShiftsMeta(loadedMeta);
       }
+      setShiftsMeta(loadedMeta);
 
       const loadedData = { 1: [], 2: [], 3: [] };
       [1, 2, 3].forEach(shift => {
         if (res.data.shiftsData[shift] && res.data.shiftsData[shift].length > 0) {
+          // This shift has existing DB data → mark as submitted/locked
+          newSubmittedShifts.add(shift);
           loadedData[shift] = res.data.shiftsData[shift].map(dbRow => {
             const uiRow = { id: crypto.randomUUID(), customValues: dbRow.customValues || {} };
             baseColumns.forEach(c => uiRow[c.key] = dbRow[c.key] || '');
@@ -165,9 +178,13 @@ const DmmSettingParameters = () => {
           loadedData[shift] = [createEmptyRow()];
         }
       });
-      setShiftsData(loadedData);
 
-    } catch (error) { setNotification({ show: true, type: 'error', message: "Failed to load data." }); }
+      setShiftsData(loadedData);
+      setSubmittedShifts(newSubmittedShifts);
+
+    } catch (error) {
+      setNotification({ show: true, type: 'error', message: 'Failed to load data.' });
+    }
     setLoading(false);
   };
 
@@ -194,34 +211,87 @@ const DmmSettingParameters = () => {
     setShiftsData(prev => ({ ...prev, [shift]: prev[shift].length > 1 ? prev[shift].filter(row => row.id !== rowId) : prev[shift] }));
   };
 
+  /**
+   * Determine which shifts are "active" for this submit:
+   *  - NOT already submitted in DB (those are locked)
+   *  - operator is selected OR isIdle is true
+   */
+  const getActiveShifts = () => {
+    return [1, 2, 3].filter(shift => {
+      if (submittedShifts.has(shift)) return false; // already submitted → locked, skip
+      const meta = shiftsMeta[shift];
+      return meta.isIdle || (meta.operator && meta.operator.trim() !== '');
+    });
+  };
+
   const handleSave = async () => {
+    const activeShifts = getActiveShifts();
+
+    if (activeShifts.length === 0) {
+      setNotification({
+        show: true, type: 'error',
+        message: 'Please select an operator (or mark as Line Idle) for at least one new shift before submitting.'
+      });
+      return;
+    }
+
+    // Validate only active (non-submitted) shifts
     let hasEmpty = false;
-    [1, 2, 3].forEach(shift => {
-      if (shiftsMeta[shift].isIdle) return; // Skip idle shifts
-      shiftsData[shift].forEach(row => {
-        allColumns.forEach(col => {
+    let emptyShift = null;
+
+    for (const shift of activeShifts) {
+      if (shiftsMeta[shift].isIdle) continue; // idle rows don't need field-level validation
+      for (const row of shiftsData[shift]) {
+        for (const col of allColumns) {
           const val = col.isCustom ? row.customValues[col.id] : row[col.key];
           if (val === undefined || val === null || String(val).trim() === '') {
             hasEmpty = true;
+            emptyShift = shift;
+            break;
           }
-        });
-      });
-    });
+        }
+        if (hasEmpty) break;
+      }
+      if (hasEmpty) break;
+    }
 
     if (hasEmpty) {
-      setNotification({ show: true, type: 'error', message: "Please fill all input fields. Type '-' if empty." });
+      setNotification({
+        show: true, type: 'error',
+        message: `Shift ${emptyShift} has empty fields. Type '-' for any field with no data.`
+      });
       return;
+    }
+
+    // Also validate: if operator is selected for a shift, supervisor must be selected too
+    for (const shift of activeShifts) {
+      if (shiftsMeta[shift].isIdle) continue;
+      if (!shiftsMeta[shift].supervisor || shiftsMeta[shift].supervisor.trim() === '') {
+        setNotification({
+          show: true, type: 'error',
+          message: `Please select a Supervisor for Shift ${shift}.`
+        });
+        return;
+      }
     }
 
     setLoading(true);
     try {
       await axios.post(`${process.env.REACT_APP_API_URL}/api/dmm-settings/save`, {
-        date: headerData.date, disa: headerData.disaMachine, shiftsData, shiftsMeta
+        date: headerData.date,
+        disa: headerData.disaMachine,
+        shiftsData,
+        shiftsMeta,
+        shiftsToSave: activeShifts  // tell backend which shifts to upsert
       });
-      setNotification({ show: true, type: 'success', message: 'Parameters Assigned to Supervisor Successfully!' });
+
+      const shiftLabels = activeShifts.map(s => `Shift ${s}`).join(', ');
+      setNotification({ show: true, type: 'success', message: `${shiftLabels} sent to Supervisor successfully!` });
       setTimeout(() => setNotification({ show: false }), 3000);
-      loadSchemaAndData(); // Refresh DB IDs
-    } catch (error) { setNotification({ show: true, type: 'error', message: 'Failed to save data.' }); }
+      loadSchemaAndData(); // Refresh to lock the newly submitted shifts
+    } catch (error) {
+      setNotification({ show: true, type: 'error', message: 'Failed to save data.' });
+    }
     setLoading(false);
   };
 
@@ -229,44 +299,38 @@ const DmmSettingParameters = () => {
     setNotification({ show: true, type: 'loading', message: 'Generating PDF...' });
     try {
       const doc = new jsPDF('l', 'mm', 'a4');
-      
-      // 🔥 DETERMINE THE CORRECT QF VALUE 
-      let currentPageQfValue = "QF/07/FBP-13, Rev.No:06 dt 08.10.2025"; // Fallback
+
+      // Determine correct QF value
+      let currentPageQfValue = 'QF/07/FBP-13, Rev.No:06 dt 08.10.2025';
       const reportDateObj = new Date(headerData.date);
       reportDateObj.setHours(0, 0, 0, 0);
 
       for (let qf of qfHistory) {
-          if (!qf.date) continue;
-          const qfDate = new Date(qf.date);
-          qfDate.setHours(0, 0, 0, 0);
-          if (qfDate <= reportDateObj) {
-              currentPageQfValue = qf.qfValue;
-              break;
-          }
+        if (!qf.date) continue;
+        const qfDate = new Date(qf.date);
+        qfDate.setHours(0, 0, 0, 0);
+        if (qfDate <= reportDateObj) { currentPageQfValue = qf.qfValue; break; }
       }
 
-      // ==============================================================
-      // 🔥 STANDARDIZED HEADER WITH IMAGE LOGO
-      // ==============================================================
       doc.setLineWidth(0.3);
-      
-      // Box 1: SAKTHI AUTO (Logo Area)
+
+      // Box 1: Logo
       doc.rect(10, 10, 40, 20);
       try {
         doc.addImage(logo, 'PNG', 12, 11, 36, 18);
       } catch (err) {
         doc.setFontSize(14); doc.setFont('helvetica', 'bold');
-        doc.text("SAKTHI", 30, 18, { align: 'center' });
-        doc.text("AUTO", 30, 26, { align: 'center' });
+        doc.text('SAKTHI', 30, 18, { align: 'center' });
+        doc.text('AUTO', 30, 26, { align: 'center' });
       }
 
-      // Box 2: Title (Full width between Logo and Meta)
+      // Box 2: Title
       doc.rect(50, 10, 197, 20);
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
-      doc.text("DMM SETTING PARAMETERS CHECK SHEET", 148.5, 22, { align: 'center' });
+      doc.text('DMM SETTING PARAMETERS CHECK SHEET', 148.5, 22, { align: 'center' });
 
-      // Box 3: Meta (DISA & Date)
+      // Box 3: Meta
       doc.rect(247, 10, 40, 20);
       doc.setFontSize(11);
       doc.text(headerData.disaMachine, 267, 16, { align: 'center' });
@@ -274,10 +338,9 @@ const DmmSettingParameters = () => {
       doc.setFontSize(10);
       const formattedDate = new Date(headerData.date).toLocaleDateString('en-GB');
       doc.text(`DATE: ${formattedDate}`, 267, 26, { align: 'center' });
-      // ==============================================================
 
       autoTable(doc, {
-        startY: 35, // Pushed down to accommodate the 3-box header
+        startY: 35,
         margin: { left: 10, right: 10 },
         head: [['SHIFT', 'OPERATOR NAME', 'VERIFIED BY', 'SIGNATURE']],
         body: [
@@ -332,26 +395,28 @@ const DmmSettingParameters = () => {
 
         currentY = doc.lastAutoTable.finalY + 5;
         if (currentY > 175 && index < 2) {
-          doc.setFontSize(8); doc.text(currentPageQfValue, 10, 200); // 🔥 DYNAMIC QF
+          doc.setFontSize(8); doc.text(currentPageQfValue, 10, 200);
           doc.addPage(); currentY = 15;
         }
       });
 
-      doc.setFontSize(8); doc.text(currentPageQfValue, 10, 200); // 🔥 DYNAMIC QF
+      doc.setFontSize(8); doc.text(currentPageQfValue, 10, 200);
       doc.save(`DMM_Setting_Parameters_${headerData.date}.pdf`);
       setNotification({ show: false, type: '', message: '' });
 
     } catch (error) { setNotification({ show: true, type: 'error', message: `PDF Gen Failed: ${error.message}` }); }
   };
 
+  const activeShifts = getActiveShifts();
+
   return (
     <>
       <Header />
       <div className="min-h-screen bg-[#2d2d2d] flex flex-col items-center justify-center p-6 pb-20">
         <ToastNotification data={notification} onClose={() => setNotification({ ...notification, show: false })} />
-        
+
         <div className="bg-white w-full max-w-[100rem] rounded-xl p-8 shadow-2xl flex flex-col border-4 border-gray-100">
-          
+
           <h2 className="text-2xl font-bold mb-6 text-center text-gray-800 uppercase tracking-wide flex items-center justify-center gap-2">
             <span className="text-orange-500 text-2xl">⚙️</span> DMM Setting Parameters
           </h2>
@@ -359,9 +424,9 @@ const DmmSettingParameters = () => {
           <div className="flex justify-end items-center gap-6 mb-8 border-b-2 border-gray-200 pb-4">
             <div className="w-40">
               <label className="font-bold text-gray-700 block mb-1 text-sm">DISA-</label>
-              <select 
-                value={headerData.disaMachine} 
-                onChange={(e) => setHeaderData({ ...headerData, disaMachine: e.target.value })} 
+              <select
+                value={headerData.disaMachine}
+                onChange={(e) => setHeaderData({ ...headerData, disaMachine: e.target.value })}
                 className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 text-sm font-semibold bg-white text-gray-800"
               >
                 <option value="DISA - I">DISA - I</option>
@@ -372,14 +437,14 @@ const DmmSettingParameters = () => {
                 <option value="DISA - VI">DISA - VI</option>
               </select>
             </div>
-            
+
             <div className="w-48">
               <label className="font-bold text-gray-700 block mb-1 text-sm">DATE :</label>
-              <input 
-                type="date" 
-                value={headerData.date} 
-                onChange={(e) => setHeaderData({ ...headerData, date: e.target.value })} 
-                className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 text-sm font-semibold text-gray-800 bg-white" 
+              <input
+                type="date"
+                value={headerData.date}
+                onChange={(e) => setHeaderData({ ...headerData, date: e.target.value })}
+                className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:ring-1 focus:ring-orange-500 text-sm font-semibold text-gray-800 bg-white"
               />
             </div>
           </div>
@@ -398,73 +463,120 @@ const DmmSettingParameters = () => {
               <tbody className="text-sm font-semibold text-slate-800">
                 {[1, 2, 3].map(shift => {
                   const isIdle = shiftsMeta[shift].isIdle;
+                  const isLocked = submittedShifts.has(shift); // already submitted, read-only
+                  const zClass = shift === 1 ? 'z-40' : shift === 2 ? 'z-30' : 'z-20';
+
                   return (
                     <React.Fragment key={`shift-${shift}`}>
-                      <tr className="bg-orange-50/50 border-y-2 border-orange-200">
-                        {/* 🔥 FIX: Dynamic z-index applied here based on the shift number to prevent overlap! */}
-                        <td colSpan={allColumns.length + 2} className={`p-3 text-left sticky left-0 ${shift === 1 ? 'z-40' : shift === 2 ? 'z-30' : 'z-20'}`}>
+                      {/* ── Shift Header Row ── */}
+                      <tr className={`border-y-2 ${isLocked ? 'bg-green-50/70 border-green-300' : 'bg-orange-50/50 border-orange-200'}`}>
+                        <td colSpan={allColumns.length + 2} className={`p-3 text-left sticky left-0 ${zClass}`}>
                           <div className="flex items-center justify-between w-[950px]">
                             <div className="flex items-center gap-6">
                               <span className="font-black text-gray-800 text-lg">SHIFT {shift}</span>
-                              <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded border-2 border-gray-300 hover:border-orange-500 transition-colors shadow-sm">
-                                <input type="checkbox" checked={isIdle} onChange={(e) => handleMetaChange(shift, 'isIdle', e.target.checked)} className="w-4 h-4 accent-orange-600 cursor-pointer" />
-                                <span className="text-xs font-bold text-gray-700 uppercase">Line Idle</span>
-                              </label>
 
-                              {/* 🔥 UPDATED OPERATOR SEARCHABLE SELECT */}
-                              <div className={`flex items-center gap-2 transition-opacity ${isIdle ? 'opacity-40 pointer-events-none' : ''}`}>
+                              {/* Locked badge for already-submitted shifts */}
+                              {isLocked && (
+                                <span className="flex items-center gap-1.5 bg-green-100 border border-green-400 text-green-700 text-xs font-black px-3 py-1 rounded-full">
+                                  <Lock size={12} /> SUBMITTED – READ ONLY
+                                </span>
+                              )}
+
+                              {/* Line Idle toggle – only for non-locked shifts */}
+                              {!isLocked && (
+                                <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded border-2 border-gray-300 hover:border-orange-500 transition-colors shadow-sm">
+                                  <input
+                                    type="checkbox"
+                                    checked={isIdle}
+                                    onChange={(e) => handleMetaChange(shift, 'isIdle', e.target.checked)}
+                                    className="w-4 h-4 accent-orange-600 cursor-pointer"
+                                  />
+                                  <span className="text-xs font-bold text-gray-700 uppercase">Line Idle</span>
+                                </label>
+                              )}
+
+                              {/* Operator selector */}
+                              <div className={`flex items-center gap-2 transition-opacity ${isIdle && !isLocked ? 'opacity-40 pointer-events-none' : ''}`}>
                                 <span className="text-xs font-bold text-gray-600 uppercase">Operator:</span>
                                 <div className="w-48 relative">
-                                  <SearchableSelect 
-                                    options={dropdowns.operators} 
-                                    displayKey="OperatorName" 
-                                    value={shiftsMeta[shift].operator} 
+                                  <SearchableSelect
+                                    options={dropdowns.operators}
+                                    displayKey="OperatorName"
+                                    value={shiftsMeta[shift].operator}
                                     placeholder="Select Operator..."
-                                    onSelect={(item) => handleMetaChange(shift, 'operator', item.OperatorName)} 
+                                    disabled={isLocked}
+                                    onSelect={(item) => handleMetaChange(shift, 'operator', item.OperatorName)}
                                   />
                                 </div>
                               </div>
 
-                              {/* 🔥 UPDATED SUPERVISOR SEARCHABLE SELECT */}
-                              <div className={`flex items-center gap-2 transition-opacity ${isIdle ? 'opacity-40 pointer-events-none' : ''}`}>
+                              {/* Supervisor selector */}
+                              <div className={`flex items-center gap-2 transition-opacity ${isIdle && !isLocked ? 'opacity-40 pointer-events-none' : ''}`}>
                                 <span className="text-xs font-bold text-gray-600 uppercase">Supervisor:</span>
                                 <div className="w-48 relative">
-                                  <SearchableSelect 
-                                    options={dropdowns.supervisors} 
-                                    displayKey="supervisorName" 
-                                    value={shiftsMeta[shift].supervisor} 
+                                  <SearchableSelect
+                                    options={dropdowns.supervisors}
+                                    displayKey="supervisorName"
+                                    value={shiftsMeta[shift].supervisor}
                                     placeholder="Select Supervisor..."
-                                    onSelect={(item) => handleMetaChange(shift, 'supervisor', item.supervisorName)} 
+                                    disabled={isLocked}
+                                    onSelect={(item) => handleMetaChange(shift, 'supervisor', item.supervisorName)}
                                   />
                                 </div>
                               </div>
-
                             </div>
-                            <button onClick={() => addRow(shift)} disabled={isIdle} className={`flex items-center gap-1 border-2 px-3 py-1.5 rounded transition-all shadow-sm text-xs font-bold uppercase ${isIdle ? 'bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed' : 'bg-white border-gray-800 text-gray-800 hover:bg-gray-800 hover:text-white'}`}>
-                              <PlusCircle className="w-4 h-4" /> Add Row
-                            </button>
+
+                            {!isLocked && (
+                              <button
+                                onClick={() => addRow(shift)}
+                                disabled={isIdle}
+                                className={`flex items-center gap-1 border-2 px-3 py-1.5 rounded transition-all shadow-sm text-xs font-bold uppercase ${isIdle ? 'bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed' : 'bg-white border-gray-800 text-gray-800 hover:bg-gray-800 hover:text-white'}`}
+                              >
+                                <PlusCircle className="w-4 h-4" /> Add Row
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
+
+                      {/* ── Data Rows ── */}
                       {shiftsData[shift].map((row, index) => (
-                        <tr key={row.id} className={`h-12 transition-all ${isIdle ? 'bg-gray-100/50 opacity-40 grayscale pointer-events-none select-none' : 'hover:bg-orange-50/20 group'}`}>
-                          <td className={`border border-gray-300 font-bold text-gray-600 sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] ${isIdle ? 'bg-gray-200/50' : 'bg-gray-50 group-hover:bg-orange-50/80'}`}>{index + 1}</td>
+                        <tr
+                          key={row.id}
+                          className={`h-12 transition-all ${isLocked
+                              ? 'bg-green-50/30 opacity-70 grayscale-[30%] pointer-events-none select-none'
+                              : isIdle
+                                ? 'bg-gray-100/50 opacity-40 grayscale pointer-events-none select-none'
+                                : 'hover:bg-orange-50/20 group'
+                            }`}
+                        >
+                          <td className={`border border-gray-300 font-bold text-gray-600 sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] ${isLocked ? 'bg-green-50' : isIdle ? 'bg-gray-200/50' : 'bg-gray-50 group-hover:bg-orange-50/80'}`}>
+                            {index + 1}
+                          </td>
                           {allColumns.map(col => {
                             const val = col.isCustom ? row.customValues[col.id] : row[col.key];
                             return (
                               <td key={col.key} className="border border-gray-300 p-0 relative">
                                 <input
-                                  type={col.inputType === 'number' ? 'text' : col.inputType} step={col.step || undefined} disabled={isIdle}
+                                  type={col.inputType === 'number' ? 'text' : col.inputType}
+                                  step={col.step || undefined}
+                                  disabled={isIdle || isLocked}
                                   placeholder={col.inputType === 'number' || col.inputType === 'text' ? "Type '-' if empty" : undefined}
                                   value={isIdle ? '' : (val || '')}
                                   onChange={(e) => handleInputChange(shift, row.id, col.key, e.target.value, col.isCustom, col.id)}
-                                  className={`absolute inset-0 w-full h-full text-center text-sm font-bold text-gray-800 outline-none px-1 placeholder:text-[8px] placeholder:text-gray-400 ${isIdle ? 'bg-transparent cursor-not-allowed' : 'bg-transparent focus:bg-orange-100 focus:ring-inset focus:ring-2 focus:ring-orange-500'}`}
+                                  className={`absolute inset-0 w-full h-full text-center text-sm font-bold text-gray-800 outline-none px-1 placeholder:text-[8px] placeholder:text-gray-400 ${isLocked || isIdle ? 'bg-transparent cursor-not-allowed' : 'bg-transparent focus:bg-orange-100 focus:ring-inset focus:ring-2 focus:ring-orange-500'}`}
                                 />
                               </td>
-                            )
+                            );
                           })}
-                          <td className={`border border-gray-300 sticky right-0 z-10 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)] ${isIdle ? 'bg-gray-200/50' : 'bg-gray-50 group-hover:bg-orange-50/80'}`}>
-                            <button onClick={() => removeRow(shift, row.id)} disabled={isIdle} className="text-gray-400 hover:text-red-600 transition-colors mx-auto block disabled:opacity-0"><Trash2 className="w-5 h-5" /></button>
+                          <td className={`border border-gray-300 sticky right-0 z-10 shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)] ${isLocked ? 'bg-green-50' : isIdle ? 'bg-gray-200/50' : 'bg-gray-50 group-hover:bg-orange-50/80'}`}>
+                            <button
+                              onClick={() => removeRow(shift, row.id)}
+                              disabled={isIdle || isLocked}
+                              className="text-gray-400 hover:text-red-600 transition-colors mx-auto block disabled:opacity-0"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -476,9 +588,23 @@ const DmmSettingParameters = () => {
           </div>
 
           <div id="checklist-footer" className="bg-slate-100 p-8 border-t border-gray-200 mt-6 flex justify-end gap-6 rounded-xl shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-            <button onClick={generatePDF} className="bg-white border-2 border-gray-900 text-gray-900 hover:bg-gray-200 font-bold py-3 px-6 rounded-lg shadow-md uppercase flex items-center gap-2 mt-auto transition-colors"><FileDown size={20} /> PDF</button>
-            <button onClick={handleSave} disabled={loading} className="bg-gray-900 hover:bg-orange-600 text-white font-bold py-3 px-12 rounded-lg shadow-lg uppercase mt-auto transition-colors flex items-center gap-3">
-              {loading ? <Loader className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}{loading ? 'Saving...' : 'Send to Supervisor'}
+            <button
+              onClick={generatePDF}
+              className="bg-white border-2 border-gray-900 text-gray-900 hover:bg-gray-200 font-bold py-3 px-6 rounded-lg shadow-md uppercase flex items-center gap-2 mt-auto transition-colors"
+            >
+              <FileDown size={20} /> PDF
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={loading || activeShifts.length === 0}
+              title={activeShifts.length === 0 ? 'All shifts are already submitted. No new shifts to send.' : ''}
+              className={`font-bold py-3 px-12 rounded-lg shadow-lg uppercase mt-auto transition-colors flex items-center gap-3 ${activeShifts.length === 0
+                  ? 'bg-gray-400 cursor-not-allowed text-white'
+                  : 'bg-gray-900 hover:bg-orange-600 text-white'
+                }`}
+            >
+              {loading ? <Loader className="animate-spin w-5 h-5" /> : <Save className="w-5 h-5" />}
+              {loading ? 'Saving...' : `Send to Supervisor${activeShifts.length > 0 ? ` (Shift${activeShifts.length > 1 ? 's' : ''} ${activeShifts.join(', ')})` : ''}`}
             </button>
           </div>
 
@@ -491,7 +617,7 @@ const DmmSettingParameters = () => {
           .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
           .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
           input[type=time]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.6; }
-          input[type=number]::-webkit-inner-spin-button, 
+          input[type=number]::-webkit-inner-spin-button,
           input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
           input[type=number] { -moz-appearance: textfield; }
         `}} />
