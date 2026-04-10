@@ -5,6 +5,10 @@ import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import Header from "../components/Header";
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const AddUser = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
@@ -27,7 +31,7 @@ const AddUser = () => {
     }
 
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/users/add`, formData);
+      await axios.post(`${API_BASE}/users/add`, formData);
       toast.success(`User ${formData.username} added successfully!`);
       
       setFormData({ username: "", employeeId: "", password: "", role: "operator" });

@@ -9,6 +9,10 @@ import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import logo from '../Assets/logo.png';
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const ToastNotification = ({ data, onClose }) => {
   useEffect(() => {
     if (data.show && data.type !== 'loading') {
@@ -86,7 +90,7 @@ const ErrorProofVerification2 = () => {
 
   try {
     const res = await axios.get(
-      `${process.env.REACT_APP_API_URL}/api/error-proof2/details`,
+      `${API_BASE}/error-proof2/details`,
       { params: { machine: headerData.disaMachine, date: recordDate } }
     );
 
@@ -220,7 +224,7 @@ const ErrorProofVerification2 = () => {
 
     try {
       const plansToSave = reactionPlans.map((p, i) => ({ ...p, SNo: i + 1 }));
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/error-proof2/save`, {
+      await axios.post(`${API_BASE}/error-proof2/save`, {
         machine: headerData.disaMachine, date: recordDate, verifications, reactionPlans: plansToSave, operatorSignature: signatureData,
         headerDetails: { reviewedBy: headerData.reviewedBy, approvedBy: headerData.approvedBy, assignedHOF: headerData.assignedHOF }
       });

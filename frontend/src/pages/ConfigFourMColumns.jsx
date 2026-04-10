@@ -3,7 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Save, Plus, Trash2, ArrowLeft, Loader, Settings, AlertTriangle, CheckCircle, Lock, RotateCcw } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_API_URL}/api/4m-change`;
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
+const API = `${API_BASE}/4m-change`;
 
 const NotificationToast = ({ data, onClose }) => {
     const isError = data.type === 'error';

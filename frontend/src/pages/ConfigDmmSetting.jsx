@@ -3,6 +3,10 @@ import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { Save, Plus, Trash2, ArrowLeft, Loader, Settings, AlertTriangle, CheckCircle } from 'lucide-react';
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const NotificationToast = ({ data, onClose }) => {
     const isError = data.type === 'error';
     const isLoading = data.type === 'loading';
@@ -47,7 +51,7 @@ const ConfigDmmSetting = ({ onBack }) => {
 
     const [items, setItems] = useState([]);
 
-    const API_BASE = `${process.env.REACT_APP_API_URL}/api/config/dmm-setting-parameters`;
+    const API_BASE_DMM_SETTINGS = `${API_BASE}/config/dmm-setting-parameters`;
 
     useEffect(() => {
         fetchConfig();
@@ -56,7 +60,7 @@ const ConfigDmmSetting = ({ onBack }) => {
     const fetchConfig = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_BASE}/master`);
+            const res = await axios.get(`${API_BASE_DMM_SETTINGS}/master`);
             setItems(res.data.config || []);
         } catch (error) {
             setNotification({ show: true, type: 'error', message: 'Failed to load configuration.' });

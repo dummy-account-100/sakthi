@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Loader, AlertTriangle, CheckCircle, Save, X, ChevronDown } from 'lucide-react';
 
-const API = process.env.REACT_APP_API_URL;
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const DISA_MACHINES = ['DISA - I', 'DISA - II', 'DISA - III', 'DISA - IV', 'DISA - V', 'DISA - VI'];
 
 // Helper: axios instance with JWT token always attached
@@ -160,7 +163,7 @@ const UnpouredEditor = ({ date, disa, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        authAxios.get(`${API}/api/unpoured-moulds/details`, { params: { date, disa } })
+        authAxios.get(`${API_BASE}/unpoured-moulds/details`, { params: { date, disa } })
             .then(r => setData(r.data))
             .catch(() => setToast({ msg: 'Failed to load data', type: 'error' }))
             .finally(() => setLoading(false));
@@ -200,7 +203,7 @@ const UnpouredEditor = ({ date, disa, toast, setToast }) => {
                 payloadData[shift].rowTotal = total;
             });
 
-            await authAxios.post(`${API}/api/unpoured-moulds/save`, { date, disa, shiftsData: payloadData });
+            await authAxios.post(`${API_BASE}/unpoured-moulds/save`, { date, disa, shiftsData: payloadData });
             setToast({ msg: 'Saved successfully!', type: 'success' });
         } catch { setToast({ msg: 'Save failed', type: 'error' }); }
     };
@@ -237,7 +240,7 @@ const DmmEditor = ({ date, disa, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        authAxios.get(`${API}/api/dmm-settings/details`, { params: { date, disa } })
+        authAxios.get(`${API_BASE}/dmm-settings/details`, { params: { date, disa } })
             .then(r => setData(r.data))
             .catch(() => setToast({ msg: 'Failed to load data', type: 'error' }))
             .finally(() => setLoading(false));
@@ -253,7 +256,7 @@ const DmmEditor = ({ date, disa, toast, setToast }) => {
     const handleSave = async () => {
         setToast({ msg: 'Saving…', type: 'loading' });
         try {
-            await authAxios.post(`${API}/api/dmm-settings/save`, { date, disa, shiftsData: data.shiftsData, shiftsMeta: data.shiftsMeta });
+            await authAxios.post(`${API_BASE}/dmm-settings/save`, { date, disa, shiftsData: data.shiftsData, shiftsMeta: data.shiftsMeta });
             setToast({ msg: 'Saved successfully!', type: 'success' });
         } catch { setToast({ msg: 'Save failed', type: 'error' }); }
     };
@@ -307,7 +310,7 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        authAxios.get(`${API}/api/disa-checklist/details`, { params: { date, disaMachine: disa } })
+        authAxios.get(`${API_BASE}/disa-checklist/details`, { params: { date, disaMachine: disa } })
             .then(res => {
                 const cl = res.data.checklist.map(item => ({
                     ...item,
@@ -365,7 +368,7 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
     const submitReport = async () => {
         if (!ncForm.ncDetails || !ncForm.responsibility) return setToast({ msg: 'Details and Responsibility are mandatory.', type: 'error' });
         try {
-            await authAxios.post(`${API}/api/disa-checklist/report-nc`, {
+            await authAxios.post(`${API_BASE}/disa-checklist/report-nc`, {
                 checklistId: modalItem.MasterId, slNo: modalItem.SlNo, reportDate: date, disaMachine: disa, ...ncForm
             });
             setToast({ msg: 'NC Report Logged Successfully.', type: 'success' });
@@ -405,7 +408,7 @@ const DisaChecklistEditor = ({ date, disa, toast, setToast }) => {
             const itemsToSave = data.checklist.map(item => ({
                 MasterId: item.MasterId, IsDone: item.IsDone, IsHoliday: item.IsHoliday, IsVatCleaning: item.IsVatCleaning, IsPreventiveMaintenance: item.IsPreventiveMaintenance, ReadingValue: item.ReadingValue || ''
             }));
-            await authAxios.post(`${API}/api/disa-checklist/submit-batch`, {
+            await authAxios.post(`${API_BASE}/disa-checklist/submit-batch`, {
                 items: itemsToSave, sign: data.originalData.checklist[0]?.AssignedHOD || '',
                 date, disaMachine: disa, operatorSignature: data.originalData.checklist[0]?.OperatorSignature || ''
             });
@@ -534,7 +537,7 @@ const ErrorProofEditor = ({ date, disa, toast, setToast }) => {
     useEffect(() => {
         setLoading(true);
         // Uses error-proof2 dynamically
-        authAxios.get(`${API}/api/error-proof2/details`, { params: { date, machine: disa } })
+        authAxios.get(`${API_BASE}/error-proof2/details`, { params: { date, machine: disa } })
             .then(r => {
                 const resData = r.data;
                 const verifications = resData.verifications || [];
@@ -579,7 +582,7 @@ const ErrorProofEditor = ({ date, disa, toast, setToast }) => {
     const handleSave = async () => {
         setToast({ msg: 'Saving…', type: 'loading' });
         try {
-            await authAxios.post(`${API}/api/error-proof2/bulk-update`, {
+            await authAxios.post(`${API_BASE}/error-proof2/bulk-update`, {
                 verifications: data.verifications,
                 reactionPlans: data.reactionPlans,
             });
@@ -690,7 +693,7 @@ const ErrorProofV1Editor = ({ date, disa, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        authAxios.get(`${API}/api/error-proof/v1-by-date`, { params: { date } })
+        authAxios.get(`${API_BASE}/error-proof/v1-by-date`, { params: { date } })
             .then(r => {
                 const resData = r.data || {};
                 setData({
@@ -751,7 +754,7 @@ const ErrorProofV1Editor = ({ date, disa, toast, setToast }) => {
         setToast({ msg: 'Saving…', type: 'loading' });
         try {
             // 1. Update observation results + delete reaction plans for OK verifications
-            await authAxios.post(`${API}/api/error-proof/bulk-update`, {
+            await authAxios.post(`${API_BASE}/error-proof/bulk-update`, {
                 verifications: data.verifications,
                 reactionPlans: data.reactionPlans,
                 deletedProofNames: data._deletedProofNames || [],
@@ -759,13 +762,13 @@ const ErrorProofV1Editor = ({ date, disa, toast, setToast }) => {
             });
 
             // 2. Insert NEW reaction plans for newly-NOT_OK rows
-            const snoRes = await authAxios.get(`${API}/api/error-proof/next-sno`);
+            const snoRes = await authAxios.get(`${API_BASE}/error-proof/next-sno`);
             let sNo = snoRes.data.nextSNo || 1;
 
             for (const [key, plan] of Object.entries(newPlans)) {
                 const ver = data.verifications[plan._verIdx];
                 if (!ver) continue;
-                await authAxios.post(`${API}/api/error-proof/add-reaction`, {
+                await authAxios.post(`${API_BASE}/error-proof/add-reaction`, {
                     sNo, errorProofNo: plan.errorProofNo,
                     errorProofName: ver.errorProofName,
                     recordDate: date, shift: ver.shift,
@@ -782,7 +785,7 @@ const ErrorProofV1Editor = ({ date, disa, toast, setToast }) => {
             setNewPlans({});
             // Reload to reflect saved state
             setLoading(true);
-            const r = await authAxios.get(`${API}/api/error-proof/v1-by-date`, { params: { date } });
+            const r = await authAxios.get(`${API_BASE}/error-proof/v1-by-date`, { params: { date } });
             setData({ verifications: r.data.verifications || [], reactionPlans: r.data.reactionPlans || [] });
             setLoading(false);
         } catch (e) {
@@ -922,11 +925,11 @@ const DisaSettingEditor = ({ date, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        authAxios.get(`${API}/api/disa/records`, { params: { fromDate: date, toDate: date } })
+        authAxios.get(`${API_BASE}/disa/records`, { params: { fromDate: date, toDate: date } })
             .then(r => {
                 const arr = Array.isArray(r.data) ? r.data : [];
                 setRecords(arr);
-                return authAxios.get(`${API}/api/disa/custom-columns`);
+                return authAxios.get(`${API_BASE}/disa/custom-columns`);
             })
             .then(r => setCustomCols(r.data || []))
             .catch(() => setToast({ msg: 'Failed to load data', type: 'error' }))
@@ -945,7 +948,7 @@ const DisaSettingEditor = ({ date, toast, setToast }) => {
     const handleSaveRow = async (rec) => {
         setToast({ msg: 'Saving…', type: 'loading' });
         try {
-            await authAxios.put(`${API}/api/disa/records/${rec.id}`, rec);
+            await authAxios.put(`${API_BASE}/disa/records/${rec.id}`, rec);
             setToast({ msg: 'Record updated!', type: 'success' });
         } catch { setToast({ msg: 'Save failed', type: 'error' }); }
     };
@@ -997,7 +1000,7 @@ const FourMEditor = ({ date, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        authAxios.get(`${API}/api/4m-change/records-by-date`, { params: { date } })
+        authAxios.get(`${API_BASE}/4m-change/records-by-date`, { params: { date } })
             .then(r => {
                 if (Array.isArray(r.data)) setData({ records: [], customColumns: [] });
                 else setData(r.data);
@@ -1016,7 +1019,7 @@ const FourMEditor = ({ date, toast, setToast }) => {
     const handleSaveRow = async (rec) => {
         setToast({ msg: 'Saving…', type: 'loading' });
         try {
-            await authAxios.put(`${API}/api/4m-change/records/${rec.id}`, rec);
+            await authAxios.put(`${API_BASE}/4m-change/records/${rec.id}`, rec);
             setToast({ msg: 'Row saved!', type: 'success' });
         } catch { setToast({ msg: 'Save failed', type: 'error' }); }
     };
@@ -1083,7 +1086,7 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        authAxios.get(`${API}/api/bottom-level-audit/details`, { params: { date, disaMachine: disa } })
+        authAxios.get(`${API_BASE}/bottom-level-audit/details`, { params: { date, disaMachine: disa } })
             .then(res => {
                 const cl = res.data.checklist.map(item => ({
                     ...item,
@@ -1141,7 +1144,7 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
     const submitReport = async () => {
         if (!ncForm.ncDetails || !ncForm.responsibility) return setToast({ msg: 'Details and Responsibility are mandatory.', type: 'error' });
         try {
-            await authAxios.post(`${API}/api/bottom-level-audit/report-nc`, {
+            await authAxios.post(`${API_BASE}/bottom-level-audit/report-nc`, {
                 checklistId: modalItem.MasterId, slNo: modalItem.SlNo, reportDate: date, disaMachine: disa, ...ncForm
             });
             setToast({ msg: 'NC Report Logged Successfully.', type: 'success' });
@@ -1181,7 +1184,7 @@ const LpaEditor = ({ date, disa, toast, setToast }) => {
             const itemsToSave = data.checklist.map(item => ({
                 MasterId: item.MasterId, IsDone: item.IsDone, IsHoliday: item.IsHoliday, IsVatCleaning: item.IsVatCleaning, IsPreventiveMaintenance: item.IsPreventiveMaintenance, ReadingValue: item.ReadingValue || ''
             }));
-            await authAxios.post(`${API}/api/bottom-level-audit/submit-batch`, {
+            await authAxios.post(`${API_BASE}/bottom-level-audit/submit-batch`, {
                 items: itemsToSave, sign: data.originalData.checklist[0]?.AssignedHOD || '',
                 date, disaMachine: disa, operatorSignature: data.originalData.checklist[0]?.OperatorSignature || ''
             });
@@ -1311,7 +1314,7 @@ const DisamaticEditor = ({ date, disa, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        authAxios.get(`${API}/api/forms/by-date`, { params: { date, disa: pureDisa } })
+        authAxios.get(`${API_BASE}/forms/by-date`, { params: { date, disa: pureDisa } })
             .then(r => {
                 const fetched = r.data || [];
                 const grouped = {};
@@ -1383,7 +1386,7 @@ const DisamaticEditor = ({ date, disa, toast, setToast }) => {
         try {
             // By passing the merged arrays to the primary report's ID, the backend correctly loops through and updates all individual rows via their SQL table ID.
             for (const rep of reports) {
-                await authAxios.put(`${API}/api/forms/${rep.id}`, rep);
+                await authAxios.put(`${API_BASE}/forms/${rep.id}`, rep);
             }
             setToast({ msg: 'Saved successfully!', type: 'success' });
         } catch (e) {
@@ -1502,7 +1505,7 @@ const PerformanceEditor = ({ date, disa, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        authAxios.get(`${API}/api/daily-performance/by-date`, { params: { date, disa: disa } })
+        authAxios.get(`${API_BASE}/daily-performance/by-date`, { params: { date, disa: disa } })
             .then(res => {
                 const data = Array.isArray(res.data) ? res.data[0] : res.data;
                 setReport(data || null);
@@ -1532,7 +1535,7 @@ const PerformanceEditor = ({ date, disa, toast, setToast }) => {
                 summary: summaryObj,
             };
 
-            await authAxios.put(`${API}/api/daily-performance/${report.id}`, payload);
+            await authAxios.put(`${API_BASE}/daily-performance/${report.id}`, payload);
             setToast({ msg: 'Saved successfully', type: 'success' });
         } catch { setToast({ msg: 'Save failed', type: 'error' }); }
     };
@@ -1617,7 +1620,7 @@ const MouldQualityEditor = ({ date, disa, toast, setToast }) => {
 
     useEffect(() => {
         setLoading(true);
-        authAxios.get(`${API}/api/mould-quality/by-date`, { params: { date, disa } })
+        authAxios.get(`${API_BASE}/mould-quality/by-date`, { params: { date, disa } })
             .then(res => setReport(res.data))
             .catch(() => setToast({ msg: 'Failed to load', type: 'error' }))
             .finally(() => setLoading(false));
@@ -1633,7 +1636,7 @@ const MouldQualityEditor = ({ date, disa, toast, setToast }) => {
     const handleSave = async () => {
         setToast({ msg: 'Saving...', type: 'loading' });
         try {
-            await authAxios.put(`${API}/api/mould-quality/update/${report.id}`, report);
+            await authAxios.put(`${API_BASE}/mould-quality/update/${report.id}`, report);
             setToast({ msg: 'Saved successfully', type: 'success' });
         } catch { setToast({ msg: 'Save failed', type: 'error' }); }
     };

@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Save, Plus, Trash2, ArrowLeft, Loader, CheckCircle, AlertTriangle, X } from 'lucide-react';
 
+
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
 // --- Sleek Toast Notification Component ---
 const ToastNotification = ({ data, onClose }) => {
     useEffect(() => {
@@ -31,14 +35,14 @@ const ConfigDisaChecklist = ({ onBack }) => {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState({ show: false, message: '', type: '' });
-    const API_BASE = `${process.env.REACT_APP_API_URL}/api/config/disa-operator`;
+    const API_BASE_CONFIG = `${API_BASE}/config/disa-operator`;
 
     useEffect(() => { fetchConfig(); }, []);
 
     const fetchConfig = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_BASE}/master`);
+            const res = await axios.get(`${API_BASE_CONFIG}/master`);
             setItems(res.data.config || []);
         } catch (error) { 
             setToast({ show: true, message: 'Failed to fetch configuration.', type: 'error' });
@@ -63,7 +67,7 @@ const ConfigDisaChecklist = ({ onBack }) => {
             // but keeps existing DB items marked as isDeleted: true for the backend to soft-delete
             const dataToSave = items.filter(c => !(c.isNew && c.isDeleted));
             
-            await axios.post(`${API_BASE}/master`, { config: dataToSave });
+            await axios.post(`${API_BASE_CONFIG}/master`, { config: dataToSave });
             setToast({ show: true, message: 'Schema Updated Successfully!', type: 'success' });
             
             setTimeout(() => {

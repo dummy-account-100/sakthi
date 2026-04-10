@@ -2,6 +2,10 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import logo from '../Assets/logo.png'; // Make sure this path is correct
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 // --- Utility for Formatting ---
 const formatDate = (dateStr) => {
     if (!dateStr) return '';
@@ -66,7 +70,7 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
     let customCols = [];
     try {
         const token = localStorage.getItem('token');
-        const configRes = await fetch(`${process.env.REACT_APP_API_URL}/api/config/unpoured-mould-details/master`, {
+        const configRes = await fetch(`${API_BASE}/config/unpoured-mould-details/master`, {
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
@@ -250,7 +254,7 @@ export const generateDmmSettingPDF = async (data, dateRange) => {
     let customCols = [];
     try {
         const token = localStorage.getItem('token');
-        const configRes = await fetch(`${process.env.REACT_APP_API_URL}/api/config/dmm-setting-parameters/master`, {
+        const configRes = await fetch(`${API_BASE}/config/dmm-setting-parameters/master`, {
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'

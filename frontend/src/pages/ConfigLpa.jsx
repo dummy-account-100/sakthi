@@ -4,6 +4,10 @@ import axios from 'axios';
 import { Save, Plus, Trash2, ArrowLeft, Loader, Settings, CheckCircle, AlertTriangle, X } from 'lucide-react';
 
 // --- Sleek Toast Notification Component ---
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const ToastNotification = ({ data, onClose }) => {
     useEffect(() => {
         if (data.show && data.type !== 'loading') {
@@ -31,14 +35,14 @@ const ConfigLpa = ({ onBack }) => {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState({ show: false, message: '', type: '' });
-    const API_BASE = `${process.env.REACT_APP_API_URL}/api/config/lpa`;
+    const API_BASE_LPA = `${API_BASE}/config/lpa`;
 
     useEffect(() => { fetchConfig(); }, []);
 
     const fetchConfig = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_BASE}/master`);
+            const res = await axios.get(`${API_BASE_LPA}/master`);
             setItems(res.data.config || []);
         } catch (error) { 
             setToast({ show: true, message: 'Failed to fetch configuration.', type: 'error' });
@@ -61,7 +65,7 @@ const ConfigLpa = ({ onBack }) => {
             // Remove locally added & deleted items, but send DB items with `isDeleted: true`
             const activeData = items.filter(c => !(c.isNew && c.isDeleted));
             
-            await axios.post(`${API_BASE}/master`, { config: activeData });
+            await axios.post(`${API_BASE_LPA}/master`, { config: activeData });
             setToast({ show: true, message: 'LPA Schema Updated Successfully!', type: 'success' });
             
             setTimeout(() => {

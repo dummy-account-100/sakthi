@@ -4,7 +4,10 @@ import Header from "../components/Header";
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+                 
 const getShiftAndDate = () => {
   const now = new Date();
   let hours = now.getHours();
@@ -62,27 +65,33 @@ const FourMChangeMonitoring = () => {
 
   useEffect(() => {
     // Fetch Incharges & HODs
-    axios.get(`${process.env.REACT_APP_API_URL}/api/4m-change/incharges`)
+    axios.get(`${API_BASE}/4m-change/incharges`)
       .then((res) => {
-        setInchargeList(res.data.supervisors);
-        setHodList(res.data.hods);
+        // SAFETY NET: If undefined, default to empty arrays
+        setInchargeList(res.data.supervisors || []);
+        setHodList(res.data.hods || []);
       })
       .catch((err) => console.error("Error fetching incharges:", err));
 
     // Fetch 4M Types
-    axios.get(`${process.env.REACT_APP_API_URL}/api/4m-change/types`)
+    axios.get(`${API_BASE}/4m-change/types`)
       .then((res) => {
-        setFourMOptions(res.data);
-        if (res.data.length > 0) setType4M(res.data[0].typeName);
+        // SAFETY NET: Force it to be an array
+        const safe4MData = Array.isArray(res.data) ? res.data : [];
+        setFourMOptions(safe4MData);
+        if (safe4MData.length > 0) setType4M(safe4MData[0].typeName);
       })
       .catch((err) => console.error("Error fetching 4M types:", err));
 
     // Fetch Custom Columns
-    axios.get(`${process.env.REACT_APP_API_URL}/api/4m-change/custom-columns`)
+    axios.get(`${API_BASE}/4m-change/custom-columns`)
       .then((res) => {
-        setCustomColumns(res.data);
+        // SAFETY NET: Force it to be an array
+        const safeColumnsData = Array.isArray(res.data) ? res.data : [];
+        setCustomColumns(safeColumnsData);
+        
         const initialVals = {};
-        res.data.forEach(col => { initialVals[col.id] = ""; });
+        safeColumnsData.forEach(col => { initialVals[col.id] = ""; });
         setCustomValues(initialVals);
       })
       .catch((err) => console.error("Error fetching custom columns:", err));
@@ -93,7 +102,7 @@ const FourMChangeMonitoring = () => {
   };
 
   const handleSubmit = async () => {
-    const missingCustom = customColumns.some(col => !customValues[col.id] || String(customValues[col.id]).trim() === "");
+    const missingCustom = customColumns?.some(col => !customValues[col.id] || String(customValues[col.id]).trim() === "");
     if (!partName || !mcNo || !description || !type4M || missingCustom) {
       toast.warning("Please fill all input fields. Type '-' if empty.");
       return;
@@ -108,7 +117,7 @@ const FourMChangeMonitoring = () => {
     }
 
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/4m-change/add`, {
+      await axios.post(`${API_BASE}/4m-change/add`, {
         line, partName, recordDate, shift, mcNo, type4M, description,
         firstPart, lastPart, inspFreq, retroChecking, quarantine,
         partId, internalComm, inchargeSign, assignedHOD,
@@ -118,13 +127,13 @@ const FourMChangeMonitoring = () => {
       toast.success("Record saved successfully!");
 
       setMcNo(""); setDescription("");
-      if (fourMOptions.length > 0) setType4M(fourMOptions[0].typeName);
+      if (fourMOptions?.length > 0) setType4M(fourMOptions[0].typeName);
       setFirstPart("-"); setLastPart("-"); setInspFreq("-");
       setRetroChecking("-"); setQuarantine("-"); setPartId("-");
       setInternalComm("-"); setInchargeSign(""); setAssignedHOD("");
 
       const resetVals = {};
-      customColumns.forEach(col => { resetVals[col.id] = ""; });
+      customColumns?.forEach(col => { resetVals[col.id] = ""; });
       setCustomValues(resetVals);
 
     } catch (err) {
@@ -135,7 +144,7 @@ const FourMChangeMonitoring = () => {
 
   const handleGenerateReport = async () => {
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/4m-change/report?fromDate=${recordDate}&toDate=${recordDate}`, {
+      const response = await axios.get(`${API_BASE}/4m-change/report?fromDate=${recordDate}&toDate=${recordDate}`, {
         responseType: 'blob'
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -158,7 +167,7 @@ const FourMChangeMonitoring = () => {
       value={value}
       onChange={(e) => onChange(e.target.value)}
     >
-      {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+      {options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
     </select>
   );
 
@@ -219,7 +228,7 @@ const FourMChangeMonitoring = () => {
                   <th className="border border-gray-300 p-2 w-24">Internal<br />Comm.</th>
                   <th className="border border-gray-300 p-2 w-40">Incharge Sign</th>
 
-                  {customColumns.map((col) => (
+                  {customColumns?.map((col) => (
                     <th key={col.id} className="border border-gray-300 p-2 w-32 whitespace-pre-wrap">
                       {col.columnName}
                     </th>
@@ -247,7 +256,7 @@ const FourMChangeMonitoring = () => {
                       value={type4M}
                       onChange={(e) => setType4M(e.target.value)}
                     >
-                      {fourMOptions.map((opt, idx) => (
+                      {fourMOptions?.map((opt, idx) => (
                         <option key={idx} value={opt.typeName}>
                           {opt.typeName}
                         </option>
@@ -284,11 +293,11 @@ const FourMChangeMonitoring = () => {
                     {showInchargeDropdown && (
                       <ul className="absolute left-0 top-full mt-1 w-full bg-white border border-gray-400 rounded shadow-xl max-h-48 overflow-y-auto z-[9999]">
                         {inchargeList
-                          .filter(person => {
+                          ?.filter(person => {
                             const dbName = person.name || person.Name || "";
                             return dbName.toLowerCase().includes((inchargeSign || "").toLowerCase());
                           })
-                          .map((person, index) => {
+                          ?.map((person, index) => {
                             const dbName = person.name || person.Name || "";
                             return (
                               <li
@@ -305,7 +314,7 @@ const FourMChangeMonitoring = () => {
                             );
                           })
                         }
-                        {inchargeList.filter(person => (person.name || person.Name || "").toLowerCase().includes((inchargeSign || "").toLowerCase())).length === 0 && (
+                        {inchargeList?.filter(person => (person.name || person.Name || "").toLowerCase().includes((inchargeSign || "").toLowerCase()))?.length === 0 && (
                           <li className="p-2 text-left text-gray-500 text-sm italic">
                             No matches found
                           </li>
@@ -314,7 +323,7 @@ const FourMChangeMonitoring = () => {
                     )}
                   </td>
 
-                  {customColumns.map((col) => (
+                  {customColumns?.map((col) => (
                     <td key={col.id} className="border border-gray-300 p-2 align-top">
                       <input
                         type="text"
@@ -336,7 +345,7 @@ const FourMChangeMonitoring = () => {
               <label className="font-bold text-gray-700 block mb-2 text-sm uppercase">Assign to HOD for Final Review:</label>
               <select className="w-full border-2 border-gray-300 p-3 rounded focus:outline-blue-500 text-sm font-bold bg-white cursor-pointer" value={assignedHOD} onChange={(e) => setAssignedHOD(e.target.value)}>
                 <option value="">-- Select HOD --</option>
-                {hodList.map((hod, i) => <option key={i} value={hod.name}>{hod.name}</option>)}
+                {hodList?.map((hod, i) => <option key={i} value={hod.name}>{hod.name}</option>)}
               </select>
             </div>
 

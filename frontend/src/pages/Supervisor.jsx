@@ -10,6 +10,10 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import logo from '../Assets/logo.png'; 
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 // 🔥 Dynamic QF Helpers
 const getSafeDateStr = (val) => {
   if (!val) return null;
@@ -125,7 +129,7 @@ const Supervisor = () => {
   // ==========================================
   const fetchDisaReports = async () => {
     try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/forms/supervisor/${currentSupervisor}`);
+      const res = await axios.get(`${API_BASE}/forms/supervisor/${currentSupervisor}`);
       setDisaReports(filterUniqueReports(res.data));
     } catch (err) { toast.error("Failed to load Disamatic reports."); }
   };
@@ -135,7 +139,7 @@ const Supervisor = () => {
     setDisaPdfUrl(null);
     setIsDisaPdfLoading(true);
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/forms/download-pdf`, { 
+      const response = await axios.get(`${API_BASE}/forms/download-pdf`, { 
           params: { reportId: report.id }, 
           responseType: 'blob',
           headers: getAuthHeader()
@@ -150,7 +154,7 @@ const Supervisor = () => {
     if (disaSigCanvas.current.isEmpty()) { toast.warning("Please provide a signature."); return; }
     const signatureData = disaSigCanvas.current.getCanvas().toDataURL("image/png");
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/forms/sign`, { reportId: selectedDisaReport.id, signature: signatureData });
+      await axios.post(`${API_BASE}/forms/sign`, { reportId: selectedDisaReport.id, signature: signatureData });
       toast.success("Disamatic Report signed successfully!");
       setSelectedDisaReport(null); fetchDisaReports();
     } catch (err) { toast.error("Failed to save signature."); }
@@ -161,7 +165,7 @@ const Supervisor = () => {
   // ==========================================
   const fetchBottomReports = async () => {
     try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/bottom-level-audit/supervisor/${currentSupervisor}`);
+      const res = await axios.get(`${API_BASE}/bottom-level-audit/supervisor/${currentSupervisor}`);
       setBottomReports(res.data);
     } catch (err) { toast.error("Failed to load Bottom Level Audits."); }
   };
@@ -181,8 +185,8 @@ const Supervisor = () => {
       const disaMachine = report.disa;
 
       const [detailsRes, monthlyRes] = await Promise.all([
-        axios.get(`${process.env.REACT_APP_API_URL}/api/bottom-level-audit/details`, { params: { date: dateStr, disaMachine } }),
-        axios.get(`${process.env.REACT_APP_API_URL}/api/bottom-level-audit/monthly-report`, { params: { month, year, disaMachine } })
+        axios.get(`${API_BASE}/bottom-level-audit/details`, { params: { date: dateStr, disaMachine } }),
+        axios.get(`${API_BASE}/bottom-level-audit/monthly-report`, { params: { month, year, disaMachine } })
       ]);
 
       const checklist = detailsRes.data.checklist; 
@@ -331,7 +335,7 @@ const Supervisor = () => {
     const cleanDate = new Date(localDate.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
 
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/bottom-level-audit/sign-supervisor`, { date: cleanDate, disaMachine: selectedBottomReport.disa, signature: signatureData });
+      await axios.post(`${API_BASE}/bottom-level-audit/sign-supervisor`, { date: cleanDate, disaMachine: selectedBottomReport.disa, signature: signatureData });
       toast.success("Bottom Level Audit approved!"); setSelectedBottomReport(null); fetchBottomReports();
     } catch (err) { toast.error("Failed to save signature."); }
   };
@@ -345,12 +349,12 @@ const Supervisor = () => {
       let checklistData = [];
 
       try {
-        const resLpa = await axios.get(`${process.env.REACT_APP_API_URL}/api/bottom-level-audit/supervisor-ncr/${currentSupervisor}`);
+        const resLpa = await axios.get(`${API_BASE}/bottom-level-audit/supervisor-ncr/${currentSupervisor}`);
         lpaData = (resLpa.data || []).map(r => ({ ...r, source: 'LPA' }));
       } catch (err) { console.warn("LPA NCR fetch error", err); }
 
       try {
-        const resChecklist = await axios.get(`${process.env.REACT_APP_API_URL}/api/disa-checklist/supervisor-ncr/${currentSupervisor}`);
+        const resChecklist = await axios.get(`${API_BASE}/disa-checklist/supervisor-ncr/${currentSupervisor}`);
         checklistData = (resChecklist.data || []).map(r => ({ ...r, source: 'Checklist' }));
       } catch (err) { console.warn("Checklist NCR fetch error", err); }
 
@@ -368,10 +372,10 @@ const Supervisor = () => {
     
     try {
       const endpoint = selectedNcrReport.source === 'Checklist' 
-          ? '/api/disa-checklist/sign-ncr' 
-          : '/api/bottom-level-audit/sign-ncr';
+          ? '/disa-checklist/sign-ncr' 
+          : '/bottom-level-audit/sign-ncr';
 
-      await axios.post(`${process.env.REACT_APP_API_URL}${endpoint}`, { 
+      await axios.post(`${API_BASE}${endpoint}`, { 
         reportId: selectedNcrReport.ReportId || selectedNcrReport.id, 
         signature: signatureData 
       });
@@ -389,7 +393,7 @@ const Supervisor = () => {
   // ==========================================
   const fetchDmmReports = async () => {
     try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/dmm-settings/supervisor/${currentSupervisor}`);
+      const res = await axios.get(`${API_BASE}/dmm-settings/supervisor/${currentSupervisor}`);
       setDmmReports(filterUniqueReports(res.data));
     } catch (err) { toast.error("Failed to load DMM Settings."); }
   };
@@ -403,7 +407,7 @@ const Supervisor = () => {
       const dateStr = localDate.toISOString().split('T')[0];
       const disaMachine = report.disa;
 
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/dmm-settings/details`, { params: { date: dateStr, disa: disaMachine } });
+      const res = await axios.get(`${API_BASE}/dmm-settings/details`, { params: { date: dateStr, disa: disaMachine } });
       const { shiftsData, shiftsMeta } = res.data;
       const qfHistory = res.data.qfHistory || []; 
 
@@ -483,7 +487,7 @@ const Supervisor = () => {
     const cleanDate = new Date(localDate.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
 
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/dmm-settings/sign`, { date: cleanDate, disaMachine: selectedDmmReport.disa, shift: selectedDmmReport.shift, signature: signatureData });
+      await axios.post(`${API_BASE}/dmm-settings/sign`, { date: cleanDate, disaMachine: selectedDmmReport.disa, shift: selectedDmmReport.shift, signature: signatureData });
       toast.success("DMM Settings Shift signed successfully!");
       setSelectedDmmReport(null); fetchDmmReports();
     } catch (err) { toast.error("Failed to save signature."); }
@@ -494,7 +498,7 @@ const Supervisor = () => {
   // ==========================================
   const fetchFourMReports = async () => {
     try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/4m-change/supervisor/${currentSupervisor}`);
+      const res = await axios.get(`${API_BASE}/4m-change/supervisor/${currentSupervisor}`);
       setFourMReports(res.data);
     } catch (err) { toast.error("Failed to load 4M Change Reports."); }
   };
@@ -502,7 +506,7 @@ const Supervisor = () => {
   const handleOpenFourMModal = async (report) => {
     setSelectedFourMReport(report); setFourMPdfUrl(null); setIsFourMPdfLoading(true);
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/4m-change/report`, { 
+      const response = await axios.get(`${API_BASE}/4m-change/report`, { 
         params: { reportId: report.id }, 
         responseType: 'blob',
         headers: getAuthHeader()
@@ -517,7 +521,7 @@ const Supervisor = () => {
     if (fourMSigCanvas.current.isEmpty()) { toast.warning("Please provide your signature."); return; }
     const signatureData = fourMSigCanvas.current.getCanvas().toDataURL("image/png");
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/4m-change/sign-supervisor`, { reportId: selectedFourMReport.id, signature: signatureData });
+      await axios.post(`${API_BASE}/4m-change/sign-supervisor`, { reportId: selectedFourMReport.id, signature: signatureData });
       toast.success("4M Change Report signed successfully!");
       setSelectedFourMReport(null); fetchFourMReports();
     } catch (err) { toast.error("Failed to save 4M signature."); }
@@ -528,7 +532,7 @@ const Supervisor = () => {
   // ==========================================
   const fetchErrorReports = async () => {
     try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/error-proof/supervisor/${currentSupervisor}`);
+      const res = await axios.get(`${API_BASE}/error-proof/supervisor/${currentSupervisor}`);
       setErrorReports(res.data);
     } catch (err) { toast.error("Failed to load Error Proof plans."); }
   };
@@ -543,7 +547,7 @@ const Supervisor = () => {
       const offset = localDate.getTimezoneOffset();
       const dateStr = new Date(localDate.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
 
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/error-proof/report`, { 
+      const response = await axios.get(`${API_BASE}/error-proof/report`, { 
           params: { line, date: dateStr }, 
           responseType: 'blob',
           headers: getAuthHeader()
@@ -561,7 +565,7 @@ const Supervisor = () => {
     const signatureData = errorSigCanvas.current.getCanvas().toDataURL("image/png");
     try {
       const id = selectedErrorReport.reportId || selectedErrorReport.VerificationId || selectedErrorReport.Id || selectedErrorReport.sNo;
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/error-proof/sign-supervisor`, { 
+      await axios.post(`${API_BASE}/error-proof/sign-supervisor`, { 
         reactionPlanId: id, 
         signature: signatureData 
       });
@@ -575,7 +579,7 @@ const Supervisor = () => {
   // ==========================================
   const fetchMouldQualityReports = async () => {
     try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/mould-quality/supervisor/${currentSupervisor}`);
+      const res = await axios.get(`${API_BASE}/mould-quality/supervisor/${currentSupervisor}`);
       setMouldQualityReports(filterUniqueReports(res.data));
     } catch (err) { console.error(err); }
   };
@@ -584,7 +588,7 @@ const Supervisor = () => {
     setSelectedMQReport(report);
     setMqPdfUrl(null);
     try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/mould-quality/report`, { 
+      const res = await axios.get(`${API_BASE}/mould-quality/report`, { 
         params: { reportId: report.id },
         responseType: 'blob',
         headers: getAuthHeader()
@@ -597,7 +601,7 @@ const Supervisor = () => {
     if (mqSigCanvas.current.isEmpty()) return toast.warning("Please provide a signature");
     const signature = mqSigCanvas.current.getCanvas().toDataURL("image/png");
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/mould-quality/sign-supervisor`, { reportId: selectedMQReport.id, signature });
+      await axios.post(`${API_BASE}/mould-quality/sign-supervisor`, { reportId: selectedMQReport.id, signature });
       toast.success("Signed successfully!");
       setSelectedMQReport(null);
       fetchMouldQualityReports();

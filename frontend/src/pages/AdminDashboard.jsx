@@ -26,6 +26,10 @@ import ConfigDisaChecklist from './ConfigDisaChecklist';
 import AdminFormEditor from './AdminFormEditor';
 import Header from '../components/Header';
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const NotificationToast = ({ data, onClose }) => {
     const isError = data.type === 'error';
     const isLoading = data.type === 'loading';
@@ -131,7 +135,7 @@ const AdminDashboard = () => {
     const fetchUsers = async () => {
         setLoadingUsers(true);
         try {
-            const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/users`);
+            const response = await axios.get(`${API_BASE}/users`);
             setUsers(response.data);
         } catch (error) {
             setNotification({ show: true, type: 'error', message: 'Failed to load users' });
@@ -141,7 +145,7 @@ const AdminDashboard = () => {
 
     const fetchQfSettings = async () => {
         try {
-            const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/settings/qf-values`);
+            const res = await axios.get(`${API_BASE}/settings/qf-values`);
             setQfSettings(res.data);
         } catch (error) {
             setNotification({ show: true, type: 'error', message: 'Failed to load QF values.' });
@@ -151,7 +155,7 @@ const AdminDashboard = () => {
     const handleSaveSingleQfSetting = async (setting) => {
         setSavingId(setting.formName);
         try {
-            await axios.put(`${process.env.REACT_APP_API_URL}/api/settings/qf-values`, { setting });
+            await axios.put(`${API_BASE}/settings/qf-values`, { setting });
             setNotification({ show: true, type: 'success', message: `${setting.formName.replace('-', ' ')} QF updated!` });
             fetchQfSettings(); 
         } catch (error) {
@@ -171,7 +175,7 @@ const AdminDashboard = () => {
     const handleAddUser = async (e) => {
         e.preventDefault();
         try {
-            await axios.post(`${process.env.REACT_APP_API_URL}/api/users/add`, newUser);
+            await axios.post(`${API_BASE}/users/add`, newUser);
             setNotification({ show: true, type: 'success', message: 'User added successfully!' });
             setIsAddModalOpen(false);
             setNewUser({ username: "", employeeId: "", password: "", role: "" });
@@ -185,7 +189,7 @@ const AdminDashboard = () => {
     const handleUpdateUser = async (e) => {
         e.preventDefault();
         try {
-            await axios.put(`${process.env.REACT_APP_API_URL}/api/users/${editUser.id}`, {
+            await axios.put(`${API_BASE}/users/${editUser.id}`, {
                 username: editUser.username,
                 employeeId: editUser.employeeId,
                 role: editUser.role,
@@ -202,7 +206,7 @@ const AdminDashboard = () => {
     const handleDeleteUser = async (userId) => {
         if (!window.confirm("Are you sure you want to delete this user? This cannot be undone.")) return;
         try {
-            await axios.delete(`${process.env.REACT_APP_API_URL}/api/users/${userId}`);
+            await axios.delete(`${API_BASE}/users/${userId}`);
             setNotification({ show: true, type: 'success', message: 'User deleted successfully!' });
             fetchUsers();
         } catch (error) {
@@ -263,7 +267,7 @@ const AdminDashboard = () => {
             const token = localStorage.getItem('token'); 
 
             if (pdfModal.selectedForm.id === 'performance') {
-                const url = `${process.env.REACT_APP_API_URL}/api/daily-performance/download-pdf?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
+                const url = `${API_BASE}/daily-performance/download-pdf?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
                 const response = await axios.get(url, { responseType: 'blob', headers: { Authorization: `Bearer ${token}` } });
                 
                 if (response.data.type === 'application/json') {
@@ -290,8 +294,8 @@ const AdminDashboard = () => {
             const serverPdfForms = ['4m-change', 'disamatic-report'];
             if (serverPdfForms.includes(pdfModal.selectedForm.id)) {
                 let url = '';
-                if (pdfModal.selectedForm.id === '4m-change') url = `${process.env.REACT_APP_API_URL}/api/4m-change/report?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
-                else if (pdfModal.selectedForm.id === 'disamatic-report') url = `${process.env.REACT_APP_API_URL}/api/forms/download-pdf?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
+                if (pdfModal.selectedForm.id === '4m-change') url = `${API_BASE}/4m-change/report?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
+                else if (pdfModal.selectedForm.id === 'disamatic-report') url = `${API_BASE}/forms/download-pdf?fromDate=${dateRange.from}&toDate=${dateRange.to}`;
                 
                 if (url) {
                     const response = await axios.get(url, { responseType: 'blob', headers: { Authorization: `Bearer ${token}` } });
@@ -318,15 +322,15 @@ const AdminDashboard = () => {
                 return;
             }
 
-            let apiRoute = `${process.env.REACT_APP_API_URL}/api/reports/${pdfModal.selectedForm.id}`;
-            if (pdfModal.selectedForm.id === 'disa-setting-adjustment') apiRoute = `${process.env.REACT_APP_API_URL}/api/disa/records`;
-            else if (pdfModal.selectedForm.id === 'error-proof') apiRoute = `${process.env.REACT_APP_API_URL}/api/error-proof/bulk-data`;
-            else if (pdfModal.selectedForm.id === 'error-proof2') apiRoute = `${process.env.REACT_APP_API_URL}/api/error-proof2/bulk-data`;
-            else if (pdfModal.selectedForm.id === 'unpoured-mould-details') apiRoute = `${process.env.REACT_APP_API_URL}/api/unpoured-moulds/bulk-data`;
-            else if (pdfModal.selectedForm.id === 'dmm-setting-parameters') apiRoute = `${process.env.REACT_APP_API_URL}/api/dmm-settings/bulk-data`;
-            else if (pdfModal.selectedForm.id === 'disa-operator') apiRoute = `${process.env.REACT_APP_API_URL}/api/disa-checklist/bulk-data`;
-            else if (pdfModal.selectedForm.id === 'lpa') apiRoute = `${process.env.REACT_APP_API_URL}/api/bottom-level-audit/bulk-data`;
-            else if (pdfModal.selectedForm.id === 'mould-quality') apiRoute = `${process.env.REACT_APP_API_URL}/api/mould-quality/bulk-data`;
+            let apiRoute = `${API_BASE}/reports/${pdfModal.selectedForm.id}`;
+            if (pdfModal.selectedForm.id === 'disa-setting-adjustment') apiRoute = `${API_BASE}/disa/records`;
+            else if (pdfModal.selectedForm.id === 'error-proof') apiRoute = `${API_BASE}/error-proof/bulk-data`;
+            else if (pdfModal.selectedForm.id === 'error-proof2') apiRoute = `${API_BASE}/error-proof2/bulk-data`;
+            else if (pdfModal.selectedForm.id === 'unpoured-mould-details') apiRoute = `${API_BASE}/unpoured-moulds/bulk-data`;
+            else if (pdfModal.selectedForm.id === 'dmm-setting-parameters') apiRoute = `${API_BASE}/dmm-settings/bulk-data`;
+            else if (pdfModal.selectedForm.id === 'disa-operator') apiRoute = `${API_BASE}/disa-checklist/bulk-data`;
+            else if (pdfModal.selectedForm.id === 'lpa') apiRoute = `${API_BASE}/bottom-level-audit/bulk-data`;
+            else if (pdfModal.selectedForm.id === 'mould-quality') apiRoute = `${API_BASE}/mould-quality/bulk-data`;
 
             let fetchFromDate = dateRange.from;
             let fetchToDate = dateRange.to;
@@ -437,7 +441,7 @@ const AdminDashboard = () => {
         setLoadingComponents(true);
         try {
             const timestamp = new Date().getTime();
-            const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/components?t=${timestamp}`);
+            const response = await axios.get(`${API_BASE}/components?t=${timestamp}`);
             
             const normalized = response.data.map(c => ({
                 ...c,
@@ -456,7 +460,7 @@ const AdminDashboard = () => {
     const handleAddComponent = async (e) => {
         e.preventDefault();
         try {
-            await axios.post(`${process.env.REACT_APP_API_URL}/api/components/add`, newComponent);
+            await axios.post(`${API_BASE}/components/add`, newComponent);
             setNotification({ show: true, type: 'success', message: 'Component added successfully!' });
             setIsAddCompModalOpen(false);
             setNewComponent({ code: "", description: "", pouredWeight: "", cavity: "", castedWeight: "", isActive: 'Active' });
@@ -471,7 +475,7 @@ const AdminDashboard = () => {
         e.preventDefault();
         try {
             // 🔥 CRITICAL FIX: Use originalCode in the URL, NOT the new code
-            await axios.put(`${process.env.REACT_APP_API_URL}/api/components/${encodeURIComponent(editComponent.originalCode)}`, {
+            await axios.put(`${API_BASE}/components/${encodeURIComponent(editComponent.originalCode)}`, {
                 code: editComponent.code,
                 description: editComponent.description,
                 pouredWeight: editComponent.pouredWeight,
@@ -496,7 +500,7 @@ const AdminDashboard = () => {
         ));
 
         try {
-            await axios.patch(`${process.env.REACT_APP_API_URL}/api/components/${encodeURIComponent(code)}/status`, {
+            await axios.patch(`${API_BASE}/components/${encodeURIComponent(code)}/status`, {
                 isActive: newStatus
             });
             setNotification({ show: true, type: 'success', message: 'Status updated!' });
@@ -517,7 +521,7 @@ const AdminDashboard = () => {
         setDeleteModal({ isOpen: false, codeToDelete: null }); 
         
         try {
-            await axios.delete(`${process.env.REACT_APP_API_URL}/api/components/${encodeURIComponent(code)}`);
+            await axios.delete(`${API_BASE}/components/${encodeURIComponent(code)}`);
             setNotification({ show: true, type: 'success', message: 'Component deleted successfully!' });
             fetchComponents();
         } catch (error) {
@@ -531,7 +535,7 @@ const AdminDashboard = () => {
     const fetchDelays = async () => {
         setLoadingDelays(true);
         try {
-            const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/delays`);
+            const response = await axios.get(`${API_BASE}/delays`);
             setDelays(response.data);
         } catch (error) {
             setNotification({ show: true, type: 'error', message: 'Failed to load delays' });
@@ -542,7 +546,7 @@ const AdminDashboard = () => {
     const handleAddDelay = async (e) => {
         e.preventDefault();
         try {
-            await axios.post(`${process.env.REACT_APP_API_URL}/api/delays/add`, newDelay);
+            await axios.post(`${API_BASE}/delays/add`, newDelay);
             setNotification({ show: true, type: 'success', message: 'Delay reason added successfully!' });
             setIsAddDelayModalOpen(false);
             setNewDelay({ reasonName: "" });
@@ -555,7 +559,7 @@ const AdminDashboard = () => {
     const handleUpdateDelay = async (e) => {
         e.preventDefault();
         try {
-            await axios.put(`${process.env.REACT_APP_API_URL}/api/delays/${editDelay.id}`, {
+            await axios.put(`${API_BASE}/delays/${editDelay.id}`, {
                 reasonName: editDelay.reasonName
             });
             setNotification({ show: true, type: 'success', message: 'Delay updated successfully!' });
@@ -569,7 +573,7 @@ const AdminDashboard = () => {
     const handleDeleteDelay = async (id) => {
         
         try {
-            await axios.delete(`${process.env.REACT_APP_API_URL}/api/delays/${id}`);
+            await axios.delete(`${API_BASE}/delays/${id}`);
             setNotification({ show: true, type: 'success', message: 'Delay deleted successfully!' });
             fetchDelays();
         } catch (error) {

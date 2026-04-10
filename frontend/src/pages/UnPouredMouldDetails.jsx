@@ -7,6 +7,10 @@ import SignatureCanvas from 'react-signature-canvas';
 import Header from '../components/Header';
 import logo from '../Assets/logo.png'; 
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const NotificationModal = ({ data, onClose }) => {
   if (!data.show) return null;
   const isError = data.type === 'error';
@@ -117,7 +121,7 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
   const loadSchemaAndData = async () => {
     setLoading(true);
     try {
-      const configRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/config/unpoured-mould-details/master`);
+      const configRes = await axios.get(`${API_BASE}/config/unpoured-mould-details/master`);
       const customCols = (configRes.data.config || []).map(c => ({
         key: `custom_${c.id}`,
         id: c.id,
@@ -138,7 +142,7 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
       if (mergedColumns.length > 0) mergedColumns[mergedColumns.length - 1].isLastInGroup = true;
       setColumns(mergedColumns);
 
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/unpoured-moulds/details`, {
+      const res = await axios.get(`${API_BASE}/unpoured-moulds/details`, {
         params: { date: headerData.date, disa: headerData.disaMachine }
       });
 
@@ -195,7 +199,7 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
     }
 
     try {
-      const summaryRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/unpoured-moulds/summary`, {
+      const summaryRes = await axios.get(`${API_BASE}/unpoured-moulds/summary`, {
         params: { date: headerData.date }
       });
       setUnpouredSummary(summaryRes.data.summary || []);
@@ -309,7 +313,7 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
     }
 
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/unpoured-moulds/save`, {
+      await axios.post(`${API_BASE}/unpoured-moulds/save`, {
         date: headerData.date, 
         disa: headerData.disaMachine, 
         shiftsData: payloadData,

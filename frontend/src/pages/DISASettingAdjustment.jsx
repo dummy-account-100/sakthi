@@ -5,6 +5,10 @@ import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import SignatureCanvas from 'react-signature-canvas';
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const MAX_MOULDS = 600000;
 
 const getDefaultDate = () => {
@@ -35,14 +39,14 @@ const DISASettingAdjustment = () => {
 
   useEffect(() => {
     axios
-      .get(`${process.env.REACT_APP_API_URL}/api/disa/last-mould-count`)
+      .get(`${API_BASE}/disa/last-mould-count`)
       .then((res) => {
         setPrevMouldCountNo(res.data.prevMouldCountNo);
       })
       .catch((err) => console.error("Error fetching last count:", err));
 
     axios
-      .get(`${process.env.REACT_APP_API_URL}/api/disa/custom-columns`)
+      .get(`${API_BASE}/disa/custom-columns`)
       .then((res) => {
         setCustomColumns(res.data || []);
       })
@@ -119,7 +123,7 @@ const DISASettingAdjustment = () => {
     const signatureData = sigCanvas.current.getCanvas().toDataURL('image/png');
 
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/disa/add`, {
+      await axios.post(`${API_BASE}/disa/add`, {
         recordDate,
         mouldCountNo: Number(mouldCountNo),
         prevMouldCountNo,
@@ -149,7 +153,7 @@ const DISASettingAdjustment = () => {
 
   const handleGenerateReport = async () => {
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/disa/report`, {
+      const response = await axios.get(`${API_BASE}/disa/report`, {
         responseType: 'blob'
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));

@@ -3,6 +3,10 @@ import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { Save, Plus, Trash2, ArrowLeft, Loader, Settings, AlertTriangle, CheckCircle, RotateCcw } from 'lucide-react';
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const NotificationToast = ({ data, onClose }) => {
     const isError = data.type === 'error';
     const isLoading = data.type === 'loading';
@@ -47,7 +51,7 @@ const ConfigErrorProof = ({ onBack }) => {
 
     const [items, setItems] = useState([]);
 
-    const API_BASE = `${process.env.REACT_APP_API_URL}/api/config/error-proof`;
+    const API_BASE_ERROR_PROOF = `${API_BASE}/config/error-proof`;
 
     useEffect(() => {
         fetchConfig();
@@ -56,7 +60,7 @@ const ConfigErrorProof = ({ onBack }) => {
     const fetchConfig = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_BASE}/master`);
+            const res = await axios.get(`${API_BASE_ERROR_PROOF}/master`);
             setItems(res.data.config || []);
         } catch (error) {
             setNotification({ show: true, type: 'error', message: 'Failed to load configuration.' });
@@ -96,7 +100,7 @@ const ConfigErrorProof = ({ onBack }) => {
 
         try {
             const activeData = items.filter(c => !(c.isNew && c.isDeleted));
-            await axios.post(`${API_BASE}/master`, { config: activeData });
+            await axios.post(`${API_BASE_ERROR_PROOF}/master`, { config: activeData });
 
             setNotification({ show: true, type: 'success', message: 'Form Schema Updated Successfully!' });
             

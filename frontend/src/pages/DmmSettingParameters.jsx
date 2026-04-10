@@ -7,6 +7,10 @@ import SignatureCanvas from 'react-signature-canvas';
 import Header from '../components/Header';
 import logo from '../Assets/logo.png';
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 // --- Toast Notification ---
 const ToastNotification = ({ data, onClose }) => {
   useEffect(() => {
@@ -136,7 +140,7 @@ const DmmSettingParameters = () => {
   const loadSchemaAndData = async () => {
     setLoading(true);
     try {
-      const configRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/config/dmm-setting-parameters/master`);
+      const configRes = await axios.get(`${API_BASE}/config/dmm-setting-parameters/master`);
       const customCols = (configRes.data.config || []).map(c => ({
         key: `custom_${c.id}`, id: c.id, label: c.columnLabel.replace('\\n', '\n'),
         inputType: c.inputType, width: c.columnWidth, isCustom: true
@@ -144,7 +148,7 @@ const DmmSettingParameters = () => {
       const mergedColumns = [...baseColumns, ...customCols];
       setAllColumns(mergedColumns);
 
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/dmm-settings/details`, {
+      const res = await axios.get(`${API_BASE}/dmm-settings/details`, {
         params: { date: headerData.date, disa: headerData.disaMachine }
       });
 
@@ -289,7 +293,7 @@ const DmmSettingParameters = () => {
 
     setLoading(true);
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/dmm-settings/save`, {
+      await axios.post(`${API_BASE}/dmm-settings/save`, {
         date: headerData.date,
         disa: headerData.disaMachine,
         shiftsData,

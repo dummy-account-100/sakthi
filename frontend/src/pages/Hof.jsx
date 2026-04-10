@@ -9,6 +9,10 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import logo from '../Assets/logo.png'; 
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 // 🔥 Dynamic QF Helpers
 const getSafeDateStr = (val) => {
   if (!val) return null;
@@ -127,12 +131,12 @@ const Hof = () => {
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const currentHOF = storedUser.username || "hof_user";
 
-  const API_BASE = `${process.env.REACT_APP_API_URL}/api/bottom-level-audit`;
-  const ERR_API_BASE = `${process.env.REACT_APP_API_URL}/api/error-proof`;
-  const ERR_API_BASE_V2 = `${process.env.REACT_APP_API_URL}/api/error-proof2`; 
-  const DAILY_API_BASE = `${process.env.REACT_APP_API_URL}/api/daily-performance`; 
-  const UNPOURED_API_BASE = `${process.env.REACT_APP_API_URL}/api/unpoured-moulds`; 
-  const DMM_API_BASE = `${process.env.REACT_APP_API_URL}/api/dmm-settings`; // 🔥 ADDED
+  const API_BASE_BOTTOM_AUDIT = `${API_BASE}/bottom-level-audit`;
+  const ERR_API_BASE = `${API_BASE}/error-proof`;
+  const ERR_API_BASE_V2 = `${API_BASE}/error-proof2`; 
+  const DAILY_API_BASE = `${API_BASE}/daily-performance`; 
+  const UNPOURED_API_BASE = `${API_BASE}/unpoured-moulds`; 
+  const DMM_API_BASE = `${API_BASE}/dmm-settings`; // 🔥 ADDED
 
   useEffect(() => {
     fetchReports();
@@ -146,7 +150,7 @@ const Hof = () => {
 
   const fetchReports = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/hof/${currentHOF}`);
+      const res = await axios.get(`${API_BASE_BOTTOM_AUDIT}/hof/${currentHOF}`);
       setReports(res.data);
     } catch (err) { toast.error("Failed to load Bottom Level reports."); }
   };
@@ -216,13 +220,13 @@ const Hof = () => {
     setSelectedReport(report); setPdfUrl(null); setIsPdfLoading(true);
     try {
       const month = report.month; const year = report.year; const disaMachine = report.disa;
-      const monthlyRes = await axios.get(`${API_BASE}/monthly-report`, { params: { month, year, disaMachine } });
+      const monthlyRes = await axios.get(`${API_BASE_BOTTOM_AUDIT}/monthly-report`, { params: { month, year, disaMachine } });
       const monthlyLogs = monthlyRes.data.monthlyLogs || [];
       const ncReports = monthlyRes.data.ncReports || [];
       const qfHistory = monthlyRes.data.qfHistory || []; 
 
       const todayStr = new Date().toISOString().split('T')[0];
-      const detailsRes = await axios.get(`${API_BASE}/details`, { params: { date: todayStr, disaMachine } });
+      const detailsRes = await axios.get(`${API_BASE_BOTTOM_AUDIT}/details`, { params: { date: todayStr, disaMachine } });
       const checklist = detailsRes.data.checklist;
       
       const historyMap = {}; const holidayDays = new Set(); const vatDays = new Set(); const pmDays = new Set();
@@ -310,7 +314,7 @@ const Hof = () => {
     if (sigCanvas.current.isEmpty()) { toast.warning("Please provide a signature first."); return; }
     const signatureData = sigCanvas.current.getCanvas().toDataURL("image/png");
     try {
-      await axios.post(`${API_BASE}/sign-hof`, { month: selectedReport.month, year: selectedReport.year, disaMachine: selectedReport.disa, signature: signatureData });
+      await axios.post(`${API_BASE_BOTTOM_AUDIT}/sign-hof`, { month: selectedReport.month, year: selectedReport.year, disaMachine: selectedReport.disa, signature: signatureData });
       toast.success("Monthly Audit approved and signed!");
       setSelectedReport(null); fetchReports(); 
     } catch (err) { toast.error("Failed to save signature."); }
@@ -543,7 +547,7 @@ const Hof = () => {
       const [detailsRes, summaryRes, configRes] = await Promise.all([
         axios.get(`${UNPOURED_API_BASE}/details`, { params: { date: dateStr, disa: disaMachine } }),
         axios.get(`${UNPOURED_API_BASE}/summary`, { params: { date: dateStr } }),
-        axios.get(`${process.env.REACT_APP_API_URL}/api/config/unpoured-mould-details/master`)
+        axios.get(`${API_BASE}/config/unpoured-mould-details/master`)
       ]);
 
       const customCols = (configRes.data.config || []).map(c => ({
@@ -745,7 +749,7 @@ const Hof = () => {
 
       const [detailsRes, configRes] = await Promise.all([
         axios.get(`${DMM_API_BASE}/details`, { params: { date: dateStr, disa: disaMachine } }),
-        axios.get(`${process.env.REACT_APP_API_URL}/api/config/dmm-setting-parameters/master`)
+        axios.get(`${API_BASE}/config/dmm-setting-parameters/master`)
       ]);
 
       const customCols = (configRes.data.config || []).map(c => ({

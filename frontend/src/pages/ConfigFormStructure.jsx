@@ -3,6 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Save, Plus, Trash2, ArrowLeft, Loader, Settings, AlertTriangle, CheckCircle } from 'lucide-react';
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const NotificationToast = ({ data, onClose }) => {
     const isError = data.type === 'error';
     const isLoading = data.type === 'loading';
@@ -50,7 +54,7 @@ const ConfigFormStructure = () => {
     const [checkpoints, setCheckpoints] = useState([]);
     const [formTitle, setFormTitle] = useState("");
 
-    const API_BASE = `${process.env.REACT_APP_API_URL}/api/config/${formId}`;
+    const API_BASE_FORM_STRUCTURE = `${API_BASE}/config/${formId}`;
 
     useEffect(() => {
         fetchConfig();
@@ -59,7 +63,7 @@ const ConfigFormStructure = () => {
     const fetchConfig = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_BASE}/master`);
+            const res = await axios.get(`${API_BASE_FORM_STRUCTURE}/master`);
             setFormTitle(formId.toUpperCase().replace('-', ' '));
             setCheckpoints(res.data.config || []);
         } catch (error) {

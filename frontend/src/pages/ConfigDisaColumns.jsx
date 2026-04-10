@@ -3,7 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Save, Plus, Trash2, ArrowLeft, Loader, Settings, AlertTriangle, CheckCircle, Lock, RotateCcw } from 'lucide-react';
 
-const API_BASE = `${process.env.REACT_APP_API_URL}/api/disa/custom-columns`;
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
+const API_BASE_CUSTOM_COLUMNS = `${API_BASE}/disa/custom-columns`;
 
 const NotificationToast = ({ data, onClose }) => {
     const isError = data.type === 'error';
@@ -67,7 +71,7 @@ const ConfigDisaColumns = ({ onBack }) => {
     const fetchConfig = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(API_BASE);
+            const res = await axios.get(API_BASE_CUSTOM_COLUMNS);
             const mappedData = res.data.map(item => ({
                 id: item.id,
                 columnName: item.columnName,
@@ -116,17 +120,17 @@ const ConfigDisaColumns = ({ onBack }) => {
         try {
             const itemsToDelete = items.filter(c => !c.isNew && c.isDeleted);
             for (const item of itemsToDelete) {
-                await axios.delete(`${API_BASE}/${item.id}`);
+                await axios.delete(`${API_BASE_CUSTOM_COLUMNS}/${item.id}`);
             }
 
             const itemsToUpdate = items.filter(c => !c.isNew && !c.isDeleted && c.columnName.trim() !== "");
             for (const item of itemsToUpdate) {
-                await axios.put(`${API_BASE}/${item.id}`, { columnName: item.columnName });
+                await axios.put(`${API_BASE_CUSTOM_COLUMNS}/${item.id}`, { columnName: item.columnName });
             }
 
             const itemsToAdd = items.filter(c => c.isNew && !c.isDeleted && c.columnName.trim() !== '');
             for (const item of itemsToAdd) {
-                await axios.post(API_BASE, { columnName: item.columnName });
+                await axios.post(API_BASE_CUSTOM_COLUMNS, { columnName: item.columnName });
             }
 
             setNotification({ show: true, type: 'success', message: 'Schema Updated Successfully!' });

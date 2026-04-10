@@ -6,6 +6,10 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { FileDown, Save } from 'lucide-react'; 
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 // --- Custom Searchable Dropdown for Table Cells ---
 const TableSearchableSelect = ({ options, displayKey, onSelect, value, placeholder }) => {
   const [search, setSearch] = useState(value || "");
@@ -90,15 +94,15 @@ const ErrorProofVerification = () => {
 
   const fetchInitialData = async () => {
     try {
-      const snoRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/error-proof/next-sno`);
+      const snoRes = await axios.get(`${API_BASE}/error-proof/next-sno`);
       setSNo(snoRes.data.nextSNo);
 
-      const inchargeRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/error-proof/incharges`);
+      const inchargeRes = await axios.get(`${API_BASE}/error-proof/incharges`);
       setOperatorList(inchargeRes.data.operators || []);
       setSupervisorList(inchargeRes.data.supervisors || []);
       setHofList(inchargeRes.data.hofs || []);
       
-      const bulkRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/error-proof/bulk-data`);
+      const bulkRes = await axios.get(`${API_BASE}/error-proof/bulk-data`);
       setQfHistory(bulkRes.data.qfHistory || []);
       
     } catch (err) { console.error("Error fetching initial data", err); }
@@ -135,14 +139,14 @@ const ErrorProofVerification = () => {
         const proof = defaultErrorProofs[index];
         const obsResult = observations[index];
 
-        await axios.post(`${process.env.REACT_APP_API_URL}/api/error-proof/add-verification`, {
+        await axios.post(`${API_BASE}/error-proof/add-verification`, {
           line: proof.line, errorProofName: proof.name, natureOfErrorProof: proof.nature, frequency: proof.frequency,
           recordDate, shift: "Daily", observationResult: obsResult, verifiedBy, reviewedBy: reviewedByMain,
           operatorSignature: signatureData, assignedHOF: assignedHOF
         });
 
         if (obsResult === "NOT_OK") {
-          await axios.post(`${process.env.REACT_APP_API_URL}/api/error-proof/add-reaction`, {
+          await axios.post(`${API_BASE}/error-proof/add-reaction`, {
             sNo, errorProofNo, errorProofName: proof.name, recordDate, shift: "Daily",
             problem, rootCause, correctiveAction, status, reviewedBy: reviewedByReaction, approvedBy, remarks
           });
@@ -166,7 +170,7 @@ const ErrorProofVerification = () => {
     const targetLine = encodeURIComponent(defaultErrorProofs[0].line);
     
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/error-proof/report?line=${targetLine}&date=${recordDate}&_t=${Date.now()}`, {
+      const response = await axios.get(`${API_BASE}/error-proof/report?line=${targetLine}&date=${recordDate}&_t=${Date.now()}`, {
         responseType: 'blob'
       });
       const blob = new Blob([response.data], { type: 'application/pdf' });

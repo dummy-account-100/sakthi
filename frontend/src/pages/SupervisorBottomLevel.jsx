@@ -9,6 +9,10 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import logo from '../Assets/logo.png'; 
 
+const API = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 // 🔥 Dynamic QF Helpers
 const getSafeDateStr = (val) => {
   if (!val) return null;
@@ -38,7 +42,7 @@ const SupervisorBottomLevel = () => {
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const currentSupervisor = storedUser.username || "supervisor1";
 
-  const API_BASE = `${process.env.REACT_APP_API_URL}/api/bottom-level-audit`;
+  const API_BASE = `${API}/api/bottom-level-audit`;
 
   useEffect(() => {
     fetchReports();

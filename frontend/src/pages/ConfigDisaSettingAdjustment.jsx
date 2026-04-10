@@ -3,6 +3,10 @@ import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { Save, Plus, Trash2, ArrowLeft, Loader, Settings, AlertTriangle, CheckCircle } from 'lucide-react';
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const NotificationToast = ({ data, onClose }) => {
     const isError = data.type === 'error';
     const isLoading = data.type === 'loading';
@@ -48,7 +52,7 @@ const ConfigDisaSettingAdjustment = () => {
     // Config State
     const [parameters, setParameters] = useState([]);
 
-    const API_BASE = `${process.env.REACT_APP_API_URL}/api/config/disa-setting-adjustment/master`;
+    const API_BASE_DISA_SETTINGS = `${API_BASE}/config/disa-setting-adjustment/master`;
 
     useEffect(() => {
         fetchConfig();
@@ -57,7 +61,7 @@ const ConfigDisaSettingAdjustment = () => {
     const fetchConfig = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(API_BASE);
+            const res = await axios.get(API_BASE_DISA_SETTINGS);
             setParameters(res.data.config || []);
         } catch (error) {
             setNotification({ show: true, type: 'error', message: 'Failed to load master configuration.' });
@@ -96,7 +100,7 @@ const ConfigDisaSettingAdjustment = () => {
         try {
             // Filter out permanently deleted items that were never saved
             const activeData = parameters.filter(c => !(c.isNew && c.isDeleted));
-            await axios.post(API_BASE, { config: activeData });
+            await axios.post(API_BASE_DISA_SETTINGS, { config: activeData });
 
             setNotification({ show: true, type: 'success', message: 'Parameters Updated Successfully!' });
             setTimeout(() => navigate('/admin'), 1500);

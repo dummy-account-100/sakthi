@@ -7,6 +7,11 @@ import SignatureCanvas from 'react-signature-canvas';
 import Header from '../components/Header';
 import logo from '../Assets/logo.png'; 
 
+
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 // --- Upgraded to Toast Notification ---
 const ToastNotification = ({ data, onClose }) => {
   useEffect(() => {
@@ -81,7 +86,7 @@ const DisaMachineCheckList = () => {
 
   const fetchData = async () => {
     try {
-      const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/disa-checklist/details`, {
+      const res = await axios.get(`${API_BASE}/disa-checklist/details`, {
         params: { date: headerData.date, disaMachine: headerData.disaMachine }
       });
 
@@ -195,7 +200,7 @@ const DisaMachineCheckList = () => {
       return setNotification({ show: true, type: 'error', message: "Please fill all input fields. Type '-' if empty." });
     }
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/disa-checklist/report-nc`, {
+      await axios.post(`${API_BASE}/disa-checklist/report-nc`, {
         checklistId: modalItem.MasterId, slNo: modalItem.SlNo, reportDate: headerData.date, disaMachine: headerData.disaMachine, ...ncForm
       });
       setNotification({ show: true, type: 'success', message: 'Report Logged Successfully.' });
@@ -238,7 +243,7 @@ const DisaMachineCheckList = () => {
         MasterId: item.MasterId, IsDone: item.IsDone, IsHoliday: item.IsHoliday, IsVatCleaning: item.IsVatCleaning, IsPreventiveMaintenance: item.IsPreventiveMaintenance, ReadingValue: item.ReadingValue || ''
       }));
 
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/disa-checklist/submit-batch`, {
+      await axios.post(`${API_BASE}/disa-checklist/submit-batch`, {
         items: itemsToSave,
         sign: headerData.operatorName || '',
         operatorSignature: sigData,
@@ -267,7 +272,7 @@ const DisaMachineCheckList = () => {
       let qfHistory = []; 
 
       try {
-        const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/disa-checklist/monthly-report`, {
+        const res = await axios.get(`${API_BASE}/disa-checklist/monthly-report`, {
           params: { month, year, disaMachine: headerData.disaMachine }
         });
         monthlyLogs = res.data.monthlyLogs || [];

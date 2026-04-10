@@ -5,6 +5,11 @@ import "react-toastify/dist/ReactToastify.css";
 import Header from "../components/Header";
 
 // --- HELPER: Calculate Production Date & Shift ---
+
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const getProductionDateTime = () => {
   const now = new Date();
   const hours = now.getHours();
@@ -222,7 +227,7 @@ const DisamaticProductReport = () => {
     const fetchPersonnelAndCounter = async () => {
       if (formData.disa && formData.disa !== "-" && formData.date && formData.shift) {
         try {
-          const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/forms/last-personnel`, {
+          const res = await axios.get(`${API_BASE}/forms/last-personnel`, {
             params: { disa: formData.disa, date: formData.date, shift: formData.shift }
           });
           
@@ -243,7 +248,7 @@ const DisamaticProductReport = () => {
             if (!isFirstRender.current) toast.info(`First entry for DISA-${formData.disa} in this shift.`);
           }
 
-          const counterRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/forms/last-mould-counter`, {
+          const counterRes = await axios.get(`${API_BASE}/forms/last-mould-counter`, {
             params: { disa: formData.disa }
           });
           const fetchedCounter = Number(counterRes.data.lastMouldCounter) || 0;
@@ -290,20 +295,20 @@ const DisamaticProductReport = () => {
   }, [formData.disa, formData.date, formData.shift]);
 
   useEffect(() => {
-    axios.get(`${process.env.REACT_APP_API_URL}/api/delays`).then((res) => setDelaysMaster(res.data));
-    axios.get(`${process.env.REACT_APP_API_URL}/api/incharges`).then((res) => setIncharges(res.data));
-    axios.get(`${process.env.REACT_APP_API_URL}/api/employees`).then((res) => setEmployees(res.data));
+    axios.get(`${API_BASE}/delays`).then((res) => setDelaysMaster(res.data));
+    axios.get(`${API_BASE}/incharges`).then((res) => setIncharges(res.data));
+    axios.get(`${API_BASE}/employees`).then((res) => setEmployees(res.data));
     
-    axios.get(`${process.env.REACT_APP_API_URL}/api/users`)
+    axios.get(`${API_BASE}/users`)
       .then((res) => {
         const ppOps = res.data.filter(user => user.role && user.role.trim().toLowerCase() === 'pp operator');
         setOperators(ppOps);
       })
       .catch(err => console.error("Failed to fetch PP Operators", err));
 
-    axios.get(`${process.env.REACT_APP_API_URL}/api/components`).then((res) => setComponents(res.data.filter(c => c.isActive === 'Active')));
-    axios.get(`${process.env.REACT_APP_API_URL}/api/supervisors`).then((res) => setSupervisors(res.data));
-    axios.get(`${process.env.REACT_APP_API_URL}/api/mould-hardness-remarks`).then((res) => setMouldRemarksList(res.data));
+    axios.get(`${API_BASE}/components`).then((res) => setComponents(res.data.filter(c => c.isActive === 'Active')));
+    axios.get(`${API_BASE}/supervisors`).then((res) => setSupervisors(res.data));
+    axios.get(`${API_BASE}/mould-hardness-remarks`).then((res) => setMouldRemarksList(res.data));
   }, []);
 
   const handleChange = (e) => {
@@ -516,7 +521,7 @@ const DisamaticProductReport = () => {
     }
 
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/forms`, {
+      await axios.post(`${API_BASE}/forms`, {
         ...formData, productions, delays, nextShiftPlans, mouldHardness, patternTemps
       });
 
@@ -561,7 +566,7 @@ const DisamaticProductReport = () => {
     }
 
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/forms/download-pdf`, { 
+      const response = await axios.get(`${API_BASE}/forms/download-pdf`, { 
         params: { date: formData.date, disa: formData.disa },
         responseType: "blob" 
       });

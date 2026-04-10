@@ -8,6 +8,10 @@ import Header from '../components/Header';
 import logo from '../Assets/logo.png'; // Make sure this path is correct
 
 // --- Upgraded to Toast Notification ---
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const ToastNotification = ({ data, onClose }) => {
   useEffect(() => {
     if (data.show && data.type !== 'loading') {
@@ -73,13 +77,13 @@ const BottomLevelAudit = () => {
   const [modalItem, setModalItem] = useState(null);
   const [ncForm, setNcForm] = useState({ ncDetails: '', correction: '', rootCause: '', correctiveAction: '', targetDate: new Date().toISOString().split('T')[0], responsibility: '', sign: '', status: 'Pending' });
 
-  const API_BASE = `${process.env.REACT_APP_API_URL}/api/bottom-level-audit`;
+  const API_BASE_BOTTOM = `${API_BASE}/bottom-level-audit`;
 
   useEffect(() => { fetchData(); }, [headerData.date, headerData.disaMachine]);
 
   const fetchData = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/details`, { params: { date: headerData.date, disaMachine: headerData.disaMachine } });
+      const res = await axios.get(`${API_BASE_BOTTOM}/details`, { params: { date: headerData.date, disaMachine: headerData.disaMachine } });
       setSupervisors(res.data.supervisors);
       setHofs(res.data.hofs);
 
@@ -135,7 +139,7 @@ const BottomLevelAudit = () => {
       return setNotification({ show: true, type: 'error', message: "Please fill all input fields. Type '-' if empty." });
     }
     try {
-      await axios.post(`${API_BASE}/report-nc`, { checklistId: modalItem.MasterId, slNo: modalItem.SlNo, reportDate: headerData.date, disaMachine: headerData.disaMachine, ...ncForm });
+      await axios.post(`${API_BASE_BOTTOM}/report-nc`, { checklistId: modalItem.MasterId, slNo: modalItem.SlNo, reportDate: headerData.date, disaMachine: headerData.disaMachine, ...ncForm });
       setNotification({ show: true, type: 'success', message: 'Report Logged Successfully.' });
       setIsModalOpen(false);
       setReportsMap(prev => ({ ...prev, [modalItem.MasterId]: { ...ncForm, MasterId: modalItem.MasterId, Status: 'Pending', Name: ncForm.sign } }));
@@ -156,7 +160,7 @@ const BottomLevelAudit = () => {
     setLoading(true);
     try {
       const itemsToSave = checklist.map(item => ({ MasterId: item.MasterId, IsDone: item.IsDone, IsNA: item.IsNA, IsHoliday: item.IsHoliday, IsVatCleaning: item.IsVatCleaning, IsPreventiveMaintenance: item.IsPreventiveMaintenance }));
-      await axios.post(`${API_BASE}/submit-batch`, {
+      await axios.post(`${API_BASE_BOTTOM}/submit-batch`, {
         items: itemsToSave, sign: headerData.supervisorName || '', assignedHOF: headerData.assignedHOF || '', date: headerData.date, disaMachine: headerData.disaMachine
       });
       setNotification({ show: true, type: 'success', message: 'Checklist Saved & Assigned!' });
@@ -174,7 +178,7 @@ const BottomLevelAudit = () => {
       let qfHistory = []; // 🔥
 
       try {
-        const res = await axios.get(`${API_BASE}/monthly-report`, { params: { month, year, disaMachine: headerData.disaMachine } });
+        const res = await axios.get(`${API_BASE_BOTTOM}/monthly-report`, { params: { month, year, disaMachine: headerData.disaMachine } });
         monthlyLogs = res.data.monthlyLogs || []; 
         ncReports = res.data.ncReports || [];
         qfHistory = res.data.qfHistory || []; // 🔥 Fetch History

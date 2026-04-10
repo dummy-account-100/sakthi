@@ -6,6 +6,10 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { FileDown, Send } from "lucide-react";
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 // --- Auto Calculate Date and Shift ---
 const getShiftInfo = () => {
   const now = new Date();
@@ -128,14 +132,14 @@ const MouldingQualityInspection = () => {
   const [rows, setRows] = useState([getEmptyRow(1)]);
 
   useEffect(() => {
-    axios.get(`${process.env.REACT_APP_API_URL}/api/mould-quality/users`)
+    axios.get(`${API_BASE}/mould-quality/users`)
       .then(res => {
         setOperatorList(res.data.operators || []);
         setSupervisorList(res.data.supervisors || []);
       })
       .catch(err => console.error("Failed to fetch users", err));
 
-    axios.get(`${process.env.REACT_APP_API_URL}/api/mould-quality/components`)
+    axios.get(`${API_BASE}/mould-quality/components`)
       .then(res => setComponents(res.data || []))
       .catch(err => console.error("Failed to fetch components", err));
   }, []);
@@ -166,7 +170,7 @@ const MouldingQualityInspection = () => {
 
   const handleDownloadReport = async () => {
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/mould-quality/report?date=${date}&disaMachine=${disaMachine}`, {
+      const response = await axios.get(`${API_BASE}/mould-quality/report?date=${date}&disaMachine=${disaMachine}`, {
         responseType: 'blob'
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -216,7 +220,7 @@ const MouldingQualityInspection = () => {
     };
 
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/mould-quality/add`, payload);
+      await axios.post(`${API_BASE}/mould-quality/add`, payload);
       toast.success("Report Submitted Successfully!");
       setTimeout(() => window.location.reload(), 1500);
     } catch (err) {

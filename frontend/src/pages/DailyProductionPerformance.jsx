@@ -6,6 +6,10 @@ import "react-toastify/dist/ReactToastify.css";
 import SignatureCanvas from "react-signature-canvas";
 
 // --- HELPER: Calculate Production Date (Strict 7 AM to 7 AM Logic) ---
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const getProductionDate = () => {
   const now = new Date();
   const hours = now.getHours();
@@ -103,11 +107,11 @@ const DailyProductionPerformance = () => {
   const [hods, setHods] = useState([]);
 
   useEffect(() => {
-    axios.get(`${process.env.REACT_APP_API_URL}/api/components`)
+    axios.get(`${API_BASE}/components`)
       .then((res) => setComponents(res.data.filter(c => c.isActive === 'Active')))
       .catch((err) => console.error("Failed to fetch components", err));
 
-    axios.get(`${process.env.REACT_APP_API_URL}/api/daily-performance/users`)
+    axios.get(`${API_BASE}/daily-performance/users`)
       .then((res) => {
         setIncharges(res.data.incharges || []);
         setHofs(res.data.hofs || []);
@@ -134,7 +138,7 @@ const DailyProductionPerformance = () => {
       }
 
       try {
-        const sumRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/daily-performance/summary?date=${productionDate}&disa=${disa}`);
+        const sumRes = await axios.get(`${API_BASE}/daily-performance/summary?date=${productionDate}&disa=${disa}`);
         const fetchedData = sumRes.data;
 
         setSummary((prev) => {
@@ -161,7 +165,7 @@ const DailyProductionPerformance = () => {
           return newSummary;
         });
 
-        const delayRes = await axios.get(`${process.env.REACT_APP_API_URL}/api/daily-performance/delays?date=${productionDate}&disa=${disa}`);
+        const delayRes = await axios.get(`${API_BASE}/daily-performance/delays?date=${productionDate}&disa=${disa}`);
         setDelays(delayRes.data);
 
       } catch (err) {
@@ -234,7 +238,7 @@ const DailyProductionPerformance = () => {
 
     if (productionDate && disa && disa !== "-" && item.description && item.description !== "-") {
       try {
-        const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/daily-performance/component-totals`, {
+        const res = await axios.get(`${API_BASE}/daily-performance/component-totals`, {
           params: { date: productionDate, disa: disa, componentName: item.description }
         });
 
@@ -347,7 +351,7 @@ const DailyProductionPerformance = () => {
     };
 
     try {
-      await axios.post(`${process.env.REACT_APP_API_URL}/api/daily-performance`, payload);
+      await axios.post(`${API_BASE}/daily-performance`, payload);
       toast.success("Report saved successfully!");
 
       setSummary({
@@ -375,7 +379,7 @@ const DailyProductionPerformance = () => {
     }
 
     try {
-      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/daily-performance/download-pdf`, {
+      const response = await axios.get(`${API_BASE}/daily-performance/download-pdf`, {
         params: { date: productionDate, disa: disa },
         responseType: "blob"
       });

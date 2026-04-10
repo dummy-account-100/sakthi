@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Save, Plus, Trash2, ArrowLeft, Loader, Settings, AlertTriangle, CheckCircle, RotateCcw } from 'lucide-react';
 
+const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
+                 ? process.env.REACT_APP_API_URL 
+                 : "/api";
+
 const NotificationToast = ({ data, onClose }) => {
     const isError = data.type === 'error';
     const isLoading = data.type === 'loading';
@@ -48,7 +52,7 @@ const ConfigUnpouredMould = ({ onBack }) => {
     // Config State
     const [items, setItems] = useState([]);
 
-    const API_BASE = `${process.env.REACT_APP_API_URL}/api/config/unpoured-mould-details`;
+    const API_BASE_UNPOURED_MOULD = `${API_BASE}/config/unpoured-mould-details`;
 
     useEffect(() => {
         fetchConfig();
@@ -57,7 +61,7 @@ const ConfigUnpouredMould = ({ onBack }) => {
     const fetchConfig = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_BASE}/master`);
+            const res = await axios.get(`${API_BASE_UNPOURED_MOULD}/master`);
             setItems(res.data.config || []);
         } catch (error) {
             setNotification({ show: true, type: 'error', message: 'Failed to load configuration.' });
@@ -102,7 +106,7 @@ const ConfigUnpouredMould = ({ onBack }) => {
 
         try {
             const activeData = items.filter(c => !(c.isNew && c.isDeleted));
-            await axios.post(`${API_BASE}/master`, { config: activeData });
+            await axios.post(`${API_BASE_UNPOURED_MOULD}/master`, { config: activeData });
 
             setNotification({ show: true, type: 'success', message: 'Form Schema Updated Successfully!' });
             await fetchConfig(); // Refresh data
