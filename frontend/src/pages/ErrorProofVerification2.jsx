@@ -447,7 +447,8 @@ const ErrorProofVerification2 = () => {
               </div>
               <div className="bg-gray-800 border border-gray-600 rounded-md flex overflow-visible focus-within:border-orange-500 transition-colors shadow-sm relative z-40">
                 <span className="bg-gray-700 px-3 py-2 border-r border-gray-600 flex items-center gap-2 text-[10px] font-bold uppercase text-gray-300"><ShieldCheck size={14} /> Moulding Incharge</span>
-                <div className="w-48"><HeaderSearchableSelect options={operatorList} displayKey="name" value={headerData.approvedBy} onSelect={(item) => setHeaderData({ ...headerData, approvedBy: item.name })} placeholder="Required*" /></div>
+                {/* 🔥 FIX: Changed options from operatorList to supervisorList */}
+                <div className="w-48"><HeaderSearchableSelect options={supervisorList} displayKey="name" value={headerData.approvedBy} onSelect={(item) => setHeaderData({ ...headerData, approvedBy: item.name })} placeholder="Required*" /></div>
               </div>
             </div>
           </div>

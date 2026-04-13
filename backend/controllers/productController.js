@@ -60,7 +60,7 @@ exports.getEmployees = async (req, res) => {
 
 exports.getIncharges = async (req, res) => {
   try {
-    const result = await sql.query`SELECT id, username as name FROM Users WHERE role = 'operator' ORDER BY username`;
+    const result = await sql.query`SELECT id, username as name FROM Users WHERE role = 'supervisor' ORDER BY username`;
     res.json(result.recordset);
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch incharges" });

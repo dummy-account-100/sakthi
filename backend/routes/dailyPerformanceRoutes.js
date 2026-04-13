@@ -11,11 +11,14 @@ router.get("/daily-performance/summary", dailyPerformanceController.getSummaryBy
 // Fetches delays by date and DISA line
 router.get("/daily-performance/delays", dailyPerformanceController.getDelaysByDateAndDisa);
 
-// Fetches total produced/poured counts for a specific component (New route from 2nd snippet)
+// Fetches total produced/poured counts for a specific component
 router.get("/daily-performance/component-totals", dailyPerformanceController.getComponentTotals);
 
 // Fetches users for form dropdowns (Incharges, HOFs, HODs)
 router.get("/daily-performance/users", dailyPerformanceController.getFormUsers);
+
+// 🔥 FIXED: Added /daily-performance to match the frontend URL
+router.get("/daily-performance/supervisor/:name", dailyPerformanceController.getSupervisorReports);
 
 
 // ==========================================
@@ -33,14 +36,14 @@ router.post("/daily-performance/sign-hod", dailyPerformanceController.signHod);
 // ==========================================
 //  ADMIN / MANAGEMENT ROUTES
 // ==========================================
-// Admin: Bulk Data Fetch for Date Range (Export)
-//router.get("/daily-performance/bulk-data", dailyPerformanceController.getBulkData);
-
 // Admin: Fetch report by exact date & DISA (for Edit/View)
 router.get("/daily-performance/by-date", dailyPerformanceController.getByDate);
 
 // Admin: Update a report by ID
 router.put("/daily-performance/:id", dailyPerformanceController.updateReport);
+
+// 🔥 FIXED: Added /daily-performance to match the frontend URL
+router.post("/daily-performance/sign-supervisor", dailyPerformanceController.signSupervisor);
 
 
 // ==========================================

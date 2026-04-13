@@ -1,15 +1,14 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import Header from "../components/Header";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import SignatureCanvas from "react-signature-canvas";
 
-// --- HELPER: Calculate Production Date (Strict 7 AM to 7 AM Logic) ---
 const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
                  ? process.env.REACT_APP_API_URL 
                  : "/api";
 
+// --- HELPER: Calculate Production Date (Strict 7 AM to 7 AM Logic) ---
 const getProductionDate = () => {
   const now = new Date();
   const hours = now.getHours();
@@ -98,26 +97,70 @@ const DailyProductionPerformance = () => {
   const [disa, setDisa] = useState("");
   const [resetKey, setResetKey] = useState(0);
 
-  const opSigCanvas = useRef({});
-
   // --- DROPDOWN DATA ---
   const [components, setComponents] = useState([]);
   const [incharges, setIncharges] = useState([]);
   const [hofs, setHofs] = useState([]);
   const [hods, setHods] = useState([]);
 
+  const initialFormState = {
+    disa: "",
+    date: productionDate,
+    significantEvent: "",
+    maintenance: ""
+  };
+
+  const [formData, setFormData] = useState(() => {
+    const savedDraft = localStorage.getItem("disaFormDraft");
+    if (savedDraft) {
+      const parsed = JSON.parse(savedDraft);
+      return { ...parsed, date: productionDate };
+    }
+    return initialFormState;
+  });
+
+  // Helper to get auth token
+  const getAuthHeaders = () => {
+    let token = localStorage.getItem('token');
+    if (!token) {
+        const userData = localStorage.getItem('user');
+        if (userData) {
+            try {
+                const parsedUser = JSON.parse(userData);
+                token = parsedUser.token || ''; 
+            } catch (e) {
+                console.error("Failed to parse user data");
+            }
+        }
+    }
+    return {
+        headers: { Authorization: `Bearer ${token}` }
+    };
+  };
+
   useEffect(() => {
-    axios.get(`${API_BASE}/components`)
+    const authConfig = getAuthHeaders();
+
+    axios.get(`${API_BASE}/components`, authConfig)
       .then((res) => setComponents(res.data.filter(c => c.isActive === 'Active')))
       .catch((err) => console.error("Failed to fetch components", err));
 
-    axios.get(`${API_BASE}/daily-performance/users`)
+    axios.get(`${API_BASE}/daily-performance/users`, authConfig)
       .then((res) => {
-        setIncharges(res.data.incharges || []);
         setHofs(res.data.hofs || []);
         setHods(res.data.hods || []);
       })
       .catch((err) => console.error("Failed to fetch users", err));
+
+    // Fetch Supervisors and set them as In-charges
+    axios.get(`${API_BASE}/supervisors`, authConfig)
+      .then((res) => {
+        const mappedIncharges = res.data.map(sup => ({ name: sup.supervisorName }));
+        setIncharges(mappedIncharges);
+      })
+      .catch((err) => console.error("Failed to fetch supervisors", err));
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // --- STATE: SUMMARY TABLE (Defaulted to "-") ---
@@ -138,7 +181,10 @@ const DailyProductionPerformance = () => {
       }
 
       try {
-        const sumRes = await axios.get(`${API_BASE}/daily-performance/summary?date=${productionDate}&disa=${disa}`);
+        const sumRes = await axios.get(`${API_BASE}/daily-performance/summary`, {
+          params: { date: productionDate, disa: disa },
+          ...getAuthHeaders()
+        });
         const fetchedData = sumRes.data;
 
         setSummary((prev) => {
@@ -165,7 +211,10 @@ const DailyProductionPerformance = () => {
           return newSummary;
         });
 
-        const delayRes = await axios.get(`${API_BASE}/daily-performance/delays?date=${productionDate}&disa=${disa}`);
+        const delayRes = await axios.get(`${API_BASE}/daily-performance/delays`, {
+          params: { date: productionDate, disa: disa },
+          ...getAuthHeaders()
+        });
         setDelays(delayRes.data);
 
       } catch (err) {
@@ -219,7 +268,6 @@ const DailyProductionPerformance = () => {
     setDetails(updated);
   };
 
-  // 🔥 AUTO FETCH PRODUCED & POURED FOR DETAILS 🔥
   const handleComponentSelect = async (index, item) => {
     const updated = [...details];
 
@@ -230,7 +278,6 @@ const DailyProductionPerformance = () => {
     const unitWt = item.pouredWeight !== null && item.pouredWeight !== undefined ? item.pouredWeight : "-";
     updated[index].unitWeight = unitWt;
 
-    // Clear temporarily while fetching
     updated[index].mouldsProd = "";
     updated[index].mouldsPour = "";
     updated[index].totalWeight = "-";
@@ -239,7 +286,8 @@ const DailyProductionPerformance = () => {
     if (productionDate && disa && disa !== "-" && item.description && item.description !== "-") {
       try {
         const res = await axios.get(`${API_BASE}/daily-performance/component-totals`, {
-          params: { date: productionDate, disa: disa, componentName: item.description }
+          params: { date: productionDate, disa: disa, componentName: item.description },
+          ...getAuthHeaders()
         });
 
         const fetchedProd = res.data.totalProduced > 0 ? res.data.totalProduced : "";
@@ -311,7 +359,6 @@ const DailyProductionPerformance = () => {
     ...groupedDelaysMap[reason]
   }));
 
-  // --- STRICT VALIDATION FOR ALL FIELDS ---
   const isInvalid = (val) => val === undefined || val === null || String(val).trim() === "";
 
   const validateForm = () => {
@@ -326,6 +373,7 @@ const DailyProductionPerformance = () => {
     }
 
     if (isInvalid(unplannedReasons)) return false;
+    
     if (isInvalid(signatures.incharge) || isInvalid(signatures.hof) || isInvalid(signatures.hod)) return false;
 
     return true;
@@ -335,24 +383,24 @@ const DailyProductionPerformance = () => {
     e.preventDefault();
 
     if (!validateForm()) {
-      toast.error("Please fill ALL fields. Type a hyphen '-' if there is no data to enter.");
+      toast.error("Please fill ALL fields, including Assign In-charge. Type '-' if no data.");
       return;
     }
-
-    if (opSigCanvas.current.isEmpty()) {
-      toast.warning("Please provide an Operator Signature.");
-      return;
-    }
-    const signatureData = opSigCanvas.current.getCanvas().toDataURL("image/png");
 
     const payload = {
-      productionDate, disa, summary, details, unplannedReasons, signatures, delays,
-      operatorSignature: signatureData
+      productionDate, 
+      disa, 
+      supervisorName: signatures.incharge, 
+      summary, 
+      details, 
+      unplannedReasons, 
+      signatures, 
+      delays
     };
 
     try {
-      await axios.post(`${API_BASE}/daily-performance`, payload);
-      toast.success("Report saved successfully!");
+      await axios.post(`${API_BASE}/daily-performance`, payload, getAuthHeaders());
+      toast.success("Report sent to Supervisor successfully!");
 
       setSummary({
         I: { pouredMoulds: "-", tonnage: "-", casted: "", value: "" },
@@ -362,8 +410,8 @@ const DailyProductionPerformance = () => {
       setDetails([{ patternCode: "", itemDescription: "-", planned: "", unplanned: "", mouldsProd: "", mouldsPour: "", cavity: "-", unitWeight: "-", totalWeight: "-" }]);
       setUnplannedReasons("");
       setSignatures({ incharge: "", hof: "", hod: "" });
+      setFormData(initialFormState);
       setDisa("");
-      opSigCanvas.current.clear();
       setResetKey(prev => prev + 1);
 
     } catch (err) {
@@ -381,10 +429,10 @@ const DailyProductionPerformance = () => {
     try {
       const response = await axios.get(`${API_BASE}/daily-performance/download-pdf`, {
         params: { date: productionDate, disa: disa },
-        responseType: "blob"
+        responseType: "blob",
+        ...getAuthHeaders()
       });
 
-      // 🔥 FIX: If the backend returns JSON, it means no data was found
       if (response.data.type === "application/json") {
         toast.error("No saved report found for this Date & DISA. Please submit the form first.");
         return;
@@ -404,6 +452,8 @@ const DailyProductionPerformance = () => {
       toast.error("Failed to download PDF. Ensure the server is running.");
     }
   };
+
+  
 
   return (
     <>
@@ -635,23 +685,17 @@ const DailyProductionPerformance = () => {
               <textarea className="w-full h-full p-2 outline-none resize-none text-sm bg-transparent" placeholder="Type '-' if none..." value={String(unplannedReasons)} onChange={(e) => setUnplannedReasons(e.target.value)} />
             </div>
 
-            {/* 5. SIGNATURES & ASSIGNMENTS */}
-            <div className="flex justify-between items-end mt-8 mb-4 px-10 gap-6">
-              <div className="flex flex-col w-64">
-                <label className="font-bold text-gray-700 block mb-1 text-sm text-center">Operator Signature</label>
-                <div className="border-2 border-dashed border-gray-400 rounded-lg overflow-hidden h-24 mb-1">
-                  <SignatureCanvas ref={opSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-full cursor-crosshair bg-gray-50' }} />
-                </div>
-                <button type="button" onClick={() => opSigCanvas.current.clear()} className="text-xs text-red-500 hover:text-red-700 font-bold self-end uppercase">Clear</button>
-              </div>
+            {/* 5. ASSIGNMENTS */}
+            <div className="flex flex-wrap justify-between items-end mt-8 mb-4 gap-6">
 
               <div className="w-64">
                 <SearchableSelect
-                  key={`sign-inc-${resetKey}`} label="Assign In-charge"
+                  key={`sign-inc-${resetKey}`} label="Assign In-charge (Supervisor)"
                   options={incharges} displayKey="name" value={signatures.incharge}
                   onSelect={(item) => setSignatures({ ...signatures, incharge: item.name || item.name })}
                 />
               </div>
+
               <div className="w-64">
                 <SearchableSelect
                   key={`sign-hof-${resetKey}`} label="Assign HOF"
@@ -659,6 +703,7 @@ const DailyProductionPerformance = () => {
                   onSelect={(item) => setSignatures({ ...signatures, hof: item.name || item.name })}
                 />
               </div>
+
               <div className="w-64">
                 <SearchableSelect
                   key={`sign-hod-${resetKey}`} label="Assign HOD - Production"
@@ -666,14 +711,19 @@ const DailyProductionPerformance = () => {
                   onSelect={(item) => setSignatures({ ...signatures, hod: item.name || item.name })}
                 />
               </div>
+
             </div>
 
             {/* BUTTONS */}
             <div className="flex justify-end gap-4 mt-2 pt-4 border-t border-gray-300">
-              <button type="button" onClick={handleDownload} className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-2 rounded font-bold transition-colors flex items-center gap-2 shadow-lg"><span>⬇️</span> Generate Report (PDF)</button>
-              <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-white px-10 py-3 rounded font-bold transition-colors shadow-lg">Submit & Send to HOF/HOD</button>
+              <button type="button" onClick={handleDownload} className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-2 rounded font-bold transition-colors flex items-center gap-2 shadow-lg">
+                <span>⬇️</span> Generate Report (PDF)
+              </button>
+              <button type="submit" className="bg-orange-500 hover:bg-orange-600 text-white px-10 py-3 rounded font-bold transition-colors shadow-lg">
+                Submit & Send to Supervisor
+              </button>
             </div>
-
+            
           </form>
         </div>
       </div>

@@ -37,12 +37,23 @@ const Supervisor = () => {
   const currentSupervisor = storedUser.username || "supervisor1";
   const navigate = useNavigate();
 
+  const getAuthHeader = () => {
+    return { Authorization: `Bearer ${localStorage.getItem('token')}` };
+  };
+
   // --- States for Disamatic Report ---
   const [disaReports, setDisaReports] = useState([]);
   const [selectedDisaReport, setSelectedDisaReport] = useState(null);
   const [disaPdfUrl, setDisaPdfUrl] = useState(null); 
   const [isDisaPdfLoading, setIsDisaPdfLoading] = useState(false); 
   const disaSigCanvas = useRef({});
+
+  // --- States for Daily Production Performance ---
+  const [dpReports, setDpReports] = useState([]);
+  const [selectedDpReport, setSelectedDpReport] = useState(null);
+  const [dpPdfUrl, setDpPdfUrl] = useState(null); 
+  const [isDpPdfLoading, setIsDpPdfLoading] = useState(false); 
+  const dpSigCanvas = useRef({});
 
   // --- States for Bottom Level Audit ---
   const [bottomReports, setBottomReports] = useState([]);
@@ -85,6 +96,7 @@ const Supervisor = () => {
 
   useEffect(() => {
     fetchDisaReports();
+    fetchDpReports(); // 🔥 Fetch Daily Performance
     fetchBottomReports();
     fetchNcrReports(); 
     fetchDmmReports();
@@ -118,10 +130,6 @@ const Supervisor = () => {
       const dateB = new Date(b.reportDate);
       return dateB - dateA || b.id - a.id;
     });
-  };
-
-  const getAuthHeader = () => {
-    return { Authorization: `Bearer ${localStorage.getItem('token')}` };
   };
 
   // ==========================================
@@ -161,7 +169,43 @@ const Supervisor = () => {
   };
 
   // ==========================================
-  // 2. BOTTOM LEVEL AUDIT LOGIC
+  // 2. DAILY PRODUCTION PERFORMANCE LOGIC
+  // ==========================================
+  const fetchDpReports = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/daily-performance/supervisor/${currentSupervisor}`, { headers: getAuthHeader() });
+      setDpReports(res.data);
+    } catch (err) { console.error("Failed to load Daily Performance reports."); }
+  };
+
+  const handleOpenDpModal = async (report) => {
+    setSelectedDpReport(report);
+    setDpPdfUrl(null);
+    setIsDpPdfLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE}/daily-performance/download-pdf`, { 
+          params: { date: getSafeDateStr(report.productionDate), disa: report.disa }, 
+          responseType: 'blob',
+          headers: getAuthHeader()
+      });
+      const pdfBlobUrl = URL.createObjectURL(response.data);
+      setDpPdfUrl(pdfBlobUrl);
+    } catch (error) { toast.error("Failed to generate Daily Performance PDF preview."); }
+    setIsDpPdfLoading(false);
+  };
+
+  const submitDpSignature = async () => {
+    if (dpSigCanvas.current.isEmpty()) { toast.warning("Please provide a signature."); return; }
+    const signatureData = dpSigCanvas.current.getCanvas().toDataURL("image/png");
+    try {
+      await axios.post(`${API_BASE}/daily-performance/sign-supervisor`, { reportId: selectedDpReport.id, signature: signatureData }, { headers: getAuthHeader() });
+      toast.success("Daily Performance Report signed successfully!");
+      setSelectedDpReport(null); fetchDpReports();
+    } catch (err) { toast.error("Failed to save signature."); }
+  };
+
+  // ==========================================
+  // 3. BOTTOM LEVEL AUDIT LOGIC
   // ==========================================
   const fetchBottomReports = async () => {
     try {
@@ -341,7 +385,7 @@ const Supervisor = () => {
   };
 
   // ==========================================
-  // 3. NCR LOGIC (🔥 FETCHES FROM BOTH LPA AND CHECKLIST)
+  // 4. NCR LOGIC (🔥 FETCHES FROM BOTH LPA AND CHECKLIST)
   // ==========================================
   const fetchNcrReports = async () => {
     try {
@@ -375,7 +419,7 @@ const Supervisor = () => {
           ? '/disa-checklist/sign-ncr' 
           : '/bottom-level-audit/sign-ncr';
 
-      await axios.post(`${API_BASE}${endpoint}`, { 
+      await axios.post(`${process.env.REACT_APP_API_URL}${endpoint}`, { 
         reportId: selectedNcrReport.ReportId || selectedNcrReport.id, 
         signature: signatureData 
       });
@@ -389,7 +433,7 @@ const Supervisor = () => {
   };
 
   // ==========================================
-  // 4. DMM SETTINGS LOGIC
+  // 5. DMM SETTINGS LOGIC
   // ==========================================
   const fetchDmmReports = async () => {
     try {
@@ -494,7 +538,7 @@ const Supervisor = () => {
   };
 
   // ==========================================
-  // 5. 4M CHANGE LOGIC 
+  // 6. 4M CHANGE LOGIC 
   // ==========================================
   const fetchFourMReports = async () => {
     try {
@@ -528,7 +572,7 @@ const Supervisor = () => {
   };
 
   // ==========================================
-  // 6. ERROR PROOF REACTION PLANS LOGIC 
+  // 7. ERROR PROOF REACTION PLANS LOGIC 
   // ==========================================
   const fetchErrorReports = async () => {
     try {
@@ -575,7 +619,7 @@ const Supervisor = () => {
   };
 
   // ==========================================
-  // 7. MOULDING QUALITY LOGIC
+  // 8. MOULDING QUALITY LOGIC
   // ==========================================
   const fetchMouldQualityReports = async () => {
     try {
@@ -651,7 +695,50 @@ const Supervisor = () => {
           )}
         </div>
 
-        {/* SECTION 2: BOTTOM LEVEL AUDITS */}
+        {/* SECTION 2: DAILY PRODUCTION PERFORMANCE REPORTS */}
+        <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl p-8 border-t-4 border-teal-500">
+          <div className="flex justify-between items-center mb-6 border-b pb-4">
+            <h1 className="text-2xl font-bold text-gray-800">Daily Production Performance Reports</h1>
+          </div>
+          {dpReports.length === 0 ? <p className="text-gray-500 italic">No Daily Performance reports pending.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse border border-gray-300">
+                <thead className="bg-gray-800 text-white">
+                  <tr>
+                    <th className="p-3 border border-gray-300 w-20 text-center">ID</th>
+                    <th className="p-3 border border-gray-300">Date</th>
+                    <th className="p-3 border border-gray-300">DISA Line</th>
+                    <th className="p-3 border border-gray-300">Status</th>
+                    <th className="p-3 border border-gray-300 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dpReports.map((report) => (
+                    <tr key={report.id} className="hover:bg-teal-50">
+                      <td className="p-3 border border-gray-300 text-center font-bold text-gray-400">#{report.id}</td>
+                      <td className="p-3 border border-gray-300 font-medium">{formatDate(report.productionDate)}</td>
+                      <td className="p-3 border border-gray-300 font-bold">{report.disa}</td>
+                      <td className="p-3 border border-gray-300">
+                        {report.supervisorSignature 
+                          ? <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">✓ Signed</span> 
+                          : <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">Pending Review</span>}
+                      </td>
+                      <td className="p-3 border border-gray-300 text-center">
+                        {!report.supervisorSignature && (
+                          <button onClick={() => handleOpenDpModal(report)} className="bg-teal-500 hover:bg-teal-600 text-white px-4 py-1.5 rounded font-bold text-sm shadow transition-colors">
+                            Review & Sign
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* SECTION 3: BOTTOM LEVEL AUDITS */}
         <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl p-8 border-t-4 border-blue-500">
           <div className="flex justify-between items-center mb-6 border-b pb-4"><h1 className="text-2xl font-bold text-gray-800">Daily Bottom Level Audits</h1></div>
           {bottomReports.length === 0 ? <p className="text-gray-500 italic">No bottom level audits pending your signature.</p> : (
@@ -674,7 +761,7 @@ const Supervisor = () => {
           )}
         </div>
 
-        {/* SECTION 3: NON-CONFORMANCE REPORTS */}
+        {/* SECTION 4: NON-CONFORMANCE REPORTS */}
         <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl p-8 border-t-4 border-red-500">
           <div className="flex justify-between items-center mb-6 border-b pb-4"><h1 className="text-2xl font-bold text-gray-800">Non-Conformance Reports (NCR)</h1></div>
           {ncrReports.length === 0 ? <p className="text-gray-500 italic">No NCRs to review.</p> : (
@@ -723,7 +810,7 @@ const Supervisor = () => {
           )}
         </div>
 
-        {/* SECTION 4: DMM SETTING PARAMETERS */}
+        {/* SECTION 5: DMM SETTING PARAMETERS */}
         <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl p-8 border-t-4 border-indigo-500">
           <div className="flex justify-between items-center mb-6 border-b pb-4"><h1 className="text-2xl font-bold text-gray-800">DMM Setting Parameters</h1></div>
           {dmmReports.length === 0 ? <p className="text-gray-500 italic">No DMM Setting forms pending your signature.</p> : (
@@ -747,7 +834,7 @@ const Supervisor = () => {
           )}
         </div>
 
-        {/* SECTION 5: 4M CHANGE MONITORING */}
+        {/* SECTION 6: 4M CHANGE MONITORING */}
         <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl p-8 border-t-4 border-green-500">
           <div className="flex justify-between items-center mb-6 border-b pb-4"><h1 className="text-2xl font-bold text-gray-800">4M Change Monitoring</h1></div>
           {fourMReports.length === 0 ? <p className="text-gray-500 italic">No 4M Change forms pending your signature.</p> : (
@@ -772,7 +859,7 @@ const Supervisor = () => {
           )}
         </div>
 
-        {/* SECTION 6: ERROR PROOF REACTION PLANS */}
+        {/* SECTION 7: ERROR PROOF REACTION PLANS */}
         <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl p-8 border-t-4 border-yellow-500">
           <div className="flex justify-between items-center mb-6 border-b pb-4">
             <h1 className="text-2xl font-bold text-gray-800">Error Proof Reaction Plans</h1>
@@ -811,7 +898,7 @@ const Supervisor = () => {
           )}
         </div>
 
-        {/* SECTION 7: MOULDING QUALITY INSPECTION */}
+        {/* SECTION 8: MOULDING QUALITY INSPECTION */}
         <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl p-8 border-t-4 border-purple-500">
           <div className="flex justify-between items-center mb-6 border-b pb-4">
             <h1 className="text-2xl font-bold text-gray-800">Moulding Quality Inspection</h1>
@@ -881,7 +968,44 @@ const Supervisor = () => {
         </div>
       )}
 
-      {/* 2. BOTTOM LEVEL AUDIT MODAL */}
+      {/* 2. DAILY PERFORMANCE MODAL */}
+      {selectedDpReport && (
+        <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
+          <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
+            <h3 className="font-bold text-xl uppercase tracking-wider">Review & Sign Daily Performance Report</h3>
+            <button onClick={() => { setSelectedDpReport(null); setDpPdfUrl(null); }} className="text-gray-400 hover:text-red-400 transition-colors">
+              <X size={28} />
+            </button>
+          </div>
+          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+            <div className="flex-1 h-full bg-[#525659] relative flex items-center justify-center">
+              {isDpPdfLoading && <Loader className="animate-spin text-white w-12 h-12 absolute" />}
+              {dpPdfUrl && <iframe src={`${dpPdfUrl}#toolbar=0&view=FitH`} className="w-full h-full border-none relative z-10" title="PDF" />}
+            </div>
+            <div className="w-full lg:w-[400px] bg-gray-50 border-l border-gray-300 flex flex-col shrink-0 shadow-2xl z-10 overflow-y-auto">
+              <div className="p-6 flex-1 flex flex-col">
+                  <div className="bg-teal-100 p-4 rounded-xl border border-teal-200 mb-6 text-sm flex flex-col gap-2 shadow-sm text-teal-900">
+                    <p><span className="font-bold">Report ID:</span> #{selectedDpReport.id}</p>
+                    <p><span className="font-bold">Date:</span> {formatDate(selectedDpReport.productionDate)}</p>
+                    <p><span className="font-bold">DISA:</span> {selectedDpReport.disa}</p>
+                  </div>
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">Supervisor Signature</label>
+                  <div className="border-2 border-dashed border-gray-300 bg-white rounded-xl overflow-hidden mb-2 shadow-inner">
+                    <SignatureCanvas ref={dpSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-64 cursor-crosshair' }} />
+                  </div>
+                  <button onClick={() => dpSigCanvas.current.clear()} className="text-xs text-gray-500 hover:text-red-600 font-bold uppercase tracking-wider underline self-end mb-8">Clear Signature</button>
+                  <div className="mt-auto">
+                      <button onClick={submitDpSignature} className="w-full bg-teal-600 hover:bg-teal-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
+                        Approve & Sign
+                      </button>
+                  </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. BOTTOM LEVEL AUDIT MODAL */}
       {selectedBottomReport && (
         <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
           <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
@@ -918,7 +1042,7 @@ const Supervisor = () => {
         </div>
       )}
 
-      {/* 4. DMM SETTINGS MODAL */}
+      {/* 5. DMM SETTINGS MODAL */}
       {selectedDmmReport && (
         <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
           <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
@@ -955,7 +1079,7 @@ const Supervisor = () => {
         </div>
       )}
 
-      {/* 5. 4M CHANGE MODAL */}
+      {/* 6. 4M CHANGE MODAL */}
       {selectedFourMReport && (
         <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
           <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
@@ -993,7 +1117,7 @@ const Supervisor = () => {
         </div>
       )}
 
-      {/* 6. ERROR PROOF MODAL */}
+      {/* 7. ERROR PROOF MODAL */}
       {selectedErrorReport && (
         <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
           <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
@@ -1031,7 +1155,7 @@ const Supervisor = () => {
         </div>
       )}
 
-      {/* 7. MOULD QUALITY MODAL */}
+      {/* 8. MOULD QUALITY MODAL */}
       {selectedMQReport && (
         <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
           <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">

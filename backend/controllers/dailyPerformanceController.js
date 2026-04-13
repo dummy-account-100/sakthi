@@ -21,23 +21,23 @@ const safeStr = (val) => {
 //   SUBMIT DAILY PRODUCTION PERFORMANCE
 // ==========================================
 exports.createDailyPerformance = async (req, res) => {
-  const { productionDate, disa, summary, details, unplannedReasons, signatures, delays, operatorSignature } = req.body;
+  const { productionDate, disa, summary, details, unplannedReasons, signatures, delays } = req.body;
 
   try {
     const reportResult = await sql.query`
             INSERT INTO DailyPerformanceReport (productionDate, disa, unplannedReasons, incharge, hof, hod, operatorSignature)
             OUTPUT INSERTED.id
             VALUES (${safeStr(productionDate)}, ${safeStr(disa)}, ${safeStr(unplannedReasons)}, 
-                    ${safeStr(signatures?.incharge)}, ${safeStr(signatures?.hof)}, ${safeStr(signatures?.hod)}, ${safeStr(operatorSignature)})`;
+                    ${safeStr(signatures?.incharge)}, ${safeStr(signatures?.hof)}, ${safeStr(signatures?.hod)}, NULL)`;
 
     const reportId = reportResult.recordset[0].id;
 
     const shifts = ["I", "II", "III"];
-    for (let shift of shifts) {
-      const sData = summary[shift] || {};
+    for (let sh of shifts) {
+      const sData = summary[sh] || {};
       await sql.query`
                 INSERT INTO DailyPerformanceSummary (reportId, shiftName, pouredMoulds, tonnage, casted, shiftValue)
-                VALUES (${reportId}, ${shift}, ${safeNum(sData.pouredMoulds)},
+                VALUES (${reportId}, ${sh}, ${safeNum(sData.pouredMoulds)},
                         ${safeNum(sData.tonnage)}, ${safeNum(sData.casted)}, ${safeNum(sData.value)})`;
     }
 
@@ -65,8 +65,8 @@ exports.createDailyPerformance = async (req, res) => {
 
     res.status(201).json({ message: "Daily Performance Report saved successfully" });
   } catch (error) {
-    console.error("Error saving daily performance:", error);
-    res.status(500).json({ error: "Failed to save daily performance" });
+    console.error("SQL Error saving daily performance:", error);
+    res.status(500).json({ error: "Failed to save daily performance", details: error.message });
   }
 };
 
@@ -137,6 +137,38 @@ exports.getFormUsers = async (req, res) => {
   } catch (err) {
     console.error("Error fetching dropdown users:", err);
     res.status(500).json({ message: "DB Error fetching users" });
+  }
+};
+
+// ==========================================
+//   SUPERVISOR DASHBOARD - DAILY PERFORMANCE
+// ==========================================
+exports.getSupervisorReports = async (req, res) => {
+  try {
+    const { name } = req.params;
+    // 🔥 FIXED: We fetch 'operatorSignature' but rename it to 'supervisorSignature' so the frontend understands it safely!
+    const result = await sql.query`
+      SELECT id, productionDate, disa, operatorSignature AS supervisorSignature, incharge, hof, hod 
+      FROM DailyPerformanceReport 
+      WHERE incharge = ${name}
+      ORDER BY productionDate DESC, id DESC
+    `;
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("Supervisor Fetch Error:", err);
+    res.status(500).json({ error: "Failed to fetch Supervisor reports", details: err.message });
+  }
+};
+
+exports.signSupervisor = async (req, res) => {
+  try {
+    const { reportId, signature } = req.body;
+    // 🔥 FIXED: Saving the signature into the existing 'operatorSignature' column so SQL doesn't crash!
+    await sql.query`UPDATE DailyPerformanceReport SET operatorSignature = ${signature} WHERE id = ${reportId}`;
+    res.json({ message: "Supervisor signature saved successfully" });
+  } catch (err) {
+    console.error("Supervisor Sign Error:", err);
+    res.status(500).json({ error: "Failed to save Supervisor signature", details: err.message });
   }
 };
 
@@ -338,7 +370,6 @@ exports.downloadPDF = async (req, res) => {
   }
 
   try {
-    // 🔥 1. FETCH FULL QF VALUE HISTORY FOR PERFORMANCE REPORT 🔥
     let qfHistory = [];
     try {
       const qfRes = await sql.query`
@@ -429,8 +460,7 @@ exports.downloadPDF = async (req, res) => {
       const reportId = report.id;
       const reportDateStr = new Date(report.productionDate).toISOString().split('T')[0];
 
-      // 🔥 FIND CORRECT QF VALUE FOR THIS SPECIFIC PAGE DATE 🔥
-      let currentPageQfValue = "QF/07/FBP-15, Rev.No:01 dt 10.06.2019"; // System Default
+      let currentPageQfValue = "QF/07/FBP-15, Rev.No:01 dt 10.06.2019"; 
       const currentReportDate = new Date(report.productionDate);
       currentReportDate.setHours(0, 0, 0, 0); 
 
@@ -608,6 +638,7 @@ exports.downloadPDF = async (req, res) => {
 
       doc.rect(startX, currentY, tableWidth, 50).stroke();
 
+      // 🔥 FIXED: Rendering supervisorSignature using the old operatorSignature DB column mapping
       if (report.operatorSignature && report.operatorSignature.startsWith('data:image')) {
         try {
           const imgBuffer = Buffer.from(report.operatorSignature.split('base64,')[1], 'base64');
@@ -628,7 +659,7 @@ exports.downloadPDF = async (req, res) => {
       }
 
       doc.font('Helvetica-Bold').fontSize(9);
-      doc.text(`In-charge: ${report.incharge || "-"}`, startX + 20, currentY + 35);
+      doc.text(`Supervisor: ${report.incharge || "-"}`, startX + 20, currentY + 35);
       doc.text(`HOF: ${report.hof || "-"}`, startX + 220, currentY + 35);
       doc.text(`HOD - Production: ${report.hod || "-"}`, startX + 400, currentY + 35);
       currentY += 50;
@@ -637,104 +668,6 @@ exports.downloadPDF = async (req, res) => {
       checkPageBreak(20);
       doc.font('Helvetica').fontSize(8).fillColor('black');
       
-      // 🔥 PRINT DYNAMIC QF VALUE INSTEAD OF HARDCODED STRING 🔥
-      doc.text(currentPageQfValue, startX, currentY);
-
-      doc.addPage();
-      currentY = 30;
-
-      const groupedDelaysMap = {};
-      let totalI = 0, totalII = 0, totalIII = 0, totalDuration = 0;
-
-      delaysData.forEach(d => {
-        const reason = d.reason || "-";
-        const shift = d.shift;
-        const dur = Number(d.duration) || 0;
-
-        if (!groupedDelaysMap[reason]) {
-          groupedDelaysMap[reason] = { I: 0, II: 0, III: 0, total: 0 };
-        }
-        if (shift === "I") { groupedDelaysMap[reason].I += dur; totalI += dur; }
-        else if (shift === "II") { groupedDelaysMap[reason].II += dur; totalII += dur; }
-        else if (shift === "III") { groupedDelaysMap[reason].III += dur; totalIII += dur; }
-        
-        groupedDelaysMap[reason].total += dur;
-        totalDuration += dur;
-      });
-
-      const groupedDelaysArray = Object.keys(groupedDelaysMap).map(reason => ({
-        reason,
-        ...groupedDelaysMap[reason]
-      }));
-
-      const delayCols = [
-        { w: 35, l: 'S.No.' }, 
-        { w: 230, l: 'Reasons' }, 
-        { w: 60, l: 'Shift I' }, 
-        { w: 60, l: 'Shift II' }, 
-        { w: 60, l: 'Shift III' }, 
-        { w: 90, l: 'Total (Mins)' }
-      ];
-
-      const drawDelaysHeader = () => {
-        checkPageBreak(40);
-        doc.rect(startX, currentY, tableWidth, 20).fillAndStroke('#e5e7eb', 'black');
-        doc.fillColor('black').font('Helvetica-Bold').fontSize(10);
-        doc.text("Production delays / Remarks", startX, currentY + 6, { width: tableWidth, align: 'center' });
-        currentY += 20;
-
-        let x = startX;
-        delayCols.forEach(c => {
-          drawCell(c.l, x, currentY, c.w, 20, 'center', 'Helvetica', 9, true);
-          x += c.w;
-        });
-        currentY += 20;
-      };
-
-      drawDelaysHeader();
-
-      if (groupedDelaysArray.length === 0) {
-        doc.rect(startX, currentY, tableWidth, 20).stroke();
-        drawCell("-", startX, currentY, tableWidth, 20);
-        currentY += 20;
-      } else {
-        groupedDelaysArray.forEach((d, i) => {
-          let maxH = 20;
-          doc.fontSize(9);
-          let rsnH = doc.heightOfString(d.reason || "-", { width: delayCols[1].w - 4 });
-          if (rsnH + 10 > maxH) maxH = rsnH + 10;
-
-          if (checkPageBreak(maxH)) {
-            drawDelaysHeader();
-          }
-
-          let rX = startX;
-          drawCell(i + 1, rX, currentY, delayCols[0].w, maxH); rX += delayCols[0].w;
-          drawCell(d.reason || "-", rX, currentY, delayCols[1].w, maxH, 'left'); rX += delayCols[1].w;
-          drawCell(d.I > 0 ? d.I : "-", rX, currentY, delayCols[2].w, maxH); rX += delayCols[2].w;
-          drawCell(d.II > 0 ? d.II : "-", rX, currentY, delayCols[3].w, maxH); rX += delayCols[3].w;
-          drawCell(d.III > 0 ? d.III : "-", rX, currentY, delayCols[4].w, maxH); rX += delayCols[4].w;
-          drawCell(d.total > 0 ? d.total : "-", rX, currentY, delayCols[5].w, maxH, 'center', 'Helvetica-Bold', 9, true);
-          currentY += maxH;
-        });
-
-        if (checkPageBreak(20)) drawDelaysHeader();
-        let tX = startX;
-        doc.rect(tX, currentY, delayCols[0].w + delayCols[1].w, 20).stroke();
-        drawCell("TOTAL", tX, currentY, delayCols[0].w + delayCols[1].w, 20, 'center', 'Helvetica', 9, true);
-        tX += delayCols[0].w + delayCols[1].w;
-        drawCell(totalI > 0 ? totalI : "-", tX, currentY, delayCols[2].w, 20, 'center', 'Helvetica', 9, true); tX += delayCols[2].w;
-        drawCell(totalII > 0 ? totalII : "-", tX, currentY, delayCols[3].w, 20, 'center', 'Helvetica', 9, true); tX += delayCols[3].w;
-        drawCell(totalIII > 0 ? totalIII : "-", tX, currentY, delayCols[4].w, 20, 'center', 'Helvetica', 9, true); tX += delayCols[4].w;
-        drawCell(totalDuration > 0 ? totalDuration : "-", tX, currentY, delayCols[5].w, 20, 'center', 'Helvetica', 9, true);
-        currentY += 20;
-      }
-
-      currentY += 15;
-      checkPageBreak(20);
-      doc.font('Helvetica').fontSize(8).fillColor('black');
-      
-      // 🔥 PRINT DYNAMIC QF VALUE ON PAGE 2 INSTEAD OF HARDCODED STRING 🔥
       doc.text(currentPageQfValue, startX, currentY);
     }
 
