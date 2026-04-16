@@ -421,6 +421,8 @@ const DisamaticProductReport = () => {
     let prev = 0; 
     const newList = list.map((item, index) => {
       let startCount = 0;
+      
+      // Get the Closed Mould Count (Bigger Number)
       if (item.prevCount !== undefined && item.prevCount !== null && item.prevCount !== "") {
           startCount = Number(item.prevCount);
           prev = startCount;
@@ -431,12 +433,17 @@ const DisamaticProductReport = () => {
           startCount = prev;
       }
 
+      // If no Open Mould Counter is entered, just return hyphen
       if (item.mouldCounterNo === "-" || String(item.mouldCounterNo).trim() === "") {
           return { ...item, produced: "-" };
       }
       
+      // Get the Open Mould Counter (Smaller Number)
       let currentInput = Number(item.mouldCounterNo) || 0;
-      let produced = currentInput ? Math.max(0, currentInput - startCount) : 0;
+      
+      // 🔥 THE FIX: Subtract Open (currentInput) from Closed (startCount)
+      let produced = Math.max(0, startCount - currentInput);
+      
       prev = currentInput;
 
       return { 
