@@ -418,33 +418,24 @@ const DisamaticProductReport = () => {
   };
 
   const recalculateChain = (list) => {
-    let prev = 0; 
-    const newList = list.map((item, index) => {
-      let startCount = 0;
+    const newList = list.map((item) => {
       
-      // Get the Closed Mould Count (Bigger Number)
-      if (item.prevCount !== undefined && item.prevCount !== null && item.prevCount !== "") {
-          startCount = Number(item.prevCount);
-          prev = startCount;
-      } else if (index === 0) {
-          startCount = 0;
-          prev = startCount;
-      } else {
-          startCount = prev;
+      // 1. If Closed Mould Count is empty, don't calculate 'produced' yet
+      if (item.prevCount === undefined || item.prevCount === null || String(item.prevCount).trim() === "") {
+          return { ...item, produced: "-" };
       }
 
-      // If no Open Mould Counter is entered, just return hyphen
+      // 2. If Open Mould Counter is empty, don't calculate 'produced' yet
       if (item.mouldCounterNo === "-" || String(item.mouldCounterNo).trim() === "") {
           return { ...item, produced: "-" };
       }
       
-      // Get the Open Mould Counter (Smaller Number)
+      // Extract numbers safely
+      let startCount = Number(item.prevCount);
       let currentInput = Number(item.mouldCounterNo) || 0;
       
-      // 🔥 THE FIX: Subtract Open (currentInput) from Closed (startCount)
+      // Calculate: Closed (startCount) - Open (currentInput)
       let produced = Math.max(0, startCount - currentInput);
-      
-      prev = currentInput;
 
       return { 
         ...item, 
@@ -452,6 +443,7 @@ const DisamaticProductReport = () => {
         produced: isNaN(produced) ? "-" : produced 
       };
     });
+    
     setProductions(newList);
   };
 
@@ -638,7 +630,7 @@ const DisamaticProductReport = () => {
                           <label className="font-medium text-sm text-gray-700 block mb-1">Closed Mould Count</label>
                           <input 
                             type="text" 
-                            value={String(prod.prevCount ?? (index === 0 ? "" : (productions[index - 1].mouldCounterNo || "")))} 
+                            value={prod.prevCount !== undefined && prod.prevCount !== null ? String(prod.prevCount) : ""} 
                             onChange={(e) => updateProduction(index, "prevCount", e.target.value)}
                             className="w-full border border-gray-300 p-2 rounded focus:outline-orange-500 bg-white" 
                             placeholder="Edit start count"
