@@ -654,25 +654,26 @@ exports.downloadPDF = async (req, res) => {
 
       doc.rect(startX, currentY, tableWidth, 50).stroke();
 
-      // 🔥 FIXED: Rendering supervisorSignature using the old operatorSignature DB column mapping
-      if (report.operatorSignature && report.operatorSignature.startsWith('data:image')) {
-        try {
-          const imgBuffer = Buffer.from(report.operatorSignature.split('base64,')[1], 'base64');
-          doc.image(imgBuffer, startX + 20, currentY + 5, { fit: [100, 25] });
-        } catch (e) { }
-      }
-      if (report.hofSignature && report.hofSignature.startsWith('data:image')) {
-        try {
-          const imgBuffer = Buffer.from(report.hofSignature.split('base64,')[1], 'base64');
-          doc.image(imgBuffer, startX + 220, currentY + 5, { fit: [100, 25] });
-        } catch (e) { }
-      }
-      if (report.hodSignature && report.hodSignature.startsWith('data:image')) {
-        try {
-          const imgBuffer = Buffer.from(report.hodSignature.split('base64,')[1], 'base64');
-          doc.image(imgBuffer, startX + 400, currentY + 5, { fit: [100, 25] });
-        } catch (e) { }
-      }
+      const renderSig = (sigStr, xOffset) => {
+        if (sigStr === "Approved") {
+          doc.fillColor('#16a34a').font('ZapfDingbats').fontSize(14).text("4", xOffset, currentY + 15);
+          doc.fillColor('#16a34a').font('Helvetica-Bold').fontSize(11).text("APPROVED", xOffset + 15, currentY + 15);
+          doc.fillColor('black');
+        } else if (sigStr && sigStr.startsWith('data:image')) {
+          try {
+            const imgBuffer = Buffer.from(sigStr.split('base64,'), 'base64');
+            doc.image(imgBuffer, xOffset, currentY + 5, { fit: [100, 25]});
+          } catch (e) { }
+        } else {
+          doc.fillColor('#dc2626').font('Helvetica-Bold').fontSize(10).text("Pending", xOffset, currentY + 15);
+          doc.fillColor('black');
+        }
+      };
+
+      // operatorSignature maps to supervisor in the DB
+      renderSig(report.operatorSignature, startX + 20); 
+      renderSig(report.hofSignature, startX + 220);
+      renderSig(report.hodSignature, startX + 400);
 
       doc.font('Helvetica-Bold').fontSize(9);
       doc.text(`Supervisor: ${report.incharge || "-"}`, startX + 20, currentY + 35);

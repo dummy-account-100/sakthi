@@ -159,13 +159,15 @@ const Supervisor = () => {
   };
 
   const submitDisaSignature = async () => {
-    if (disaSigCanvas.current.isEmpty()) { toast.warning("Please provide a signature."); return; }
-    const signatureData = disaSigCanvas.current.getCanvas().toDataURL("image/png");
+    // Send "Approved" string instead of base64 image data
     try {
-      await axios.post(`${API_BASE}/forms/sign`, { reportId: selectedDisaReport.id, signature: signatureData });
-      toast.success("Disamatic Report signed successfully!");
-      setSelectedDisaReport(null); fetchDisaReports();
-    } catch (err) { toast.error("Failed to save signature."); }
+      await axios.post(`${API_BASE}/forms/sign`, { reportId: selectedDisaReport.id, signature: "Approved" });
+      toast.success("Disamatic Report approved successfully!");
+      setSelectedDisaReport(null); 
+      fetchDisaReports();
+    } catch (err) { 
+      toast.error("Failed to save approval."); 
+    }
   };
 
   // ==========================================
@@ -195,13 +197,12 @@ const Supervisor = () => {
   };
 
   const submitDpSignature = async () => {
-    if (dpSigCanvas.current.isEmpty()) { toast.warning("Please provide a signature."); return; }
-    const signatureData = dpSigCanvas.current.getCanvas().toDataURL("image/png");
     try {
-      await axios.post(`${API_BASE}/daily-performance/sign-supervisor`, { reportId: selectedDpReport.id, signature: signatureData }, { headers: getAuthHeader() });
-      toast.success("Daily Performance Report signed successfully!");
-      setSelectedDpReport(null); fetchDpReports();
-    } catch (err) { toast.error("Failed to save signature."); }
+      await axios.post(`${API_BASE}/daily-performance/sign-supervisor`, { reportId: selectedDpReport.id, signature: "Approved" }, { headers: getAuthHeader() });
+      toast.success("Daily Performance Report approved successfully!");
+      setSelectedDpReport(null); 
+      fetchDpReports();
+    } catch (err) { toast.error("Failed to save approval."); }
   };
 
   // ==========================================
@@ -952,14 +953,10 @@ const Supervisor = () => {
                     <p><span className="font-bold">Shift:</span> {selectedDisaReport.shift}</p>
                     <p><span className="font-bold">DISA:</span> {selectedDisaReport.disa}</p>
                   </div>
-                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">Supervisor Signature</label>
-                  <div className="border-2 border-dashed border-gray-300 bg-white rounded-xl overflow-hidden mb-2 shadow-inner">
-                    <SignatureCanvas ref={disaSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-64 cursor-crosshair' }} />
-                  </div>
-                  <button onClick={() => disaSigCanvas.current.clear()} className="text-xs text-gray-500 hover:text-red-600 font-bold uppercase tracking-wider underline self-end mb-8">Clear Signature</button>
+                  
                   <div className="mt-auto">
                       <button onClick={submitDisaSignature} className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
-                        Approve & Sign
+                        Approve Report
                       </button>
                   </div>
               </div>
@@ -989,14 +986,10 @@ const Supervisor = () => {
                     <p><span className="font-bold">Date:</span> {formatDate(selectedDpReport.productionDate)}</p>
                     <p><span className="font-bold">DISA:</span> {selectedDpReport.disa}</p>
                   </div>
-                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">Supervisor Signature</label>
-                  <div className="border-2 border-dashed border-gray-300 bg-white rounded-xl overflow-hidden mb-2 shadow-inner">
-                    <SignatureCanvas ref={dpSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-64 cursor-crosshair' }} />
-                  </div>
-                  <button onClick={() => dpSigCanvas.current.clear()} className="text-xs text-gray-500 hover:text-red-600 font-bold uppercase tracking-wider underline self-end mb-8">Clear Signature</button>
+                  
                   <div className="mt-auto">
                       <button onClick={submitDpSignature} className="w-full bg-teal-600 hover:bg-teal-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
-                        Approve & Sign
+                        Approve Report
                       </button>
                   </div>
               </div>

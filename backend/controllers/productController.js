@@ -948,7 +948,14 @@ exports.downloadAllReports = async (req, res) => {
       doc.font('Helvetica-Bold').fontSize(9).text(`Supervisor Name : ${g.supervisorName || "-"}`, startX + 330, currentY + 10);
       doc.text("Signature :", startX + 330, currentY + 30);
       
-      if (g.supervisorSignature && g.supervisorSignature.startsWith("data:image")) {
+      // 🔥 NEW: Check for "Approved" and render Green Tick Mark
+      if (g.supervisorSignature === "Approved") {
+        doc.fillColor('#16a34a').font('ZapfDingbats').fontSize(14).text("4", startX + 385, currentY + 30);
+        doc.fillColor('#16a34a').font('Helvetica-Bold').fontSize(11).text("APPROVED", startX + 400, currentY + 30);
+        doc.fillColor('black'); // Reset color back to black
+      } 
+      // Keep old logic just in case older reports have canvas drawings
+      else if (g.supervisorSignature && g.supervisorSignature.startsWith("data:image")) {
         try {
           doc.image(g.supervisorSignature, startX + 385, currentY + 15, { fit: [100, 30], align: 'left', valign: 'center' });
         } catch (imgErr) {

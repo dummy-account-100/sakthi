@@ -279,14 +279,12 @@ const Hod = () => {
   };
 
   const submitDailySignature = async () => {
-    if (dailySigCanvas.current.isEmpty()) { toast.warning("Please provide a signature first."); return; }
-    const signatureData = dailySigCanvas.current.getCanvas().toDataURL("image/png");
-
     try {
-      await axios.post(`${DAILY_API_BASE}/sign-hod`, { reportId: selectedDailyReport.id, signature: signatureData });
-      toast.success("Daily Performance Report signed!");
-      setSelectedDailyReport(null); fetchDailyReports(); 
-    } catch (err) { toast.error("Failed to save Daily Performance signature."); }
+      await axios.post(`${DAILY_API_BASE}/sign-hod`, { reportId: selectedDailyReport.id, signature: "Approved" });
+      toast.success("Daily Performance Report approved!");
+      setSelectedDailyReport(null); 
+      fetchDailyReports(); 
+    } catch (err) { toast.error("Failed to save Daily Performance approval."); }
   };
 
   return (
@@ -472,14 +470,10 @@ const Hod = () => {
                   <p><span className="font-bold">Date:</span> {formatDate(selectedDailyReport.productionDate)}</p>
                   <p><span className="font-bold">Machine:</span> DISA - {selectedDailyReport.disa}</p>
                 </div>
-                <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">HOF / HOD Signature</label>
-                <div className="border-2 border-dashed border-gray-300 bg-white rounded-xl overflow-hidden mb-2 shadow-inner">
-                  <SignatureCanvas ref={dailySigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-64 cursor-crosshair' }} />
-                </div>
-                <button onClick={() => dailySigCanvas.current.clear()} className="text-xs text-gray-500 hover:text-red-600 font-bold uppercase tracking-wider underline self-end mb-8">Clear Signature</button>
+                
                 <div className="mt-auto">
                   <button onClick={submitDailySignature} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
-                    Approve & Sign
+                    Approve Report
                   </button>
                 </div>
               </div>
