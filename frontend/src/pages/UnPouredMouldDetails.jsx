@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { CheckCircle, AlertTriangle, Save, Loader, FileDown, Send } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import SignatureCanvas from 'react-signature-canvas';
 import Header from '../components/Header';
 import logo from '../Assets/logo.png'; 
 
@@ -97,16 +96,16 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
   const [columns, setColumns] = useState([...baseColumns]);
   const [hofs, setHofs] = useState([]);
   const [shiftsData, setShiftsData] = useState({
-    1: { ...emptyShift, customValues: {}, operatorSignature: '' },
-    2: { ...emptyShift, customValues: {}, operatorSignature: '' },
-    3: { ...emptyShift, customValues: {}, operatorSignature: '' }
+    1: { ...emptyShift, customValues: {}, operatorSignature: 'Approved' },
+    2: { ...emptyShift, customValues: {}, operatorSignature: 'Approved' },
+    3: { ...emptyShift, customValues: {}, operatorSignature: 'Approved' }
   });
   const [unpouredSummary, setUnpouredSummary] = useState([]);
   const [qfHistory, setQfHistory] = useState([]); 
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState({ show: false, type: '', message: '' });
 
-  const sigRefs = { 1: useRef(null), 2: useRef(null), 3: useRef(null) };
+
 
   useEffect(() => {
     if (isAdminMode && adminDate && adminDisa) {
@@ -155,9 +154,9 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
       }));
 
       const loadedData = {
-        1: { ...emptyShift, customValues: {}, operatorSignature: '' },
-        2: { ...emptyShift, customValues: {}, operatorSignature: '' },
-        3: { ...emptyShift, customValues: {}, operatorSignature: '' }
+        1: { ...emptyShift, customValues: {}, operatorSignature: 'Approved' },
+        2: { ...emptyShift, customValues: {}, operatorSignature: 'Approved' },
+        3: { ...emptyShift, customValues: {}, operatorSignature: 'Approved' }
       };
 
       [1, 2, 3].forEach(shift => {
@@ -175,12 +174,6 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
             }
           });
           loadedData[shift].operatorSignature = dbShift.operatorSignature || '';
-
-          if (loadedData[shift].operatorSignature && sigRefs[shift].current) {
-            sigRefs[shift].current.fromDataURL(loadedData[shift].operatorSignature);
-          } else if (sigRefs[shift].current) {
-            sigRefs[shift].current.clear();
-          }
         } else {
           mergedColumns.forEach(col => {
             if (col.isCustom) {
@@ -190,7 +183,6 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
             }
           });
           loadedData[shift].operatorSignature = '';
-          if (sigRefs[shift].current) sigRefs[shift].current.clear();
         }
       });
       setShiftsData(loadedData);
@@ -223,12 +215,7 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
     });
   };
 
-  const clearSignature = (shift) => {
-    if (sigRefs[shift].current) {
-      sigRefs[shift].current.clear();
-      handleInputChange(shift, 'operatorSignature', '');
-    }
-  };
+
 
   const getRowTotal = (shift) => columns.reduce((sum, col) => {
     const val = col.isCustom ? shiftsData[shift]?.customValues?.[col.id] : shiftsData[shift]?.[col.key];
@@ -270,20 +257,12 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
         }
       });
 
-      const sigBase64 = (sigRefs[s].current && !sigRefs[s].current.isEmpty())
-        ? sigRefs[s].current.getCanvas().toDataURL('image/png') 
-        : (shiftData.operatorSignature || '');
-
-      if (sigBase64 && sigBase64.trim() !== '') {
-        shiftHasData = true;
-      }
-
       if (shiftHasData) {
         hasAnyData = true;
         payloadData[s] = { 
           ...shiftData, 
           rowTotal: getRowTotal(s), 
-          operatorSignature: sigBase64 
+          operatorSignature: 'Approved' 
         };
       }
     });
@@ -437,12 +416,42 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
           const x = xPositions[index];
           doc.text(shiftLabels[index], x, sigY + 20, { align: 'center' });
 
-          let sig = '';
-          if (sigRefs[shift].current && !sigRefs[shift].current.isEmpty()) sig = sigRefs[shift].current.getCanvas().toDataURL('image/png');
-          else if (shiftsData[shift].operatorSignature) sig = shiftsData[shift].operatorSignature;
-
-          if (sig && sig.startsWith('data:image')) {
+          const sig = shiftsData[shift].operatorSignature;
+          
+          if (sig === 'Approved') {
+            // Background box for Approved
+            doc.setFillColor(220, 255, 220); // Light green background
+            doc.rect(x - 20, sigY, 40, 15, 'F');
+        
+            // Draw tick mark separately using ZapfDingbats built-in PDF font
+            doc.setTextColor(0, 120, 0); // Dark green text
+            doc.setFontSize(14);
+            
+            // 🔥 FIX: MUST specify 'normal' because ZapfDingbats has no bold font!
+            doc.setFont('zapfdingbats', 'normal');
+            doc.text('3', x - 15, sigY + 10);   // '3' maps to a checkmark (✔) in ZapfDingbats
+        
+            // Draw APPROVED text
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'bold');
+            doc.text('APPROVED', x + 5, sigY + 10, { align: 'center' });
+        
+            // Reset colors & font
+            doc.setTextColor(0, 0, 0);
+            doc.setFont('helvetica', 'normal');
+            
+          } else if (sig && sig.startsWith('data:image')) {
               try { doc.addImage(sig, 'PNG', x - 20, sigY, 40, 15); } catch (e) { }
+          } else {
+             // Display Pending if not approved and no signature image
+             doc.setTextColor(220, 0, 0); // Red text
+             doc.setFontSize(10);
+             doc.setFont('helvetica', 'bold');
+             doc.text('Pending', x, sigY + 10, { align: 'center' });
+             
+             // Reset colors & font
+             doc.setTextColor(0, 0, 0);
+             doc.setFont('helvetica', 'normal');
           }
       });
 
@@ -629,24 +638,7 @@ const UnPouredMouldDetails = ({ isAdminMode = false, adminDate = null, adminDisa
             </table>
           </div>
 
-          <div className="px-6 pb-6">
-            <h3 className="text-gray-800 font-black uppercase tracking-widest text-sm mb-4 border-b-2 border-gray-200 pb-2">Operator Signatures</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[1, 2, 3].map((shift) => (
-                <div key={shift} className="flex flex-col bg-gray-50 rounded-xl p-4 border border-gray-300 shadow-sm relative group">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="font-bold text-gray-600 text-sm tracking-wider">SHIFT {shift}</span>
-                    <button onClick={() => clearSignature(shift)} className="text-xs text-red-500 hover:text-red-700 font-bold uppercase underline">Clear</button>
-                  </div>
-                  <div className="w-full h-24 relative overflow-hidden rounded bg-white border-2 border-dashed border-gray-300 shadow-inner">
-                    <SignatureCanvas ref={sigRefs[shift]} penColor="blue" canvasProps={{ className: 'absolute inset-0 w-full h-full cursor-crosshair' }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
 
-          <div className="w-full border-t border-dashed border-gray-300 my-4"></div>
 
           <div className="p-6">
             <div className="overflow-x-auto mb-8 shadow-sm rounded-lg border border-gray-300">
