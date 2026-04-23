@@ -209,9 +209,41 @@ export const generateUnPouredMouldPDF = async (data, dateRange) => {
                 const x = xPositions[index];
                 doc.text(shiftLabels[index], x, sigY + 20, { align: 'center' });
 
-                const sigData = shiftsData[shift]?.OperatorSignature;
-                if (sigData && sigData.startsWith('data:image')) {
-                    try { doc.addImage(sigData, 'PNG', x - 20, sigY, 40, 15); } catch (e) { }
+                // Handle both casing possibilities depending on API response
+                const sig = shiftsData[shift]?.OperatorSignature || shiftsData[shift]?.operatorSignature;
+                
+                if (sig === 'Approved') {
+                    // Background box for Approved
+                    doc.setFillColor(220, 255, 220); // Light green background
+                    doc.rect(x - 20, sigY, 40, 15, 'F');
+                
+                    // Draw tick mark separately using ZapfDingbats built-in PDF font
+                    doc.setTextColor(0, 120, 0); // Dark green text
+                    doc.setFontSize(14);
+                    doc.setFont('zapfdingbats', 'normal');
+                    doc.text('3', x - 15, sigY + 10);   // '3' maps to a checkmark (✔) in ZapfDingbats
+                
+                    // Draw APPROVED text
+                    doc.setFontSize(9);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('APPROVED', x + 5, sigY + 10, { align: 'center' });
+                
+                    // Reset colors & font
+                    doc.setTextColor(0, 0, 0);
+                    doc.setFont('helvetica', 'normal');
+                    
+                } else if (sig && sig.startsWith('data:image')) {
+                    try { doc.addImage(sig, 'PNG', x - 20, sigY, 40, 15); } catch (e) { }
+                } else {
+                    // Display Pending if not approved and no signature image
+                    doc.setTextColor(220, 0, 0); // Red text
+                    doc.setFontSize(10);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('Pending', x, sigY + 10, { align: 'center' });
+                    
+                    // Reset colors & font
+                    doc.setTextColor(0, 0, 0);
+                    doc.setFont('helvetica', 'normal');
                 }
             });
 
