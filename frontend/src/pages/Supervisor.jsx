@@ -92,7 +92,6 @@ const Supervisor = () => {
   const [mouldQualityReports, setMouldQualityReports] = useState([]);
   const [selectedMQReport, setSelectedMQReport] = useState(null);
   const [mqPdfUrl, setMqPdfUrl] = useState(null);
-  const mqSigCanvas = useRef({});
 
   useEffect(() => {
     fetchDisaReports();
@@ -643,14 +642,12 @@ const Supervisor = () => {
   };
 
   const submitMQSignature = async () => {
-    if (mqSigCanvas.current.isEmpty()) return toast.warning("Please provide a signature");
-    const signature = mqSigCanvas.current.getCanvas().toDataURL("image/png");
     try {
-      await axios.post(`${API_BASE}/mould-quality/sign-supervisor`, { reportId: selectedMQReport.id, signature });
-      toast.success("Signed successfully!");
+      await axios.post(`${API_BASE}/mould-quality/sign-supervisor`, { reportId: selectedMQReport.id, signature: "APPROVED" });
+      toast.success("Approved successfully!");
       setSelectedMQReport(null);
       fetchMouldQualityReports();
-    } catch (err) { toast.error("Failed to save signature"); }
+    } catch (err) { toast.error("Failed to save approval"); }
   };
 
   return (
@@ -1149,6 +1146,7 @@ const Supervisor = () => {
       )}
 
       {/* 8. MOULD QUALITY MODAL */}
+      {/* 8. MOULD QUALITY MODAL */}
       {selectedMQReport && (
         <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
           <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
@@ -1165,10 +1163,10 @@ const Supervisor = () => {
                 <p><span className="font-bold">Date:</span> {formatDate(selectedMQReport.reportDate)}</p>
                 <p><span className="font-bold">Operator:</span> {selectedMQReport.verifiedBy}</p>
               </div>
-              <label className="text-xs font-black text-gray-500 uppercase mb-2 block tracking-widest">Supervisor Signature</label>
-              <div className="border-2 border-dashed border-gray-300 bg-white rounded-xl mb-2 shadow-inner"><SignatureCanvas ref={mqSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-64 cursor-crosshair' }} /></div>
-              <button onClick={() => mqSigCanvas.current.clear()} className="text-xs text-red-500 hover:text-red-700 font-bold uppercase underline tracking-wider self-end mb-auto">Clear Signature</button>
-              <button onClick={submitMQSignature} className="mt-8 w-full bg-purple-600 hover:bg-purple-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">Approve & Sign</button>
+              
+              <button onClick={submitMQSignature} className="mt-auto w-full bg-purple-600 hover:bg-purple-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
+                Approve Report
+              </button>
             </div>
           </div>
         </div>

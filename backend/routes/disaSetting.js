@@ -121,7 +121,9 @@ router.post("/add", async (req, res) => {
         request.input('workCarriedOut', sql.NVarChar, workCarriedOut || '');
         request.input('preventiveWorkCarried', sql.NVarChar, preventiveWorkCarried || '');
         request.input('remarks', sql.NVarChar, remarks || '');
-        request.input('operatorSignature', sql.NVarChar, operatorSignature || '');
+        // Default to "APPROVED" if no physical signature image is passed
+        const sigToSave = (operatorSignature && String(operatorSignature).startsWith('data:image')) ? operatorSignature : 'APPROVED';
+        request.input('operatorSignature', sql.NVarChar, sigToSave);
 
         const insertResult = await request.query(`
             INSERT INTO DISASettingAdjustmentRecord (
@@ -462,16 +464,33 @@ router.get("/report", async (req, res) => {
             rowData.forEach((cell, i) => {
                 doc.rect(x, y, colWidths[i], maxRowHeight).stroke();
                 
-                if (i === 5 && cell && cell.startsWith("data:image")) {
-                    try {
-                        doc.image(cell, x + 5, y + 5, {
-                            fit: [colWidths[i] - 10, maxRowHeight - 10],
-                            align: 'center', valign: 'center'
-                        });
-                    } catch (imgErr) {
-                        doc.text("Invalid Sig", x + 5, y + 10, { width: colWidths[i] - 10, align: "center" });
+                if (i === 5) {
+                    if (cell === "APPROVED" || cell === "Approved") {
+                        // 🔥 Draw Green Checkmark + APPROVED Text
+                        const midY = y + (maxRowHeight / 2);
+                        doc.lineWidth(2).strokeColor('#008000');
+                        doc.moveTo(x + 10, midY - 2)
+                           .lineTo(x + 14, midY + 4)
+                           .lineTo(x + 22, midY - 6)
+                           .stroke();
+                        doc.font('Helvetica-Bold').fontSize(10).fillColor('#008000').text("APPROVED", x + 28, midY - 3);
+                        
+                        // Reset colors back to default for next cells
+                        doc.fillColor('black').strokeColor('black').lineWidth(1);
+                    } else if (cell && String(cell).startsWith("data:image")) {
+                        // Fallback for old records with base64 images
+                        try {
+                            doc.image(cell, x + 5, y + 5, {
+                                fit: [colWidths[i] - 10, maxRowHeight - 10],
+                                align: 'center', valign: 'center'
+                            });
+                        } catch (imgErr) {
+                            doc.text("Invalid Sig", x + 5, y + 10, { width: colWidths[i] - 10, align: "center" });
+                        }
+                    } else {
+                        doc.text(String(cell || ""), x + 3, y + 10, { width: colWidths[i] - 6, align: "center" });
                     }
-                } else if (i !== 5) {
+                } else {
                     doc.text(String(cell || ""), x + 3, y + 10, { width: colWidths[i] - 6, align: "center" });
                 }
                 x += colWidths[i];

@@ -1,9 +1,8 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import Header from "../components/Header";
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import SignatureCanvas from 'react-signature-canvas';
 
 const API_BASE = process.env.REACT_APP_API_URL && process.env.REACT_APP_API_URL !== "undefined" 
                  ? process.env.REACT_APP_API_URL 
@@ -34,8 +33,6 @@ const DISASettingAdjustment = () => {
 
   const [customColumns, setCustomColumns] = useState([]);
   const [customValues, setCustomValues] = useState({});
-
-  const sigCanvas = useRef({});
 
   useEffect(() => {
     axios
@@ -90,10 +87,6 @@ const DISASettingAdjustment = () => {
     }));
   };
 
-  const clearSignature = () => {
-    sigCanvas.current.clear();
-  };
-
   const handleSubmit = async () => {
     const missingWork = workCarriedOut.some(w => !w || String(w).trim() === "");
     const missingPrev = preventiveWorkCarried.some(p => !p || String(p).trim() === "");
@@ -102,11 +95,6 @@ const DISASettingAdjustment = () => {
 
     if (!mouldCountNo || missingWork || missingPrev || missingRemarks || missingCustom) {
       toast.warning("Please fill all input fields. Type '-' if empty.");
-      return;
-    }
-
-    if (sigCanvas.current.isEmpty()) {
-      toast.warning("Please provide an operator signature.");
       return;
     }
 
@@ -120,8 +108,6 @@ const DISASettingAdjustment = () => {
       .map((item) => `• ${item.trim()}`)
       .join("\n");
 
-    const signatureData = sigCanvas.current.getCanvas().toDataURL('image/png');
-
     try {
       await axios.post(`${API_BASE}/disa/add`, {
         recordDate,
@@ -130,7 +116,7 @@ const DISASettingAdjustment = () => {
         noOfMoulds,
         workCarriedOut: finalWorkCarriedOut,
         preventiveWorkCarried: finalPreventiveWork,
-        operatorSignature: signatureData,
+        operatorSignature: "APPROVED", // Invisible to user, but sent to backend for PDF generation
         remarks,
         customValues,
       });
@@ -143,7 +129,6 @@ const DISASettingAdjustment = () => {
       setPreventiveWorkCarried([""]);
       setRemarks("");
       setCustomValues({});
-      clearSignature();
 
     } catch (err) {
       console.error(err);
@@ -210,7 +195,6 @@ const DISASettingAdjustment = () => {
                     </th>
                   ))}
 
-                  <th className="border border-gray-300 p-2 w-48">Operator Signature</th>
                   <th className="border border-gray-300 p-2 w-40">Remarks</th>
                 </tr>
               </thead>
@@ -258,21 +242,6 @@ const DISASettingAdjustment = () => {
                       />
                     </td>
                   ))}
-
-                  <td className="border border-gray-300 p-2 align-top">
-                    <div className="flex flex-col items-center">
-                      <div className="border border-gray-300 bg-gray-50 rounded w-full mb-2">
-                        <SignatureCanvas
-                          ref={sigCanvas}
-                          penColor="blue"
-                          canvasProps={{ className: 'w-full h-24 rounded' }}
-                        />
-                      </div>
-                      <button onClick={clearSignature} className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1 px-3 rounded transition-colors w-full">
-                        Clear Signature
-                      </button>
-                    </div>
-                  </td>
 
                   <td className="border border-gray-300 p-2 align-top">
                     <textarea className="w-full border p-2 rounded focus:outline-blue-500 text-sm resize-y min-h-[40px] h-full placeholder-[10px] placeholder-gray-500" placeholder="Type '-' if empty" value={remarks} onChange={(e) => setRemarks(e.target.value)} />

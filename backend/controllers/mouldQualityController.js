@@ -3,7 +3,7 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
 
-// 🔥 Helper for backend PDF generation (Fixed for PDFKit)
+// 🔥 Helper for backend PDF generation
 const getDynamicQfString = (recordDate, qfHistory, defaultFallback) => {
     if (!qfHistory || qfHistory.length === 0) return defaultFallback;
     const targetDate = new Date(recordDate || new Date());
@@ -44,16 +44,19 @@ exports.getComponents = async (req, res) => {
 
 // --- SAVE REPORT ---
 exports.saveReport = async (req, res) => {
-  const { recordDate, disaMachine, verifiedBy, operatorSignature, approvedBy, rows } = req.body;
+  // Extract operatorSignature from req.body
+  const { recordDate, disaMachine, verifiedBy, approvedBy, operatorSignature, rows } = req.body;
   const transaction = new sql.Transaction();
   await transaction.begin();
 
   try {
     const headerReq = new sql.Request(transaction);
+    // Remove IsOperatorApproved, OperatorApprovedAt, IsSupervisorApproved
+    // Add operatorSignature, supervisorSignature
     const headerRes = await headerReq.query`
-      INSERT INTO MouldQualityReport (reportDate, disaMachine, verifiedBy, operatorSignature, approvedBy, status)
+      INSERT INTO MouldQualityReport (reportDate, disaMachine, verifiedBy, approvedBy, status, operatorSignature, supervisorSignature)
       OUTPUT INSERTED.id
-      VALUES (${recordDate}, ${disaMachine}, ${verifiedBy}, ${operatorSignature}, ${approvedBy}, 'Pending')
+      VALUES (${recordDate}, ${disaMachine}, ${verifiedBy}, ${approvedBy}, 'Pending', ${operatorSignature || 'APPROVED'}, NULL)
     `;
     const reportId = headerRes.recordset[0].id;
 
@@ -86,7 +89,7 @@ exports.getSupervisorReports = async (req, res) => {
   try {
     const { name } = req.params;
     const result = await sql.query`
-      SELECT id, reportDate, disaMachine, verifiedBy, status 
+      SELECT id, reportDate, disaMachine, verifiedBy, status, supervisorSignature 
       FROM MouldQualityReport 
       WHERE approvedBy = ${name} 
       ORDER BY reportDate DESC, id DESC
@@ -97,12 +100,14 @@ exports.getSupervisorReports = async (req, res) => {
   }
 };
 
+// --- SIGN SUPERVISOR ---
 exports.signSupervisor = async (req, res) => {
   try {
+    // Extract signature from req.body (Supervisor.jsx sends { reportId, signature: "APPROVED" })
     const { reportId, signature } = req.body;
     await sql.query`
       UPDATE MouldQualityReport 
-      SET supervisorSignature = ${signature}, status = 'Completed' 
+      SET supervisorSignature = ${signature || 'APPROVED'}, status = 'Completed' 
       WHERE id = ${reportId}
     `;
     res.json({ message: "Signed successfully" });
@@ -111,7 +116,7 @@ exports.signSupervisor = async (req, res) => {
   }
 };
 
-// --- PDF GENERATOR (WITH DYNAMIC QF AND PROPER PDFKIT SYNTAX) ---
+// --- PDF GENERATOR ---
 exports.generateReport = async (req, res) => {
   try {
     const { reportId, date, disaMachine } = req.query;
@@ -181,7 +186,6 @@ exports.generateReport = async (req, res) => {
 
     y += 55; 
 
-    // 🔥 Changed the third column (Part Name) from 80 to 140
     const colWidths = [25, 30, 140, 45, 35, 35, 35, 35, 35, 35, 35, 35, 35, 45, 30, 25, 25, 25, 25, 25, 25];
     
     const drawTableHeaders = (startY) => {
@@ -190,17 +194,15 @@ exports.generateReport = async (req, res) => {
         doc.rect(startX, cy, 25, 55).stroke(); doc.text("S.No", startX, cy + 25, { width: 25, align: "center" });
         doc.rect(startX + 25, cy, 30, 55).stroke(); doc.text("Shift", startX + 25, cy + 25, { width: 30, align: "center" });
         
-        // Enlarged Part Name (width 140)
         doc.rect(startX + 55, cy, 140, 55).stroke(); doc.text("Part Name", startX + 55, cy + 25, { width: 140, align: "center" }); 
         
-        // Shifted all subsequent columns +60 points to the right
         doc.rect(startX + 195, cy, 45, 55).stroke(); doc.text("Data\nCode", startX + 195, cy + 20, { width: 45, align: "center" });
         
         doc.rect(startX + 240, cy, 210, 15).stroke(); doc.text("First Moulding", startX + 240, cy + 5, { width: 210, align: "center" });
         doc.rect(startX + 450, cy, 330, 15).stroke(); doc.text("During Running", startX + 450, cy + 5, { width: 330, align: "center" });
 
         let cy2 = cy + 15;
-        let cx = startX + 240; // Shifted start for sub-headers
+        let cx = startX + 240; 
         doc.fontSize(6);
         
         const l2Single = [
@@ -227,7 +229,7 @@ exports.generateReport = async (req, res) => {
         });
 
         let cy3 = cy2 + 25; 
-        cx = startX + 630; // Shifted start for PP/SP columns
+        cx = startX + 630; 
         doc.fontSize(7);
         for(let i=0; i<3; i++) {
             doc.rect(cx, cy3, 25, 15).stroke(); doc.text("PP", cx, cy3 + 5, { width: 25, align: "center" }); cx += 25;
@@ -266,19 +268,50 @@ exports.generateReport = async (req, res) => {
     const sigY = rowY + 20;
     doc.font("Helvetica-Bold").fontSize(10);
     
+    // --- OPERATOR SIGNATURE UPDATE ---
     doc.text(`Verified By: ${header.verifiedBy || '-'}`, startX, sigY);
-    if (header.operatorSignature && header.operatorSignature.startsWith('data:image')) {
+    if (header.IsOperatorApproved === true || header.IsOperatorApproved === 1 || header.operatorSignature === "APPROVED") {
+        // Draw a clean green checkmark using lines
+        doc.lineWidth(2).strokeColor('#008000');
+        doc.moveTo(startX + 2, sigY + 22)
+           .lineTo(startX + 6, sigY + 26)
+           .lineTo(startX + 14, sigY + 14)
+           .stroke();
+           
+        // Render APPROVED text
+        doc.font('Helvetica-Bold').fontSize(12).fillColor('#008000').text("APPROVED", startX + 20, sigY + 16);
+        
+        // Reset to default
+        doc.fillColor('black'); 
+        doc.font('Helvetica-Bold').fontSize(10); 
+    } else if (header.operatorSignature && header.operatorSignature.startsWith('data:image')) {
         try { doc.image(Buffer.from(header.operatorSignature.split(',')[1], 'base64'), startX, sigY + 15, { fit: [100, 30] }); } catch(e){}
     }
 
-    // PDFKit syntax for getting the page width
-    doc.text(`Approved By: ${header.approvedBy || '-'}`, doc.page.width - 200, sigY);
+    // --- SUPERVISOR SIGNATURE UPDATE ---
+    const supX = doc.page.width - 200;
+    doc.text(`Approved By: ${header.approvedBy || '-'}`, supX, sigY);
     
-    if (header.supervisorSignature && header.supervisorSignature.startsWith('data:image')) {
-        try { doc.image(Buffer.from(header.supervisorSignature.split(',')[1], 'base64'), doc.page.width - 200, sigY + 15, { fit: [100, 30] }); } catch(e){}
+    if (header.IsSupervisorApproved === true || header.IsSupervisorApproved === 1 || header.supervisorSignature === "APPROVED") {
+        // Draw a clean green checkmark using lines
+        doc.lineWidth(2).strokeColor('#008000');
+        doc.moveTo(supX + 2, sigY + 22)
+           .lineTo(supX + 6, sigY + 26)
+           .lineTo(supX + 14, sigY + 14)
+           .stroke();
+           
+        // Render APPROVED text
+        doc.font('Helvetica-Bold').fontSize(12).fillColor('#008000').text("APPROVED", supX + 20, sigY + 16);
+        
+        // Reset to default
+        doc.fillColor('black');
+        doc.font('Helvetica-Bold').fontSize(10);
+    } else if (header.supervisorSignature && header.supervisorSignature.startsWith('data:image')) {
+        try { doc.image(Buffer.from(header.supervisorSignature.split(',')[1], 'base64'), supX, sigY + 15, { fit: [100, 30] }); } catch(e){}
     } else {
         doc.font('Helvetica').fontSize(10).fillColor('red');
-        doc.text("Pending", doc.page.width - 200, sigY + 15);
+        doc.text("Pending", supX, sigY + 15);
+        doc.fillColor('black');
     }
 
     // 🔥 DYNAMIC QF VALUE 🔥
@@ -359,7 +392,6 @@ exports.updateReport = async (req, res) => {
   }
 };
 
-// 🔥 UPDATED: RETURN QF HISTORY WITH BULK DATA FOR ADMIN EXPORT
 exports.getBulkData = async (req, res) => {
     const { fromDate, toDate } = req.query;
     try {

@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import Header from "../components/Header";
-import SignatureCanvas from "react-signature-canvas";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { FileDown, Send } from "lucide-react";
@@ -38,7 +37,6 @@ const getShiftInfo = () => {
 };
 
 // --- HELPER: VALIDATE COMMA-SEPARATED NUMBERS ---
-// Ignored if empty or just a hyphen. Fails if ANY number is below the minLimit.
 const validateMultipleNumbers = (valString, minLimit) => {
   if (!valString || valString === "-" || String(valString).trim() === "") return true; 
   
@@ -118,8 +116,6 @@ const MouldingQualityInspection = () => {
   const [components, setComponents] = useState([]); 
   const [verifiedBy, setVerifiedBy] = useState("");
   const [approvedBy, setApprovedBy] = useState("");
-
-  const opSigCanvas = useRef({});
 
   const getEmptyRow = (index, shiftVal = currentShift) => ({
     sNo: String(index), shift: shiftVal, partName: "", dataCode: "", fmSoftRamming: "",
@@ -208,13 +204,12 @@ const MouldingQualityInspection = () => {
     }
 
     if (!verifiedBy || !approvedBy) return toast.error("Operator and Supervisor names are required!");
-    if (opSigCanvas.current.isEmpty()) return toast.error("Operator Signature is required!");
 
     const payload = {
       recordDate: date,
       disaMachine,
       verifiedBy,
-      operatorSignature: opSigCanvas.current.getCanvas().toDataURL("image/png"),
+      operatorSignature: "APPROVED",
       approvedBy,
       rows
     };
@@ -230,7 +225,6 @@ const MouldingQualityInspection = () => {
 
   const inputStyle = "w-full h-16 bg-transparent outline-none text-center px-3 min-w-[90px] focus:bg-orange-100 placeholder:text-[10px] placeholder:text-gray-400 text-base font-bold text-gray-800";
 
-  // 🔥 UPDATED: Uses the comma-separated validation function instead of basic number checking
   const renderThresholdInput = (index, field, value, minVal) => {
     const isValid = validateMultipleNumbers(value, minVal);
 
@@ -293,7 +287,6 @@ const MouldingQualityInspection = () => {
             </div>
           </div>
 
-          {/* TABLE CONTAINER */}
           <div className="overflow-x-auto border-2 border-gray-300 rounded-xl mb-8 pb-32 relative">
             <table className="w-full text-center border-collapse">
               <thead className="bg-gray-100 uppercase text-[10px] tracking-wider text-gray-600 sticky top-0 z-10 shadow">
@@ -346,7 +339,6 @@ const MouldingQualityInspection = () => {
                     </td>
                     <td className="border border-gray-300 p-0 min-w-[120px]"><input className={inputStyle} placeholder="Type '-' if empty" value={row.dataCode} onChange={e => updateRow(index, 'dataCode', e.target.value)} /></td>
 
-                    {/* First Moulding */}
                     <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.fmSoftRamming} onChange={e => updateRow(index, 'fmSoftRamming', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.fmMouldBreakage} onChange={e => updateRow(index, 'fmMouldBreakage', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.fmMouldCrack} onChange={e => updateRow(index, 'fmMouldCrack', e.target.value)} /></td>
@@ -354,14 +346,12 @@ const MouldingQualityInspection = () => {
                     <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.fmPatternSticking} onChange={e => updateRow(index, 'fmPatternSticking', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.fmCoreSetting} onChange={e => updateRow(index, 'fmCoreSetting', e.target.value)} /></td>
 
-                    {/* During Running */}
                     <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.drMouldCrush} onChange={e => updateRow(index, 'drMouldCrush', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.drLooseSand} onChange={e => updateRow(index, 'drLooseSand', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.drPatternSticking} onChange={e => updateRow(index, 'drPatternSticking', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0 min-w-[140px]"><input className={inputStyle} placeholder="Type '-' if empty" value={row.drDateHeatCode} onChange={e => updateRow(index, 'drDateHeatCode', e.target.value)} /></td>
                     <td className="border border-gray-300 p-0"><input className={inputStyle} placeholder="Type '-' if empty" value={row.drFilterSize} onChange={e => updateRow(index, 'drFilterSize', e.target.value)} /></td>
 
-                    {/* Values with MIN thresholds using new logic */}
                     <td className="border border-gray-300 p-0 align-top">{renderThresholdInput(index, 'drSurfaceHardnessPP', row.drSurfaceHardnessPP, 85)}</td>
                     <td className="border border-gray-300 p-0 align-top">{renderThresholdInput(index, 'drSurfaceHardnessSP', row.drSurfaceHardnessSP, 85)}</td>
                     <td className="border border-gray-300 p-0 align-top">{renderThresholdInput(index, 'drInsideMouldPP', row.drInsideMouldPP, 20)}</td>
@@ -388,12 +378,6 @@ const MouldingQualityInspection = () => {
                 <option value="">Select Operator...</option>
                 {operatorList.map((o, i) => <option key={i} value={o.name}>{o.name}</option>)}
               </select>
-
-              <label className="font-black text-xs uppercase tracking-widest text-gray-500 mt-4">Operator Signature</label>
-              <div className="border-2 border-dashed border-gray-300 rounded h-24 relative overflow-hidden bg-white">
-                <SignatureCanvas ref={opSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-full cursor-crosshair' }} />
-              </div>
-              <button onClick={() => opSigCanvas.current.clear()} className="text-red-500 text-xs font-bold underline self-end">Clear Pad</button>
             </div>
 
             <div className="flex-1 flex flex-col gap-3">

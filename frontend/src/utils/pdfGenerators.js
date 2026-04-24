@@ -1097,7 +1097,7 @@ export const generateDisaSettingAdjustmentPDF = (data, dateRange) => {
     });
 
     const hasCustomCols = records[0] && records[0].customValues && Object.keys(records[0].customValues).length > 0;
-    const baseHeaders = ['S.No', 'Date', 'Mould Count No.', 'No. of\nMoulds', 'Work Carried Out', 'Preventive Work\nCarried', 'Operator\nSignature', 'Remarks'];
+    const baseHeaders = ['S.No', 'Date', 'Mould Count No.', 'No. of\nMoulds', 'Work Carried Out', 'Preventive Work\nCarried', 'Signature', 'Remarks'];
     const customHeaders = hasCustomCols ? Object.keys(records[0].customValues).map((_, i) => `Custom ${i + 1}`) : [];
     const allHeaders = [...baseHeaders, ...customHeaders];
 
@@ -1112,8 +1112,30 @@ export const generateDisaSettingAdjustmentPDF = (data, dateRange) => {
         columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { cellWidth: 20, halign: 'center' }, 2: { cellWidth: 25, halign: 'center' }, 3: { cellWidth: 20, halign: 'center' }, 4: { cellWidth: 'auto' }, 5: { cellWidth: 'auto' }, 6: { cellWidth: 25, halign: 'center', valign: 'middle' }, 7: { cellWidth: 30 } },
         didDrawCell: function (data) {
             if (data.section === 'body' && data.column.index === 6) {
-                const sigData = data.row.raw[6];
-                if (sigData && sigData.startsWith('data:image')) {
+                // 🔥 FIX: Added to correctly extract the signature string from the row array!
+                const sigData = data.row.raw[6]; 
+
+                if (sigData === "APPROVED" || sigData === "Approved") {
+                    const startX = data.cell.x + 2;
+                    const midY = data.cell.y + (data.cell.height / 2) + 1.5; // Baseline adjustment for vertical center
+                    
+                    // 1. Draw Tick Mark using ZapfDingbats
+                    doc.setTextColor(0, 120, 0); // Dark green
+                    doc.setFontSize(11);
+                    doc.setFont('zapfdingbats', 'normal');
+                    doc.text('3', startX, midY); // '3' is the checkmark in ZapfDingbats
+                    
+                    // 2. Draw APPROVED Text
+                    doc.setFontSize(6.5);
+                    doc.setFont("helvetica", "bold");
+                    doc.text("APPROVED", startX + 4.5, midY - 0.5);
+                    
+                    // 3. Reset colors & fonts so the rest of the table prints normally
+                    doc.setTextColor(0, 0, 0);
+                    doc.setFont('helvetica', 'normal');
+                    
+                } else if (sigData && String(sigData).startsWith('data:image')) {
+                    // Fallback for old records with physical signatures
                     try { doc.addImage(sigData, 'PNG', data.cell.x + 2, data.cell.y + 2, data.cell.width - 4, data.cell.height - 4); } catch (e) { }
                 }
             }
@@ -1384,18 +1406,54 @@ export const generateMouldQualityPDF = (data, dateRange) => {
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(0, 0, 0);
 
+        // --- OPERATOR SIGNATURE UPDATE ---
         doc.text(`Verified By: ${header.verifiedBy || '-'}`, startX, sigY);
-        if (header.operatorSignature && header.operatorSignature.startsWith('data:image')) {
+        
+        if (header.IsOperatorApproved === true || header.IsOperatorApproved === 1 || header.operatorSignature === "APPROVED") {
+            // Draw a clean green checkmark using jsPDF lines
+            doc.setLineWidth(1.5);
+            doc.setDrawColor(0, 128, 0); // Green color
+            doc.line(startX + 2, sigY + 10, startX + 6, sigY + 14); // Short downward leg
+            doc.line(startX + 6, sigY + 14, startX + 14, sigY + 2); // Long upward leg
+            
+            // Render APPROVED text
+            doc.setTextColor(0, 128, 0); // Green text
+            doc.setFontSize(12);
+            doc.text("APPROVED", startX + 20, sigY + 12);
+            
+            // Reset colors and font
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(10);
+        } else if (header.operatorSignature && header.operatorSignature.startsWith('data:image')) {
             try { doc.addImage(header.operatorSignature, 'PNG', startX, sigY + 5, 60, 20); } catch (e) { }
         }
 
-        doc.text(`Approved By: ${header.approvedBy || '-'}`, doc.internal.pageSize.getWidth() - 100, sigY);
-        if (header.supervisorSignature && header.supervisorSignature.startsWith('data:image')) {
-            try { doc.addImage(header.supervisorSignature, 'PNG', doc.internal.pageSize.getWidth() - 100, sigY + 5, 60, 20); } catch (e) { }
+        // --- SUPERVISOR SIGNATURE UPDATE ---
+        const supX = doc.internal.pageSize.getWidth() - 100;
+        doc.text(`Approved By: ${header.approvedBy || '-'}`, supX, sigY);
+        
+        if (header.IsSupervisorApproved === true || header.IsSupervisorApproved === 1 || header.supervisorSignature === "APPROVED") {
+            // Draw a clean green checkmark using jsPDF lines
+            doc.setLineWidth(1.5);
+            doc.setDrawColor(0, 128, 0); // Green color
+            doc.line(supX + 2, sigY + 10, supX + 6, sigY + 14); // Short downward leg
+            doc.line(supX + 6, sigY + 14, supX + 14, sigY + 2); // Long upward leg
+            
+            // Render APPROVED text
+            doc.setTextColor(0, 128, 0); // Green text
+            doc.setFontSize(12);
+            doc.text("APPROVED", supX + 20, sigY + 12);
+            
+            // Reset colors and font
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(10);
+        } else if (header.supervisorSignature && header.supervisorSignature.startsWith('data:image')) {
+            try { doc.addImage(header.supervisorSignature, 'PNG', supX, sigY + 5, 60, 20); } catch (e) { }
         } else {
             doc.setFont('helvetica', 'normal');
-            doc.setTextColor(0, 0, 0);
-            doc.text("Pending", doc.internal.pageSize.getWidth() - 100, sigY + 15);
+            doc.setTextColor(220, 0, 0); // Red text
+            doc.text("Pending", supX, sigY + 15);
+            doc.setTextColor(0, 0, 0); // Reset colors
         }
 
         // 🔥 DYNAMIC QF VALUE 🔥
