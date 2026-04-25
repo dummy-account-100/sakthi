@@ -95,19 +95,17 @@ const Hof = () => {
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const sigCanvas = useRef({});
   
-  // States for Error Proof Verification (V1)
-  const [errorReports, setErrorReports] = useState([]);
+const [errorReports, setErrorReports] = useState([]);
   const [selectedErrorReport, setSelectedErrorReport] = useState(null);
   const [errorPdfUrl, setErrorPdfUrl] = useState(null);
   const [isErrorPdfLoading, setIsErrorPdfLoading] = useState(false);
-  const errorSigCanvas = useRef({});
+  const [isErrorApproved, setIsErrorApproved] = useState(false);
 
-  // States for Error Proof Verification 2 (V2)
   const [errorReportsV2, setErrorReportsV2] = useState([]);
   const [selectedErrorReportV2, setSelectedErrorReportV2] = useState(null);
   const [errorPdfUrlV2, setErrorPdfUrlV2] = useState(null);
   const [isErrorPdfLoadingV2, setIsErrorPdfLoadingV2] = useState(false);
-  const errorSigCanvasV2 = useRef({});
+  const [isErrorV2Approved, setIsErrorV2Approved] = useState(false);
 
   // States for Daily Production Performance
   const [dailyReports, setDailyReports] = useState([]);
@@ -318,8 +316,11 @@ const Hof = () => {
     } catch (err) { toast.error("Failed to save signature."); }
   };
 
-  const handleOpenErrorModal = async (report) => {
-    setSelectedErrorReport(report); setErrorPdfUrl(null); setIsErrorPdfLoading(true);
+const handleOpenErrorModal = async (report) => {
+    setSelectedErrorReport(report); 
+    setErrorPdfUrl(null); 
+    setIsErrorApproved(false);
+    setIsErrorPdfLoading(true);
     try {
       const reportDateStr = new Date(report.reportDate).toISOString().split('T')[0];
       const response = await axios.get(`${ERR_API_BASE}/report`, { params: { line: report.disa, date: reportDateStr }, responseType: 'blob' });
@@ -330,12 +331,10 @@ const Hof = () => {
   };
 
   const submitErrorSignature = async () => {
-    if (errorSigCanvas.current.isEmpty()) { toast.warning("Please provide a signature first."); return; }
-    const signatureData = errorSigCanvas.current.getCanvas().toDataURL("image/png");
+    if (!isErrorApproved) { toast.warning("Please check the box to approve."); return; }
     const dateStr = new Date(selectedErrorReport.reportDate).toISOString().split('T')[0];
-
     try {
-      await axios.post(`${ERR_API_BASE}/sign-hof`, { date: dateStr, line: selectedErrorReport.disa, signature: signatureData });
+      await axios.post(`${ERR_API_BASE}/sign-hof`, { date: dateStr, line: selectedErrorReport.disa, signature: "Approved" });
       toast.success("Error Proof Report verified and signed!");
       setSelectedErrorReport(null); fetchErrorReports(); 
     } catch (err) { toast.error("Failed to save Error Proof signature."); }
@@ -344,6 +343,7 @@ const Hof = () => {
   const handleOpenErrorModalV2 = async (report) => {
     setSelectedErrorReportV2(report); 
     setErrorPdfUrlV2(null); 
+    setIsErrorV2Approved(false);
     setIsErrorPdfLoadingV2(true);
     
     try {
@@ -443,6 +443,17 @@ const Hof = () => {
       const opSigToDraw = transData.length > 0 ? transData[0].OperatorSignature : '';
       if (opSigToDraw && opSigToDraw.startsWith('data:image')) {
         doc.addImage(opSigToDraw, 'PNG', 21, finalY + 3, 38, 13);
+      } else if (opSigToDraw === "Approved" || opSigToDraw === "Submitted") {
+        // --- FIX 2 HERE ---
+        doc.setDrawColor(22, 163, 74);
+        doc.setLineWidth(0.8);
+        doc.line(22, finalY + 10, 24, finalY + 12);
+        doc.line(24, finalY + 12, 28, finalY + 6);
+
+        doc.setTextColor(22, 163, 74);
+        doc.setFont('helvetica', 'bold');
+        doc.text("APPROVED", 31, finalY + 11);
+        doc.setTextColor(0, 0, 0); doc.setDrawColor(0, 0, 0);
       }
 
       doc.text("Reviewed By HOF", 130, finalY);
@@ -450,6 +461,17 @@ const Hof = () => {
       const hofSigToDraw = report.hofSignature; 
       if (hofSigToDraw && hofSigToDraw.startsWith('data:image')) {
         doc.addImage(hofSigToDraw, 'PNG', 131, finalY + 3, 38, 13);
+      } else if (hofSigToDraw === "Approved") {
+        // --- FIX 3 HERE ---
+        doc.setDrawColor(22, 163, 74);
+        doc.setLineWidth(0.8);
+        doc.line(132, finalY + 10, 134, finalY + 12);
+        doc.line(134, finalY + 12, 138, finalY + 6);
+
+        doc.setTextColor(22, 163, 74);
+        doc.setFont('helvetica', 'bold');
+        doc.text("APPROVED", 141, finalY + 11);
+        doc.setTextColor(0, 0, 0); doc.setDrawColor(0, 0, 0);
       } else {
         doc.setFont('helvetica', 'normal');
         doc.text("Pending", 143, finalY + 10);
@@ -491,18 +513,33 @@ const Hof = () => {
           styles: { fontSize: 7, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle' },
           headStyles: { fillColor: [230, 230, 230], textColor: [0, 0, 0], fontStyle: 'bold' },
           columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 15 }, 2: { cellWidth: 35 }, 3: { cellWidth: 25 }, 4: { cellWidth: 30 } },
-
           didDrawCell: function (data) {
             if (data.section === 'body' && data.column.index === 9) {
               const sig = reactionPlans[data.row.index].SupervisorSignature;
               if (sig && sig.startsWith('data:image')) {
                 doc.addImage(sig, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2);
+              } else if (sig === "Approved") {
+                // --- FIX 4 HERE ---
+                const tx = data.cell.x + 2;
+                const ty = data.cell.y + 4;
+                doc.setDrawColor(22, 163, 74);
+                doc.setLineWidth(0.5);
+                doc.line(tx, ty, tx + 1.2, ty + 1.2);
+                doc.line(tx + 1.2, ty + 1.2, tx + 3.5, ty - 1.5);
+
+                doc.setTextColor(22, 163, 74);
+                doc.setFont('helvetica', 'bold');
+                doc.text("APPROVED", data.cell.x + 6, data.cell.y + 5);
+                doc.setTextColor(0, 0, 0); doc.setDrawColor(0, 0, 0);
               }
             }
           },
           didParseCell: function (data) {
-            if (data.section === 'body' && data.column.index === 9 && data.cell.text[0] && data.cell.text[0].startsWith('data:image')) {
-              data.cell.text = '';
+            if (data.section === 'body' && data.column.index === 9) {
+              const textVal = data.cell.text[0];
+              if (textVal && (textVal.startsWith('data:image') || textVal === "Approved")) {
+                data.cell.text = '';
+              }
             }
           }
         });
@@ -519,12 +556,10 @@ const Hof = () => {
   };
 
   const submitErrorSignatureV2 = async () => {
-    if (errorSigCanvasV2.current.isEmpty()) { toast.warning("Please provide a signature first."); return; }
-    const signatureData = errorSigCanvasV2.current.getCanvas().toDataURL("image/png");
+    if (!isErrorV2Approved) { toast.warning("Please check the box to approve."); return; }
     const dateStr = selectedErrorReportV2.reportDate;
-
     try {
-      await axios.post(`${ERR_API_BASE_V2}/sign-hof`, { date: dateStr, line: selectedErrorReportV2.disa, signature: signatureData });
+      await axios.post(`${ERR_API_BASE_V2}/sign-hof`, { date: dateStr, line: selectedErrorReportV2.disa, signature: "Approved" });
       toast.success("Error Proof V2 Report verified and signed!");
       setSelectedErrorReportV2(null); fetchErrorReportsV2(); 
     } catch (err) { toast.error("Failed to save Error Proof V2 signature."); }
@@ -892,7 +927,7 @@ const Hof = () => {
           )}
         </div>
 
-        {/* SECTION 2: ERROR PROOF VERIFICATION (V1) */}
+{/* SECTION 2: ERROR PROOF VERIFICATION (V1) */}
         <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl p-8 border-t-4 border-indigo-500">
           <div className="flex justify-between items-center mb-8 border-b pb-4">
             <h1 className="text-3xl font-bold text-gray-800">Error Proof Verification (Daily)</h1>
@@ -1087,7 +1122,7 @@ const Hof = () => {
         </div>
       )}
 
-      {/* 2. ERROR PROOF MODAL (V1) */}
+{/* 2. ERROR PROOF MODAL (V1) */}
       {selectedErrorReport && (
         <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
           <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
@@ -1107,14 +1142,19 @@ const Hof = () => {
                   <p><span className="font-bold">Date:</span> {formatDate(selectedErrorReport.reportDate)}</p>
                   <p><span className="font-bold">Machine:</span> {selectedErrorReport.disa}</p>
                 </div>
-                <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">HOF Signature</label>
-                <div className="border-2 border-dashed border-gray-300 bg-white rounded-xl overflow-hidden mb-2 shadow-inner">
-                  <SignatureCanvas ref={errorSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-64 cursor-crosshair' }} />
+                
+                <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">HOF Approval</label>
+                <div 
+                  className={`flex items-center gap-3 p-4 border-2 rounded-xl mb-6 shadow-inner cursor-pointer transition-colors ${isErrorApproved ? 'bg-indigo-50 border-indigo-400' : 'bg-white border-gray-300'}`} 
+                  onClick={() => setIsErrorApproved(!isErrorApproved)}
+                >
+                  <input type="checkbox" checked={isErrorApproved} readOnly className="w-6 h-6 accent-indigo-600 pointer-events-none" />
+                  <span className="font-bold text-gray-800 select-none">I approve this Error Proof report</span>
                 </div>
-                <button onClick={() => errorSigCanvas.current.clear()} className="text-xs text-gray-500 hover:text-red-600 font-bold uppercase tracking-wider underline self-end mb-8">Clear Signature</button>
+
                 <div className="mt-auto">
                   <button onClick={submitErrorSignature} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
-                    Approve & Sign
+                    Approve Report
                   </button>
                 </div>
               </div>
@@ -1143,14 +1183,19 @@ const Hof = () => {
                   <p><span className="font-bold">Date:</span> {formatDate(selectedErrorReportV2.reportDate)}</p>
                   <p><span className="font-bold">Machine:</span> {selectedErrorReportV2.disa}</p>
                 </div>
-                <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">HOF Signature</label>
-                <div className="border-2 border-dashed border-gray-300 bg-white rounded-xl overflow-hidden mb-2 shadow-inner">
-                  <SignatureCanvas ref={errorSigCanvasV2} penColor="blue" canvasProps={{ className: 'w-full h-64 cursor-crosshair' }} />
+                
+                <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">HOF Approval</label>
+                <div 
+                  className={`flex items-center gap-3 p-4 border-2 rounded-xl mb-6 shadow-inner cursor-pointer transition-colors ${isErrorV2Approved ? 'bg-purple-50 border-purple-400' : 'bg-white border-gray-300'}`} 
+                  onClick={() => setIsErrorV2Approved(!isErrorV2Approved)}
+                >
+                  <input type="checkbox" checked={isErrorV2Approved} readOnly className="w-6 h-6 accent-purple-600 pointer-events-none" />
+                  <span className="font-bold text-gray-800 select-none">I approve this Error Proof report</span>
                 </div>
-                <button onClick={() => errorSigCanvasV2.current.clear()} className="text-xs text-gray-500 hover:text-red-600 font-bold uppercase tracking-wider underline self-end mb-8">Clear Signature</button>
+
                 <div className="mt-auto">
                   <button onClick={submitErrorSignatureV2} className="w-full bg-purple-600 hover:bg-purple-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
-                    Approve & Sign
+                    Approve Report
                   </button>
                 </div>
               </div>

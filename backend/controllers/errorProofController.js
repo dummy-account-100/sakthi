@@ -22,7 +22,7 @@ exports.getDetails = async (req, res) => {
       mainRes = await sql.query`
         SELECT * FROM ErrorProofVerifications 
         WHERE DisaMachine = ${machine} AND FORMAT(RecordDate, 'yyyy-MM-dd') = ${date}
-        ORDER BY RecordDate DESC, Id DESC
+        ORDER BY RecordDate DESC, Id ASC
       `;
       reactionRes = await sql.query`
         SELECT rp.* FROM ReactionPlans rp
@@ -34,7 +34,7 @@ exports.getDetails = async (req, res) => {
       mainRes = await sql.query`
         SELECT * FROM ErrorProofVerifications 
         WHERE DisaMachine = ${machine}
-        ORDER BY RecordDate DESC, Id DESC
+        ORDER BY RecordDate DESC, Id ASC
       `;
       reactionRes = await sql.query`
         SELECT rp.* FROM ReactionPlans rp
@@ -173,7 +173,7 @@ exports.getSupervisorReports = async (req, res) => {
       FROM ReactionPlans rp
       INNER JOIN ErrorProofVerifications epv ON rp.VerificationId = epv.Id
       WHERE rp.ApprovedBy = ${name}
-      ORDER BY epv.RecordDate DESC
+      ORDER BY epv.RecordDate DESC, rp.SNo ASC
     `;
     res.json(result.recordset);
   } catch (err) {

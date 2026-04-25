@@ -857,14 +857,26 @@ export const generateErrorProofPDF = (data, dateRange) => {
                 doc.text("Verified By Moulding Incharge", 20, finalY);
                 doc.rect(20, finalY + 2, 40, 15);
                 const opSig = records.v.find(v => v.OperatorSignature)?.OperatorSignature;
-                if (opSig && opSig.startsWith('data:image')) {
+                if (opSig === "Approved" || opSig === "Submitted") {
+                    doc.setFont('zapfdingbats', 'normal'); doc.setFontSize(10); doc.setTextColor(0, 120, 0);
+                    doc.text('3', 23, finalY + 11);
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5);
+                    doc.text('APPROVED', 28, finalY + 10.5);
+                    doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'bold');
+                } else if (opSig && opSig.startsWith('data:image')) {
                     try { doc.addImage(opSig, 'PNG', 21, finalY + 3, 38, 13); } catch (e) { }
                 }
 
                 doc.text("Reviewed By HOF", 130, finalY);
                 doc.rect(130, finalY + 2, 40, 15);
                 const hofSig = records.v.find(v => v.HOFSignature)?.HOFSignature;
-                if (hofSig && hofSig.startsWith('data:image')) {
+                if (hofSig === "Approved") {
+                    doc.setFont('zapfdingbats', 'normal'); doc.setFontSize(10); doc.setTextColor(0, 120, 0);
+                    doc.text('3', 133, finalY + 11);
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5);
+                    doc.text('APPROVED', 138, finalY + 10.5);
+                    doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'bold');
+                } else if (hofSig && hofSig.startsWith('data:image')) {
                     try { doc.addImage(hofSig, 'PNG', 131, finalY + 3, 38, 13); } catch (e) { }
                 }
 
@@ -1000,33 +1012,41 @@ export const generateErrorProofPDF = (data, dateRange) => {
 
                 if (currentY + 30 > 210) { doc.addPage(); currentY = 20; }
 
-                autoTable(doc, {
-                    startY: currentY, margin: { left: 10, right: 10 }, head: [['REVIEWED BY (OP/HOF)', 'APPROVED BY (SUP)']],
-                    body: [['SIG1', 'SIG2']], theme: 'grid',
-                    styles: { fontSize: 10, cellPadding: 4, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', minCellHeight: 15 },
-                    headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-                    didDrawCell: function (data) {
-                        if (data.section === 'body') {
-                            const reviewedBy = records.v[0]?.ReviewedByHOF || records.v[0]?.HOFSignature || '';
-                            const approvedBy = records.v[0]?.ApprovedBy || records.v[0]?.OperatorSignature || '';
-                            if (data.column.index === 0 && reviewedBy.startsWith('data:image')) {
-                                try { doc.addImage(reviewedBy, 'PNG', data.cell.x + 2, data.cell.y + 2, 40, 10); } catch (e) { }
-                            }
-                            if (data.column.index === 1 && approvedBy.startsWith('data:image')) {
-                                try { doc.addImage(approvedBy, 'PNG', data.cell.x + 2, data.cell.y + 2, 40, 10); } catch (e) { }
-                            }
-                        }
-                    },
-                    didParseCell: function (data) {
-                        if (data.section === 'body' && (data.cell.raw === 'SIG1' || data.cell.raw === 'SIG2')) {
-                            const reviewedBy = records.v[0]?.ReviewedByHOF || records.v[0]?.HOFSignature || '';
-                            const approvedBy = records.v[0]?.ApprovedBy || records.v[0]?.OperatorSignature || '';
-                            const val = data.column.index === 0 ? reviewedBy : approvedBy;
-                            if (val && !val.startsWith('data:image')) data.cell.text = val;
-                            else data.cell.text = '';
-                        }
-                    }
-                });
+                // Render approval boxes matching operator dashboard layout
+                doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+
+                doc.text("Verified By Moulding Incharge", 20, currentY);
+                doc.rect(20, currentY + 2, 60, 15);
+                const opSigV1 = records.v[0]?.OperatorSignature || '';
+                if (opSigV1 === "Approved" || opSigV1 === "Submitted") {
+                    doc.setFont('zapfdingbats', 'normal'); doc.setFontSize(10); doc.setTextColor(0, 120, 0);
+                    doc.text('3', 23, currentY + 11);
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5);
+                    doc.text('APPROVED', 28, currentY + 10.5);
+                    doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'bold');
+                } else if (opSigV1 && opSigV1.startsWith('data:image')) {
+                    try { doc.addImage(opSigV1, 'PNG', 21, currentY + 3, 58, 13); } catch (e) { }
+                } else {
+                    doc.setFontSize(8); doc.text('Pending', 40, currentY + 10);
+                }
+
+                doc.setFontSize(8); doc.setFont('helvetica', 'bold');
+                doc.text("Reviewed By HOF", 150, currentY);
+                doc.rect(150, currentY + 2, 60, 15);
+                const hofSigV1 = records.v[0]?.HOFSignature || '';
+                if (hofSigV1 === "Approved") {
+                    doc.setFont('zapfdingbats', 'normal'); doc.setFontSize(10); doc.setTextColor(0, 120, 0);
+                    doc.text('3', 153, currentY + 11);
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5);
+                    doc.text('APPROVED', 158, currentY + 10.5);
+                    doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'bold');
+                } else if (hofSigV1 && hofSigV1.startsWith('data:image')) {
+                    try { doc.addImage(hofSigV1, 'PNG', 151, currentY + 3, 58, 13); } catch (e) { }
+                } else {
+                    doc.setFontSize(8); doc.text('Pending', 170, currentY + 10);
+                }
+
+                currentY += 22;
 
                 doc.setFontSize(8); doc.setFont('helvetica', 'normal');
                 doc.text(currentPageQfValue, 10, 200);

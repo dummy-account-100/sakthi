@@ -65,7 +65,7 @@ router.get("/supervisor/:name", async (req, res) => {
   try {
     const { name } = req.params;
     const result = await sql.query`
-        SELECT 
+        SELECT DISTINCT
           r.sNo as VerificationId, 
           r.errorProofName as ErrorProofName, 
           r.status as Status, 
@@ -188,7 +188,6 @@ router.get("/report", async (req, res) => {
     }
 
     const marginOptions = { top: 30, bottom: 20, left: 30, right: 30 };
-    // Initialize standard A4 landscape for the first section
     const doc = new PDFDocument({ margins: marginOptions, size: "A4", layout: "landscape", bufferPages: true, autoPageBreak: false });
 
     res.setHeader("Content-Type", "application/pdf");
@@ -227,7 +226,7 @@ router.get("/report", async (req, res) => {
     // 🔥 DYNAMIC HEADER LOGIC (Adapts to A4 or A3)
     // =========================================================
     const draw3BoxHeader = (y, mainTitle) => {
-      const currentWidth = doc.page.width - (startX * 2); // Dynamically fetched
+      const currentWidth = doc.page.width - (startX * 2);
       const logoBoxWidth = 100;
       const metaBoxWidth = 150;
       const titleBoxWidth = currentWidth - logoBoxWidth - metaBoxWidth;
@@ -380,32 +379,73 @@ router.get("/report", async (req, res) => {
       if (sigY + 80 > doc.page.height - 40) { doc.addPage({ size: 'A4', layout: "landscape", margin: 30 }); y = 30; }
 
       doc.font("Helvetica-Bold").fontSize(10).fillColor('black');
+      
+      // Operator Verification Box
       doc.text("Verified By Moulding Incharge", startX, sigY);
       doc.rect(startX, sigY + 8, 180, 45).stroke();
 
+      // HOF Verification Box
       doc.text("Reviewed By HOF", startX + 350, sigY);
       doc.rect(startX + 350, sigY + 8, 180, 45).stroke();
 
       const latestRecordWithOpSig = filteredRecords.find(r => r.OperatorSignature);
       const latestRecordWithHofSig = filteredRecords.find(r => r.HOFSignature);
 
-      if (latestRecordWithOpSig && latestRecordWithOpSig.OperatorSignature.includes('base64,')) {
+      // 🔥 Operator PDF Approval Rendering
+      const opSig = latestRecordWithOpSig ? latestRecordWithOpSig.OperatorSignature : null;
+      if (opSig === "Approved" || opSig === "Submitted") {
+        // Draw a bulletproof vector tick mark
+        doc.lineWidth(2).strokeColor('#16a34a')
+           .moveTo(startX + 35, sigY + 38)
+           .lineTo(startX + 39, sigY + 43)
+           .lineTo(startX + 47, sigY + 31)
+           .stroke();
+        
+        // Print the text next to it
+        doc.fillColor('#16a34a').font('Helvetica-Bold').fontSize(11).text("APPROVED", startX + 53, sigY + 35);
+        doc.fillColor('black').strokeColor('black'); // Reset colors back to black
+      }
+      // Fallback for older canvas base64 signatures
+      else if (opSig && opSig.startsWith("data:image")) {
         try {
-          const imgBuffer = Buffer.from(latestRecordWithOpSig.OperatorSignature.split('base64,')[1], 'base64');
-          doc.image(imgBuffer, startX + 5, sigY + 12, { fit: [170, 37] });
-        } catch (e) { }
+          const imgBuffer = Buffer.from(opSig.split('base64,')[1], 'base64');
+          doc.image(imgBuffer, startX + 35, sigY + 15, { fit: [100, 30], align: 'left', valign: 'center' });
+        } catch (imgErr) {
+          doc.text("Signed", startX + 60, sigY + 35);
+        }
+      } else {
+        doc.text("Pending", startX + 60, sigY + 35);
       }
 
-      if (latestRecordWithHofSig && latestRecordWithHofSig.HOFSignature.includes('base64,')) {
+      // 🔥 HOF PDF Approval Rendering (FULLY FIXED WITH VECTOR TICK)
+      const hofSig = latestRecordWithHofSig ? latestRecordWithHofSig.HOFSignature : null;
+      if (hofSig === "Approved") {
+        // Draw a bulletproof vector tick mark
+        doc.lineWidth(2).strokeColor('#16a34a')
+           .moveTo(startX + 385, sigY + 38)
+           .lineTo(startX + 389, sigY + 43)
+           .lineTo(startX + 397, sigY + 31)
+           .stroke();
+
+        // Print the text next to it
+        doc.fillColor('#16a34a').font('Helvetica-Bold').fontSize(11).text("APPROVED", startX + 403, sigY + 35);
+        doc.fillColor('black').strokeColor('black'); // Reset colors back to black
+      } 
+      // Fallback for older canvas base64 signatures
+      else if (hofSig && hofSig.startsWith("data:image")) {
         try {
-          const imgBuffer = Buffer.from(latestRecordWithHofSig.HOFSignature.split('base64,')[1], 'base64');
-          doc.image(imgBuffer, startX + 355, sigY + 12, { fit: [170, 37] });
-        } catch(e) {}
+          const imgBuffer = Buffer.from(hofSig.split('base64,')[1], 'base64');
+          doc.image(imgBuffer, startX + 385, sigY + 15, { fit: [100, 30], align: 'left', valign: 'center' });
+        } catch (imgErr) {
+          doc.text("Signed", startX + 410, sigY + 35);
+        }
+      } else {
+        doc.text("Pending", startX + 410, sigY + 35);
       }
     });
 
     // =========================================================
-    // PART B: REACTION PLAN TABLE (🔥 LARGER A3 PAGE FOR PERFECT FIT)
+    // PART B: REACTION PLAN TABLE (A3 PAGE)
     // =========================================================
     const notOkProofNames = new Set(
       filteredRecords
@@ -417,14 +457,11 @@ router.get("/report", async (req, res) => {
     );
 
     if (filteredReactions.length > 0) {
-      // 🔥 CRITICAL FIX: Upgrading to A3 Size (1190.55 width) for Reaction Plan to provide massive room
       doc.addPage({ size: 'A3', layout: "landscape", margin: 30 });
 
       const currentA3Width = doc.page.width - 60; 
 
-      // 🔥 Percentages that map beautifully to 1130.55 points
-      // Array mapped to: [S.No, EpNo, Name, Date, Prob, Root, Corrective, Status, RevBy, AppBy, Remarks]
-      const rColWeights = [3, 4, 12, 6, 14, 14, 15, 6, 8, 8, 10]; // Sums to 100
+      const rColWeights = [3, 4, 12, 6, 14, 14, 15, 6, 8, 8, 10]; 
       const rColWidths = rColWeights.map(weight => (weight / 100) * currentA3Width);
 
       const drawReactionHeaders = (ry) => {
@@ -450,17 +487,14 @@ router.get("/report", async (req, res) => {
         const dDate = new Date(rRow.recordDate);
         const dateStr = !isNaN(dDate) ? `${String(dDate.getDate()).padStart(2, '0')}/${String(dDate.getMonth() + 1).padStart(2, '0')}/${dDate.getFullYear()}` : "";
 
-        // 🔥 CRITICAL FIX: Use current font explicitly before calculating height 🔥
         const hName = doc.heightOfString(rRow.errorProofName || "-", { width: rColWidths[2] - 8, align: "center" });
         const hProb = doc.heightOfString(rRow.problem || "-", { width: rColWidths[4] - 8, align: "center" });
         const hRoot = doc.heightOfString(rRow.rootCause || "-", { width: rColWidths[5] - 8, align: "center" });
         const hCorr = doc.heightOfString(rRow.correctiveAction || "-", { width: rColWidths[6] - 8, align: "center" });
         const hRem = doc.heightOfString(rRow.remarks || "-", { width: rColWidths[10] - 8, align: "center" });
 
-        // Row height matches the tallest paragraph with 20px padding
         let rRowHeight = Math.max(40, hName + 20, hProb + 20, hRoot + 20, hCorr + 20, hRem + 20);
 
-        // Safe pagination checking dynamic page height
         if (ry + rRowHeight > doc.page.height - 40) {
           doc.addPage({ size: 'A3', layout: "landscape", margin: 30 });
           ry = drawReactionHeaders(30);
@@ -481,7 +515,6 @@ router.get("/report", async (req, res) => {
               doc.image(imgBuffer, currX + 2, ry + 2, { fit: [rColWidths[i] - 4, rRowHeight - 4] });
             } catch (e) { }
           } else {
-            // Push text to the top for larger columns
             const alignTop = [2, 4, 5, 6, 10].includes(i);
             const textY = alignTop ? ry + 5 : ry + (rRowHeight / 2) - 4;
 
@@ -489,11 +522,23 @@ router.get("/report", async (req, res) => {
               if (String(cellText).toLowerCase() === 'completed') { doc.fillColor('green').font("Helvetica-Bold"); }
               else if (String(cellText).toLowerCase() === 'pending') { doc.fillColor('red').font("Helvetica-Bold"); }
               else { doc.fillColor('black').font("Helvetica"); }
+              doc.text(String(cellText || "-"), currX + 4, textY, { width: rColWidths[i] - 8, align: "center" });
+            } else if ((i === 8 || i === 9) && (String(cellText) === "Approved" || String(cellText) === "Submitted")) {
+              
+              // 🔥 REACTION PLAN PDF APPROVAL RENDERING (FULLY FIXED WITH VECTOR TICK)
+              doc.lineWidth(1.5).strokeColor('#16a34a')
+                 .moveTo(currX + 4, textY + 4)
+                 .lineTo(currX + 7, textY + 8)
+                 .lineTo(currX + 13, textY + 1)
+                 .stroke();
+                 
+              doc.fillColor('#16a34a').font("Helvetica-Bold").fontSize(9).text("APPROVED", currX + 18, textY, { width: rColWidths[i] - 22, align: "left" });
+              doc.fillColor('black').font("Helvetica").strokeColor('black'); // Reset colors back to black
+            
             } else {
               doc.fillColor('black').font("Helvetica");
+              doc.text(String(cellText || "-"), currX + 4, textY, { width: rColWidths[i] - 8, align: "center" });
             }
-
-            doc.text(String(cellText || "-"), currX + 4, textY, { width: rColWidths[i] - 8, align: "center" });
             doc.fillColor('black').font("Helvetica");
           }
           currX += rColWidths[i];
@@ -507,7 +552,6 @@ router.get("/report", async (req, res) => {
     for (let i = range.start; i < (range.start + range.count); i++) {
       doc.switchToPage(i);
       doc.font("Helvetica-Bold").fontSize(9).fillColor('black');
-      // Render text at the bottom dynamically based on the current page's height
       doc.text(currentPageQfValue, 30, doc.page.height - 35, { align: "left", lineBreak: false });
     }
 

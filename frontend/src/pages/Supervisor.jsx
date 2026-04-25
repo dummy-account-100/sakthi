@@ -5,7 +5,7 @@ import Header from "../components/Header";
 import SignatureCanvas from "react-signature-canvas";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { Loader, X } from "lucide-react"; 
+import { Loader, X, CheckCircle } from "lucide-react"; 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import logo from '../Assets/logo.png'; 
@@ -86,7 +86,7 @@ const Supervisor = () => {
   const [selectedErrorReport, setSelectedErrorReport] = useState(null);
   const [errorPdfUrl, setErrorPdfUrl] = useState(null);
   const [isErrorPdfLoading, setIsErrorPdfLoading] = useState(false);
-  const errorSigCanvas = useRef({});
+  const [isErrorApproved, setIsErrorApproved] = useState(false);
 
   // --- States for Moulding Quality ---
   const [mouldQualityReports, setMouldQualityReports] = useState([]);
@@ -101,6 +101,7 @@ const Supervisor = () => {
     fetchDmmReports();
     fetchFourMReports();
     fetchErrorReports(); 
+    fetchError2Reports();
     fetchMouldQualityReports();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -576,8 +577,23 @@ const Supervisor = () => {
   const fetchErrorReports = async () => {
     try {
       const res = await axios.get(`${API_BASE}/error-proof/supervisor/${currentSupervisor}`);
-      setErrorReports(res.data);
+      const v1Data = (res.data || []).map(r => ({ ...r, _source: 'v1' }));
+      setErrorReports(prev => {
+        const v2Only = prev.filter(r => r._source === 'v2');
+        return [...v1Data, ...v2Only];
+      });
     } catch (err) { toast.error("Failed to load Error Proof plans."); }
+  };
+
+  const fetchError2Reports = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/error-proof2/supervisor/${currentSupervisor}`);
+      const v2Data = (res.data || []).map(r => ({ ...r, _source: 'v2' }));
+      setErrorReports(prev => {
+        const v1Only = prev.filter(r => r._source === 'v1');
+        return [...v1Only, ...v2Data];
+      });
+    } catch (err) { console.error("Failed to load Error Proof V2 plans."); }
   };
 
   const handleOpenErrorModal = async (report) => {
@@ -590,7 +606,8 @@ const Supervisor = () => {
       const offset = localDate.getTimezoneOffset();
       const dateStr = new Date(localDate.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
 
-      const response = await axios.get(`${API_BASE}/error-proof/report`, { 
+      const reportEndpoint = report._source === 'v2' ? `${API_BASE}/error-proof2/report` : `${API_BASE}/error-proof/report`;
+      const response = await axios.get(reportEndpoint, { 
           params: { line, date: dateStr }, 
           responseType: 'blob',
           headers: getAuthHeader()
@@ -604,17 +621,22 @@ const Supervisor = () => {
   };
 
   const submitErrorSignature = async () => {
-    if (errorSigCanvas.current.isEmpty()) { toast.warning("Please provide your signature."); return; }
-    const signatureData = errorSigCanvas.current.getCanvas().toDataURL("image/png");
+    if (!isErrorApproved) { toast.warning("Please check the box to approve."); return; }
     try {
-      const id = selectedErrorReport.reportId || selectedErrorReport.VerificationId || selectedErrorReport.Id || selectedErrorReport.sNo;
-      await axios.post(`${API_BASE}/error-proof/sign-supervisor`, { 
+      const isV2 = selectedErrorReport._source === 'v2';
+      const id = isV2 
+        ? (selectedErrorReport.ReactionPlanId || selectedErrorReport.Id)
+        : (selectedErrorReport.reportId || selectedErrorReport.VerificationId || selectedErrorReport.Id || selectedErrorReport.sNo);
+      const signEndpoint = isV2 ? `${API_BASE}/error-proof2/sign-supervisor` : `${API_BASE}/error-proof/sign-supervisor`;
+      await axios.post(signEndpoint, { 
         reactionPlanId: id, 
-        signature: signatureData 
+        signature: "Approved" 
       });
       toast.success("Reaction Plan Approved!");
-      setSelectedErrorReport(null); fetchErrorReports();
-    } catch (err) { toast.error("Failed to save signature."); }
+      setSelectedErrorReport(null); setIsErrorApproved(false); 
+      fetchErrorReports(); 
+      fetchError2Reports();
+    } catch (err) { toast.error("Failed to save approval."); }
   };
 
   // ==========================================
@@ -831,7 +853,7 @@ const Supervisor = () => {
           )}
         </div>
 
-        {/* SECTION 6: 4M CHANGE MONITORING */}
+       {/* SECTION 6: 4M CHANGE MONITORING */}
         <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-2xl p-8 border-t-4 border-green-500">
           <div className="flex justify-between items-center mb-6 border-b pb-4"><h1 className="text-2xl font-bold text-gray-800">4M Change Monitoring</h1></div>
           {fourMReports.length === 0 ? <p className="text-gray-500 italic">No 4M Change forms pending your signature.</p> : (
@@ -867,17 +889,18 @@ const Supervisor = () => {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse border border-gray-300">
                 <thead className="bg-gray-800 text-white">
-                  <tr><th className="p-3 border border-gray-300 w-20 text-center">ID</th><th className="p-3 border border-gray-300">Date/Shift</th><th className="p-3 border border-gray-300">Machine</th><th className="p-3 border border-gray-300">Error Proof</th><th className="p-3 border border-gray-300">Status</th><th className="p-3 border border-gray-300 text-center">Action</th></tr>
+                  <tr><th className="p-3 border border-gray-300 w-20 text-center">ID</th><th className="p-3 border border-gray-300">Date/Shift</th><th className="p-3 border border-gray-300">Machine</th><th className="p-3 border border-gray-300">Error Proof</th><th className="p-3 border border-gray-300 w-20 text-center">Source</th><th className="p-3 border border-gray-300">Status</th><th className="p-3 border border-gray-300 text-center">Action</th></tr>
                 </thead>
                 <tbody>
                   {errorReports.map((report, idx) => {
                     const status = report.Status || report.status;
                     return (
                       <tr key={idx} className="hover:bg-yellow-50">
-                        <td className="p-3 border border-gray-300 text-center font-bold text-gray-400">#{report.reportId || report.VerificationId}</td>
-                        <td className="p-3 border border-gray-300 font-bold">{report.shift || formatDate(report.recordDate)}</td>
+                        <td className="p-3 border border-gray-300 text-center font-bold text-gray-400">#{report.ReactionPlanId || report.reportId || report.VerificationId}</td>
+                        <td className="p-3 border border-gray-300 font-bold">{report.VerificationDateShift || report.shift || formatDate(report.recordDate || report.RecordDate)}</td>
                         <td className="p-3 border border-gray-300 font-bold">{report.DisaMachine || report.disaMachine || report.line}</td>
                         <td className="p-3 border border-gray-300">{report.ErrorProofName || report.errorProofName}</td>
+                        <td className="p-3 border border-gray-300 text-center">{report._source === 'v2' ? <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-[10px] font-bold">V2</span> : <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-[10px] font-bold">V1</span>}</td>
                         <td className="p-3 border border-gray-300">{status === 'Completed' ? <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">✓ Completed</span> : <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">Pending</span>}</td>
                         <td className="p-3 border border-gray-300 text-center">
                           {status !== 'Completed' && (
@@ -1101,13 +1124,12 @@ const Supervisor = () => {
           </div>
         </div>
       )}
-
       {/* 7. ERROR PROOF MODAL */}
       {selectedErrorReport && (
         <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">
           <div className="bg-gray-900 text-white px-6 py-4 flex justify-between items-center shrink-0 shadow-md z-10">
             <h3 className="font-bold text-xl uppercase tracking-wider">Review & Approve Reaction Plan</h3>
-            <button onClick={() => { setSelectedErrorReport(null); setErrorPdfUrl(null); }} className="text-gray-400 hover:text-red-400 transition-colors">
+            <button onClick={() => { setSelectedErrorReport(null); setErrorPdfUrl(null); setIsErrorApproved(false); }} className="text-gray-400 hover:text-red-400 transition-colors">
               <X size={28} />
             </button>
           </div>
@@ -1119,19 +1141,28 @@ const Supervisor = () => {
             <div className="w-full lg:w-[400px] bg-gray-50 border-l border-gray-300 flex flex-col shrink-0 shadow-2xl z-10 overflow-y-auto">
               <div className="p-6 flex-1 flex flex-col">
                   <div className="bg-yellow-100 p-4 rounded-xl border border-yellow-200 mb-6 text-sm flex flex-col gap-2 shadow-sm text-yellow-900">
-                    <p><span className="font-bold">Report ID:</span> #{selectedErrorReport.reportId || selectedErrorReport.VerificationId}</p>
+                    <p><span className="font-bold">Report ID:</span> #{selectedErrorReport.ReactionPlanId || selectedErrorReport.reportId || selectedErrorReport.VerificationId}</p>
                     <p><span className="font-bold">Machine:</span> {selectedErrorReport.DisaMachine || selectedErrorReport.disaMachine || selectedErrorReport.line}</p>
                     <p><span className="font-bold">Problem:</span> {selectedErrorReport.Problem || selectedErrorReport.problem}</p>
                     <p><span className="font-bold">Action Taken:</span> {selectedErrorReport.CorrectiveAction || selectedErrorReport.correctiveAction}</p>
                   </div>
-                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest mb-2 block">Supervisor Signature</label>
-                  <div className="border-2 border-dashed border-gray-300 bg-white rounded-xl overflow-hidden mb-2 shadow-inner">
-                    <SignatureCanvas ref={errorSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-64 cursor-crosshair' }} />
-                  </div>
-                  <button onClick={() => errorSigCanvas.current.clear()} className="text-xs text-gray-500 hover:text-red-600 font-bold uppercase tracking-wider underline self-end mb-8">Clear Signature</button>
+                  <label className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-all select-none mb-8 ${
+                    isErrorApproved
+                      ? 'bg-green-50 border-green-500 shadow-md' 
+                      : 'bg-white border-gray-300 hover:border-yellow-400 hover:bg-yellow-50'
+                  }`}>
+                    <input 
+                      type="checkbox" 
+                      checked={isErrorApproved} 
+                      onChange={(e) => setIsErrorApproved(e.target.checked)} 
+                      className="w-5 h-5 accent-green-600 cursor-pointer" 
+                    />
+                    <span className="font-bold text-gray-800 select-none">I approve this Reaction Plan</span>
+                    {isErrorApproved && <CheckCircle className="text-green-600 ml-auto" size={20} />}
+                  </label>
                   <div className="mt-auto">
                       <button onClick={submitErrorSignature} className="w-full bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
-                        Approve & Sign
+                        Approve Reaction Plan
                       </button>
                   </div>
               </div>
@@ -1140,7 +1171,7 @@ const Supervisor = () => {
         </div>
       )}
 
-      {/* 8. MOULD QUALITY MODAL */}
+  
       {/* 8. MOULD QUALITY MODAL */}
       {selectedMQReport && (
         <div className="fixed inset-0 z-[9999] bg-white flex flex-col overflow-hidden animate-fade-in">

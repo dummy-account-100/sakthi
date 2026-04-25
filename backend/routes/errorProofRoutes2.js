@@ -23,7 +23,7 @@ router.get("/details", async (req, res) => {
       mainRes = await sql.query`
         SELECT * FROM ErrorProofVerifications 
         WHERE DisaMachine = ${machine} AND FORMAT(RecordDate, 'yyyy-MM-dd') = ${date}
-        ORDER BY RecordDate DESC, Id DESC
+        ORDER BY RecordDate DESC, Id ASC
       `;
       reactionRes = await sql.query`
         SELECT rp.* FROM ReactionPlans rp
@@ -35,7 +35,7 @@ router.get("/details", async (req, res) => {
       mainRes = await sql.query`
         SELECT * FROM ErrorProofVerifications 
         WHERE DisaMachine = ${machine}
-        ORDER BY RecordDate DESC, Id DESC
+        ORDER BY RecordDate DESC, Id ASC
       `;
       reactionRes = await sql.query`
         SELECT rp.* FROM ReactionPlans rp
@@ -182,7 +182,7 @@ router.get("/supervisor/:name", async (req, res) => {
       FROM ReactionPlans rp
       INNER JOIN ErrorProofVerifications epv ON rp.VerificationId = epv.Id
       WHERE rp.ApprovedBy = ${name}
-      ORDER BY epv.RecordDate DESC
+      ORDER BY epv.RecordDate DESC, rp.SNo ASC
     `;
     res.json(result.recordset);
   } catch (err) {
@@ -317,7 +317,7 @@ router.post("/bulk-update", async (req, res) => {
 ===================================================== */
 router.get("/report", async (req, res) => {
   try {
-    const { line } = req.query;
+    const { line, date } = req.query;
     let verificationQuery = `SELECT * FROM ErrorProofVerifications`;
     let reactionQuery = `SELECT rp.* FROM ReactionPlans rp INNER JOIN ErrorProofVerifications epv ON rp.VerificationId = epv.Id`;
 
@@ -350,10 +350,13 @@ router.get("/report", async (req, res) => {
     const getISODate = (dateStr) => { const d = new Date(dateStr); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
     const formatDate = (dateStr) => { const d = new Date(dateStr); return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`; };
 
-    const drawMainHeaders = (y, datesArr = []) => {
+    const drawMainHeaders = (y, dateStr) => {
       doc.font("Helvetica-Bold").fontSize(14).fillColor('black').text("ERROR PROOF VERIFICATION CHECK LIST - FDY", startX, y, { align: "center" });
       const headerTopY = y + 25;
-      const wLine = 45, wName = 120, wNature = 145, wFreq = 65, wDateBox = 135;
+      const wLine = 60, wName = 180, wNature = 220, wFreq = 65, wDateBox = 255;
+      const wShift = wDateBox / 3;
+
+      doc.lineWidth(1);
       doc.rect(startX, headerTopY, wLine, 60).stroke(); doc.text("Line", startX, headerTopY + 25, { width: wLine, align: "center" });
       let cx = startX + wLine;
       doc.rect(cx, headerTopY, wName, 60).stroke(); doc.text("Error Proof\nName", cx, headerTopY + 20, { width: wName, align: "center" });
@@ -362,26 +365,46 @@ router.get("/report", async (req, res) => {
       cx += wNature;
       doc.rect(cx, headerTopY, wFreq, 60).stroke(); doc.text("Frequency\nS,D,W,M", cx, headerTopY + 15, { width: wFreq, align: "center" });
       cx += wFreq;
+
+      doc.rect(cx, headerTopY, wDateBox, 20).stroke();
+      let dateLabel = dateStr ? `Date: ${formatDate(dateStr)}` : "Date:";
+      doc.font("Helvetica-Bold").fontSize(9).text(dateLabel, cx + 2, headerTopY + 5, { width: wDateBox, align: "center" });
+
+      const shifts = ['I Shift', 'II Shift', 'III Shift'];
       for (let i = 0; i < 3; i++) {
-        const boxX = cx + (i * wDateBox);
-        doc.rect(boxX, headerTopY, wDateBox, 20).stroke();
-        let dateLabel = datesArr[i] ? `Date: ${formatDate(datesArr[i])}` : "Date:";
-        doc.font("Helvetica-Bold").fontSize(9).text(dateLabel, boxX + 2, headerTopY + 5, { width: wDateBox, align: "left" });
-        doc.rect(boxX, headerTopY + 20, wDateBox, 40).stroke();
-        doc.fontSize(8).text("Observation Result", boxX, headerTopY + 35, { width: wDateBox, align: "center" });
+        const sx = cx + (i * wShift);
+        doc.rect(sx, headerTopY + 20, wShift, 20).stroke();
+        doc.fontSize(8).text(shifts[i], sx, headerTopY + 25, { width: wShift, align: "center" });
+        doc.rect(sx, headerTopY + 40, wShift, 20).stroke();
+        doc.fontSize(6).text("Observation Result", sx, headerTopY + 46, { width: wShift, align: "center" });
       }
+
       return headerTopY + 60;
     };
 
     const allRecords = verificationResult.recordset;
     const allUniqueDates = [...new Set(allRecords.map(r => getISODate(r.RecordDate)))].sort();
-    const last3Dates = allUniqueDates.slice(-3);
+    
+    let last3Dates = [];
+    if (date) {
+        const targetDateStr = getISODate(date);
+        const targetIdx = allUniqueDates.indexOf(targetDateStr);
+        if (targetIdx !== -1) {
+            const startIdx = Math.max(0, targetIdx - 2);
+            last3Dates = allUniqueDates.slice(startIdx, targetIdx + 1);
+        } else {
+            last3Dates = allUniqueDates.slice(-3);
+        }
+    } else {
+        last3Dates = allUniqueDates.slice(-3);
+    }
+
+    const targetDateStr = date ? getISODate(date) : (last3Dates.length > 0 ? last3Dates[last3Dates.length - 1] : null);
 
     // 🔥 DETERMINE CURRENT QF FOR THIS DOCUMENT BATCH 🔥
     let currentPageQfValue = "QF/07/FYQ-05, Rev.No: 02 dt 28.02.2023";
-    const maxDateStr = last3Dates.length > 0 ? last3Dates[last3Dates.length - 1] : null;
-    if (maxDateStr) {
-        const maxDate = new Date(maxDateStr);
+    if (targetDateStr) {
+        const maxDate = new Date(targetDateStr);
         maxDate.setHours(0,0,0,0);
         for (let qf of qfHistory) {
             if (!qf.date) continue;
@@ -398,76 +421,97 @@ router.get("/report", async (req, res) => {
     const uniqueProofsMap = new Map();
     filteredRecords.forEach(r => { if (!uniqueProofsMap.has(r.ErrorProofName)) { uniqueProofsMap.set(r.ErrorProofName, { line: r.Line, nature: r.NatureOfErrorProof, frequency: r.Frequency }); } });
     const uniqueProofs = Array.from(uniqueProofsMap.keys());
-    const dateChunks = last3Dates.length > 0 ? [last3Dates] : [[]];
+    
+    const targetRecords = targetDateStr ? filteredRecords.filter(r => getISODate(r.RecordDate) === targetDateStr) : filteredRecords;
 
     let y = startY;
-    const wLine = 45, wName = 120, wNature = 145, wFreq = 65, wDateBox = 135;
+    const wLine = 60, wName = 180, wNature = 220, wFreq = 65, wDateBox = 255;
+    const wShift = wDateBox / 3;
 
-    dateChunks.forEach((chunk, chunkIndex) => {
-      if (chunkIndex > 0) { doc.addPage({ layout: "landscape", margin: 30 }); y = startY; }
-      y = drawMainHeaders(y, chunk);
+    y = drawMainHeaders(y, targetDateStr);
 
-      uniqueProofs.forEach((proofName) => {
-        const proofData = uniqueProofsMap.get(proofName);
-        doc.font("Helvetica").fontSize(8);
-        const nameHeight = doc.heightOfString(proofName || "", { width: wName - 8, align: "center" });
-        const natureHeight = doc.heightOfString(proofData.nature || "", { width: wNature - 8, align: "center" });
-        let rowHeight = Math.max(50, nameHeight + 20, natureHeight + 20);
+    uniqueProofs.forEach((proofName) => {
+      const proofData = uniqueProofsMap.get(proofName);
+      doc.font("Helvetica").fontSize(8);
+      const nameHeight = doc.heightOfString(proofName || "", { width: wName - 8, align: "center" });
+      const natureHeight = doc.heightOfString(proofData.nature || "", { width: wNature - 8, align: "center" });
+      let rowHeight = Math.max(30, nameHeight + 20, natureHeight + 20);
 
-        if (y + rowHeight > PAGE_HEIGHT - 120) { doc.addPage({ layout: "landscape", margin: 30 }); y = drawMainHeaders(30, chunk); }
+      if (y + rowHeight > PAGE_HEIGHT - 120) { doc.addPage({ layout: "landscape", margin: 30 }); y = drawMainHeaders(30, targetDateStr); }
 
-        let cx = startX;
-        doc.rect(cx, y, wLine, rowHeight).stroke(); doc.text(proofData.line || "", cx + 2, y + (rowHeight / 2 - 5), { width: wLine - 4, align: "center" }); cx += wLine;
-        doc.rect(cx, y, wName, rowHeight).stroke(); doc.text(proofName || "", cx + 4, y + 10, { width: wName - 8, align: "center" }); cx += wName;
-        doc.rect(cx, y, wNature, rowHeight).stroke(); doc.text(proofData.nature || "", cx + 4, y + 10, { width: wNature - 8, align: "center" }); cx += wNature;
-        doc.rect(cx, y, wFreq, rowHeight).stroke(); doc.text(proofData.frequency || "", cx + 4, y + 10, { width: wFreq - 8, align: "center" }); cx += wFreq;
+      let cx = startX;
+      doc.rect(cx, y, wLine, rowHeight).stroke(); doc.text(proofData.line || "", cx + 2, y + (rowHeight / 2 - 5), { width: wLine - 4, align: "center" }); cx += wLine;
+      doc.rect(cx, y, wName, rowHeight).stroke(); doc.text(proofName || "", cx + 4, y + (rowHeight / 2 - nameHeight / 2), { width: wName - 8, align: "center" }); cx += wName;
+      doc.rect(cx, y, wNature, rowHeight).stroke(); doc.text(proofData.nature || "", cx + 4, y + (rowHeight / 2 - natureHeight / 2), { width: wNature - 8, align: "center" }); cx += wNature;
+      doc.rect(cx, y, wFreq, rowHeight).stroke(); doc.text(proofData.frequency || "", cx + 4, y + (rowHeight / 2 - 5), { width: wFreq - 8, align: "center" }); cx += wFreq;
 
-        for (let i = 0; i < 3; i++) { doc.rect(cx + (i * wDateBox), y, wDateBox, rowHeight).stroke(); }
+      const recordsForDateAndProof = targetRecords.filter(r => r.ErrorProofName === proofName);
+      const record = recordsForDateAndProof.length > 0 ? recordsForDateAndProof[0] : {};
 
-        chunk.forEach((dateStr, dateIndex) => {
-          const recordsForDateAndProof = filteredRecords.filter(r => getISODate(r.RecordDate) === dateStr && r.ErrorProofName === proofName);
-          if (recordsForDateAndProof.length > 0) {
-            const record = recordsForDateAndProof[0];
-            const targetX = cx + (dateIndex * wDateBox); const targetY = y + (rowHeight / 2) - 8;
-            doc.fontSize(8);
-            if (record.Date1_Shift1_Res === "OK" || record.Date1_Shift2_Res === "OK" || record.Date1_Shift3_Res === "OK") doc.text("Checked OK", targetX, targetY, { width: wDateBox, align: "center" });
-            else if (record.Date1_Shift1_Res === "NOT OK" || record.Date1_Shift2_Res === "NOT OK" || record.Date1_Shift3_Res === "NOT OK") doc.text("Checked Not OK", targetX, targetY, { width: wDateBox, align: "center" });
-          }
-        });
-        y += rowHeight;
-      });
+      const res1 = record.Date1_Shift1_Res || "-";
+      const res2 = record.Date1_Shift2_Res || "-";
+      const res3 = record.Date1_Shift3_Res || "-";
 
-      const sigY = y + 20;
-      if (sigY + 80 > PAGE_HEIGHT - 40) { doc.addPage({ layout: "landscape", margin: 30 }); y = 30; }
+      doc.rect(cx, y, wShift, rowHeight).stroke(); doc.text(res1, cx, y + (rowHeight / 2 - 5), { width: wShift, align: "center" }); cx += wShift;
+      doc.rect(cx, y, wShift, rowHeight).stroke(); doc.text(res2, cx, y + (rowHeight / 2 - 5), { width: wShift, align: "center" }); cx += wShift;
+      doc.rect(cx, y, wShift, rowHeight).stroke(); doc.text(res3, cx, y + (rowHeight / 2 - 5), { width: wShift, align: "center" });
 
-      doc.font("Helvetica-Bold").fontSize(10).fillColor('black');
-      doc.text("Verified By Moulding Incharge", startX, sigY);
-      doc.rect(startX, sigY + 8, 180, 45).stroke();
-
-      doc.text("Reviewed By HOF", startX + 350, sigY);
-      doc.rect(startX + 350, sigY + 8, 180, 45).stroke();
-
-      const latestRecordWithOpSig = filteredRecords.find(r => r.OperatorSignature);
-      const latestRecordWithHofSig = filteredRecords.find(r => r.HOFSignature);
-
-      if (latestRecordWithOpSig && latestRecordWithOpSig.OperatorSignature.includes('base64,')) {
-        try {
-          const imgBuffer = Buffer.from(latestRecordWithOpSig.OperatorSignature.split('base64,')[1], 'base64');
-          doc.image(imgBuffer, startX + 5, sigY + 12, { fit: [170, 37] });
-        } catch (e) { }
-      }
-
-      if (latestRecordWithHofSig && latestRecordWithHofSig.HOFSignature.includes('base64,')) {
-        try {
-          const imgBuffer = Buffer.from(latestRecordWithHofSig.HOFSignature.split('base64,')[1], 'base64');
-          doc.image(imgBuffer, startX + 355, sigY + 12, { fit: [170, 37] });
-        } catch (e) { }
-      }
+      y += rowHeight;
     });
 
+    const sigY = y + 20;
+    if (sigY + 80 > PAGE_HEIGHT - 40) { doc.addPage({ layout: "landscape", margin: 30 }); y = 30; }
+
+    doc.font("Helvetica-Bold").fontSize(10).fillColor('black');
+    doc.text("Verified By Moulding Incharge", startX, sigY);
+    doc.rect(startX, sigY + 8, 180, 45).stroke();
+
+    doc.text("Reviewed By HOF", startX + 350, sigY);
+    doc.rect(startX + 350, sigY + 8, 180, 45).stroke();
+
+      const latestRecordWithOpSig = targetRecords.find(r => r.OperatorSignature);
+      const latestRecordWithHofSig = targetRecords.find(r => r.HOFSignature);
+
+      // 🔥 Operator PDF Approval Rendering
+      const opSigVal = latestRecordWithOpSig ? latestRecordWithOpSig.OperatorSignature : null;
+      if (opSigVal === "Approved" || opSigVal === "Submitted") {
+        doc.lineWidth(2).strokeColor('#16a34a')
+           .moveTo(startX + 35, sigY + 38)
+           .lineTo(startX + 39, sigY + 43)
+           .lineTo(startX + 47, sigY + 31)
+           .stroke();
+        doc.fillColor('#16a34a').font('Helvetica-Bold').fontSize(11).text("APPROVED", startX + 53, sigY + 35);
+        doc.fillColor('black').strokeColor('black');
+      } else if (opSigVal && opSigVal.includes('base64,')) {
+        try {
+          const imgBuffer = Buffer.from(opSigVal.split('base64,')[1], 'base64');
+          doc.image(imgBuffer, startX + 5, sigY + 12, { fit: [170, 37] });
+        } catch (e) { }
+      } else {
+        doc.font('Helvetica-Bold').fontSize(10).text("Pending", startX + 60, sigY + 35);
+      }
+
+      // 🔥 HOF PDF Approval Rendering
+      const hofSigVal = latestRecordWithHofSig ? latestRecordWithHofSig.HOFSignature : null;
+      if (hofSigVal === "Approved") {
+        doc.lineWidth(2).strokeColor('#16a34a')
+           .moveTo(startX + 385, sigY + 38)
+           .lineTo(startX + 389, sigY + 43)
+           .lineTo(startX + 397, sigY + 31)
+           .stroke();
+        doc.fillColor('#16a34a').font('Helvetica-Bold').fontSize(11).text("APPROVED", startX + 403, sigY + 35);
+        doc.fillColor('black').strokeColor('black');
+      } else if (hofSigVal && hofSigVal.includes('base64,')) {
+        try {
+          const imgBuffer = Buffer.from(hofSigVal.split('base64,')[1], 'base64');
+          doc.image(imgBuffer, startX + 355, sigY + 12, { fit: [170, 37] });
+        } catch (e) { }
+      } else {
+        doc.font('Helvetica-Bold').fontSize(10).text("Pending", startX + 410, sigY + 35);
+      }
     const filteredReactions = reactionResult.recordset.filter(r => {
       const epvMatch = allRecords.find(e => e.Id === r.VerificationId);
-      return epvMatch && last3Dates.includes(getISODate(epvMatch.RecordDate));
+      return epvMatch && getISODate(epvMatch.RecordDate) === targetDateStr;
     });
 
     if (filteredReactions.length > 0) {
@@ -508,7 +552,15 @@ router.get("/report", async (req, res) => {
         rowData.forEach((cellText, i) => {
           doc.rect(currX, ry, rColWidths[i], rRowHeight).stroke();
 
-          if (i === 9 && cellText && String(cellText).startsWith('data:image')) {
+          if (i === 9 && cellText && (String(cellText).startsWith('Approved') || String(cellText).startsWith('Submitted'))) {
+            doc.lineWidth(1.5).strokeColor('#16a34a')
+               .moveTo(currX + 8, ry + (rRowHeight / 2) + 2)
+               .lineTo(currX + 11, ry + (rRowHeight / 2) + 6)
+               .lineTo(currX + 17, ry + (rRowHeight / 2) - 1)
+               .stroke();
+            doc.fillColor('#16a34a').font("Helvetica-Bold").fontSize(9).text("APPROVED", currX + 22, ry + (rRowHeight / 2) - 3, { width: rColWidths[i] - 26, align: "left" });
+            doc.fillColor('black').font("Helvetica").strokeColor('black');
+          } else if (i === 9 && cellText && String(cellText).startsWith('data:image')) {
             try {
               const imgBuffer = Buffer.from(cellText.split('base64,')[1], 'base64');
               doc.image(imgBuffer, currX + 2, ry + 2, { fit: [rColWidths[i] - 4, rRowHeight - 4] });

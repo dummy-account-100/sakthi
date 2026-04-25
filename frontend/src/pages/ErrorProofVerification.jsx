@@ -1,7 +1,6 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 import Header from "../components/Header";
-import SignatureCanvas from "react-signature-canvas";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { FileDown, Save } from 'lucide-react'; 
@@ -68,7 +67,6 @@ const ErrorProofVerification = () => {
   const initialTimeData = getDateInfo();
 
   const [observations, setObservations] = useState({});
-
   const [sNo, setSNo] = useState(1);
   const [recordDate, setRecordDate] = useState(initialTimeData.dbDate);
 
@@ -87,9 +85,7 @@ const ErrorProofVerification = () => {
   const [operatorList, setOperatorList] = useState([]);
   const [supervisorList, setSupervisorList] = useState([]);
   const [hofList, setHofList] = useState([]);
-  const [qfHistory, setQfHistory] = useState([]); 
-
-  const opSigCanvas = useRef({});
+  
   const [assignedHOF, setAssignedHOF] = useState("");
 
   const fetchInitialData = async () => {
@@ -101,9 +97,6 @@ const ErrorProofVerification = () => {
       setOperatorList(inchargeRes.data.operators || []);
       setSupervisorList(inchargeRes.data.supervisors || []);
       setHofList(inchargeRes.data.hofs || []);
-      
-      const bulkRes = await axios.get(`${API_BASE}/error-proof/bulk-data`);
-      setQfHistory(bulkRes.data.qfHistory || []);
       
     } catch (err) { console.error("Error fetching initial data", err); }
   };
@@ -123,16 +116,13 @@ const ErrorProofVerification = () => {
       toast.warning("Reaction Plan requires an Error Proof No, Problem, Operator Name, and Supervisor Assignment.");
       return;
     }
-    if (opSigCanvas.current.isEmpty()) { 
-      toast.warning("Please provide your Operator Signature."); 
-      return; 
-    }
     if (!assignedHOF) { 
       toast.warning("Please assign a HOF for verification."); 
       return; 
     }
 
-    const signatureData = opSigCanvas.current.getCanvas().toDataURL("image/png");
+    // Automatically send "Submitted" as the signature
+    const signatureData = "Submitted"; 
 
     try {
       for (const index of Object.keys(observations)) {
@@ -157,7 +147,6 @@ const ErrorProofVerification = () => {
 
       setObservations({});
       setErrorProofNo(""); setProblem(""); setRootCause(""); setCorrectiveAction(""); setReviewedByMain(""); setReviewedByReaction(""); setApprovedBy(""); setRemarks("");
-      opSigCanvas.current.clear();
       setAssignedHOF("");
 
       fetchInitialData();
@@ -186,7 +175,6 @@ const ErrorProofVerification = () => {
       toast.success("PDF Downloaded successfully!");
     } catch (err) {
       console.error("Download failed", err);
-      // Custom toast for backend 404 block
       if (err.response && err.response.data && err.response.data instanceof Blob) {
         const errorText = await err.response.data.text();
         toast.error(errorText || "Failed to download PDF. Please check your connection.");
@@ -272,21 +260,12 @@ const ErrorProofVerification = () => {
             </div>
           )}
 
-          <div className="mt-8 pt-8 border-t-2 border-gray-200 flex flex-col md:flex-row justify-between items-end gap-8 bg-gray-50 p-6 rounded-lg">
-            <div className="w-full md:w-1/3 flex flex-col">
-              <label className="text-xs font-black text-gray-700 uppercase mb-2">Operator Signature</label>
-              <div className="border-2 border-dashed border-gray-400 bg-white rounded-lg h-24 mb-2 overflow-hidden">
-                <SignatureCanvas ref={opSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-full cursor-crosshair' }} />
-              </div>
-              <button onClick={() => opSigCanvas.current.clear()} className="text-xs text-red-500 hover:text-red-700 font-bold self-end uppercase">Clear Pad</button>
-            </div>
-
+          <div className="mt-8 pt-8 border-t-2 border-gray-200 flex justify-end gap-8 bg-gray-50 p-6 rounded-lg">
             <div className="w-full md:w-1/3 flex flex-col gap-4">
               <div>
                 <label className="text-xs font-black text-gray-700 uppercase mb-2 block">Assign HOF for Verification</label>
                 <select value={assignedHOF} onChange={(e) => setAssignedHOF(e.target.value)} className="w-full p-3 border-2 border-gray-400 bg-white rounded-lg font-bold text-gray-800 outline-none focus:border-blue-500">
                   <option value="">Select HOF...</option>
-                  
                   {hofList.map((hof, i) => <option key={i} value={hof.name}>{hof.name}</option>)}
                 </select>
               </div>

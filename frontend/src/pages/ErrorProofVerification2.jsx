@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { AlertTriangle, Save, FileDown, UserCheck, ShieldCheck, X, CheckCircle, Loader, Lock, Send } from 'lucide-react';
-import SignatureCanvas from "react-signature-canvas";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Header from "../components/Header";
@@ -50,7 +49,6 @@ const ErrorProofVerification2 = () => {
   const [headerData, setHeaderData] = useState({ disaMachine: 'DISA - I', reviewedBy: '', approvedBy: '', assignedHOF: '', operatorSignature: '', hofSignature: '', isHofSent: false });
   const [verifications, setVerifications] = useState([]);
   const [reactionPlans, setReactionPlans] = useState([]);
-  const opSigCanvas = useRef({});
 
   // 🔥 NEW: Tracking submitted/locked shifts
   const [submittedShifts, setSubmittedShifts] = useState(new Set());
@@ -237,18 +235,13 @@ const ErrorProofVerification2 = () => {
       }
     }
 
-    // 4. Validate Headers and Signatures
+    // 4. Validate Headers and Approval
     if (!headerData.reviewedBy.trim() || !headerData.approvedBy.trim()) { 
       toast.warning('Please fill in both "Reviewed By HOF" and "Moulding Incharge".'); 
       return; 
     }
-    
-    if (opSigCanvas.current.isEmpty() && !headerData.operatorSignature) { 
-      toast.warning('Please provide Operator Signature.'); 
-      return; 
-    }
 
-    const signatureData = !opSigCanvas.current.isEmpty() ? opSigCanvas.current.getCanvas().toDataURL("image/png") : headerData.operatorSignature;
+    const signatureData = "Submitted";
     const finalHOF = isHofSubmission ? headerData.assignedHOF : (headerData.isHofSent ? headerData.assignedHOF : '');
 
     try {
@@ -344,14 +337,26 @@ const ErrorProofVerification2 = () => {
 
       doc.text("Verified By Moulding Incharge", 20, finalY);
       doc.rect(20, finalY + 2, 40, 15);
-      const opSigToDraw = !opSigCanvas.current.isEmpty() ? opSigCanvas.current.getCanvas().toDataURL("image/png") : headerData.operatorSignature;
-      if (opSigToDraw && opSigToDraw.startsWith('data:image')) {
+      const opSigToDraw = "Submitted";
+      if (opSigToDraw === "Approved" || opSigToDraw === "Submitted") {
+        doc.setFont('zapfdingbats', 'normal'); doc.setFontSize(10); doc.setTextColor(0, 120, 0);
+        doc.text('3', 23, finalY + 11);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5);
+        doc.text('APPROVED', 28, finalY + 10.5);
+        doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'bold');
+      } else if (opSigToDraw && opSigToDraw.startsWith('data:image')) {
         doc.addImage(opSigToDraw, 'PNG', 21, finalY + 3, 38, 13);
       }
 
       doc.text("Reviewed By HOF", 130, finalY);
       doc.rect(130, finalY + 2, 40, 15);
-      if (headerData.hofSignature && headerData.hofSignature.startsWith('data:image')) {
+      if (headerData.hofSignature === "Approved") {
+        doc.setFont('zapfdingbats', 'normal'); doc.setFontSize(10); doc.setTextColor(0, 120, 0);
+        doc.text('3', 133, finalY + 11);
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5);
+        doc.text('APPROVED', 138, finalY + 10.5);
+        doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'bold');
+      } else if (headerData.hofSignature && headerData.hofSignature.startsWith('data:image')) {
         doc.addImage(headerData.hofSignature, 'PNG', 131, finalY + 3, 38, 13);
       }
 
@@ -570,23 +575,17 @@ const ErrorProofVerification2 = () => {
           </div>
 
           <div id="hof-assign-select" className="mt-2 pt-4 border-t-2 border-gray-200 flex flex-col md:flex-row justify-between items-end gap-8 bg-gray-50 p-6 rounded-b-xl shadow-inner">
-            <div className="w-full md:w-1/3 flex flex-col">
-              <label className="text-xs font-black text-gray-700 uppercase mb-2">Operator Signature</label>
-              <div className="border-2 border-dashed border-gray-400 bg-white rounded-lg h-24 mb-2 overflow-hidden">
-                <SignatureCanvas ref={opSigCanvas} penColor="blue" canvasProps={{ className: 'w-full h-full cursor-crosshair' }} />
-              </div>
-              <button onClick={() => opSigCanvas.current.clear()} className="text-xs text-red-500 hover:text-red-700 font-bold self-end uppercase">Clear Pad</button>
-            </div>
-
-            <div className="w-full md:w-2/3 flex flex-col gap-4 items-end">
-              <div className="w-full md:w-1/2">
+            <div className="w-full md:w-1/3 flex flex-col gap-4">
+              <div>
                 <label className="text-xs font-black text-gray-700 uppercase mb-2 block">Assign HOF for Final Verification</label>
                 <select value={headerData.assignedHOF} onChange={(e) => setHeaderData({ ...headerData, assignedHOF: e.target.value })} className="w-full p-3 border-2 border-gray-400 bg-white rounded-lg font-bold text-gray-800 outline-none focus:border-blue-500">
                   <option value="">Select HOF...</option>
                   {hofList.map((hof, i) => <option key={i} value={hof.name}>{hof.name}</option>)}
                 </select>
               </div>
+            </div>
 
+            <div className="w-full md:w-2/3 flex flex-col gap-4 items-end">
               <div className="flex flex-wrap gap-4 w-full md:w-auto justify-end mt-2">
                 <button onClick={generatePDF} className="bg-white border-2 border-gray-900 text-gray-900 hover:bg-gray-200 font-bold py-3 px-6 rounded-lg shadow-md uppercase flex items-center gap-2 transition-colors">
                   <FileDown size={20} /> Preview PDF
