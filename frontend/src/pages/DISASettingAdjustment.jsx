@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import Header from "../components/Header";
 import { ToastContainer, toast } from 'react-toastify';
@@ -22,7 +22,9 @@ const getDefaultDate = () => {
 };
 
 const DISASettingAdjustment = () => {
+  const [recordId, setRecordId] = useState(null); // Tracks if editing
   const [recordDate, setRecordDate] = useState(getDefaultDate());
+  
   const [mouldCountNo, setMouldCountNo] = useState("");
   const [prevMouldCountNo, setPrevMouldCountNo] = useState(0);
   const [noOfMoulds, setNoOfMoulds] = useState(0);
@@ -34,22 +36,74 @@ const DISASettingAdjustment = () => {
   const [customColumns, setCustomColumns] = useState([]);
   const [customValues, setCustomValues] = useState({});
 
-  useEffect(() => {
-    axios
-      .get(`${API_BASE}/disa/last-mould-count`)
-      .then((res) => {
-        setPrevMouldCountNo(res.data.prevMouldCountNo);
-      })
+  const fetchLastMouldCount = useCallback(() => {
+    axios.get(`${API_BASE}/disa/last-mould-count`)
+      .then((res) => setPrevMouldCountNo(res.data.prevMouldCountNo))
       .catch((err) => console.error("Error fetching last count:", err));
+  }, []);
 
-    axios
-      .get(`${API_BASE}/disa/custom-columns`)
-      .then((res) => {
-        setCustomColumns(res.data || []);
-      })
+  // 1. Fetch initial configurations on mount
+  useEffect(() => {
+    axios.get(`${API_BASE}/disa/custom-columns`)
+      .then((res) => setCustomColumns(res.data || []))
       .catch((err) => console.error("Error fetching custom columns:", err));
   }, []);
 
+  // 2. 🔥 CHECK EXISTING DATA WHEN DATE CHANGES
+  useEffect(() => {
+    const fetchExistingData = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/disa/check`, {
+          params: { date: recordDate }
+        });
+        
+        if (res.data && res.data.id) {
+          // Data found -> Populate Form
+          setRecordId(res.data.id);
+          setMouldCountNo(res.data.mouldCountNo || "");
+          setPrevMouldCountNo(res.data.prevMouldCountNo || 0);
+          setNoOfMoulds(res.data.noOfMoulds || 0);
+          setRemarks(res.data.remarks || "");
+
+          // Parse bulleted strings back into arrays
+          const parsedWork = res.data.workCarriedOut 
+            ? res.data.workCarriedOut.split('\n').map(w => w.replace(/^•\s*/, '')) 
+            : [""];
+          const parsedPrev = res.data.preventiveWorkCarried 
+            ? res.data.preventiveWorkCarried.split('\n').map(p => p.replace(/^•\s*/, '')) 
+            : [""];
+
+          setWorkCarriedOut(parsedWork);
+          setPreventiveWorkCarried(parsedPrev);
+
+          if (res.data.customValues) {
+            setCustomValues(prev => ({ ...prev, ...res.data.customValues }));
+          }
+          toast.info("Loaded existing record for this date.");
+        } else {
+          // No Data -> Reset Form Fields
+          setRecordId(null);
+          setMouldCountNo("");
+          fetchLastMouldCount(); // Get the actual current DB count since it's a new entry
+          setWorkCarriedOut([""]);
+          setPreventiveWorkCarried([""]);
+          setRemarks("");
+          
+          const resetVals = {};
+          customColumns?.forEach(col => { resetVals[col.id] = ""; });
+          setCustomValues(resetVals);
+        }
+      } catch (err) {
+        console.error("Failed to check existing data", err);
+      }
+    };
+    
+    if (recordDate) {
+      fetchExistingData();
+    }
+  }, [recordDate, customColumns, fetchLastMouldCount]);
+
+  // Calculate Moulds automatically when counter changes
   useEffect(() => {
     if (mouldCountNo === "") {
       setNoOfMoulds(0);
@@ -81,10 +135,7 @@ const DISASettingAdjustment = () => {
   };
 
   const handleCustomValueChange = (columnId, value) => {
-    setCustomValues((prev) => ({
-      ...prev,
-      [columnId]: value,
-    }));
+    setCustomValues((prev) => ({ ...prev, [columnId]: value }));
   };
 
   const handleSubmit = async () => {
@@ -108,28 +159,30 @@ const DISASettingAdjustment = () => {
       .map((item) => `• ${item.trim()}`)
       .join("\n");
 
+    const payload = {
+      recordDate,
+      mouldCountNo: Number(mouldCountNo),
+      prevMouldCountNo,
+      noOfMoulds: Number(noOfMoulds),
+      workCarriedOut: finalWorkCarriedOut,
+      preventiveWorkCarried: finalPreventiveWork,
+      operatorSignature: "APPROVED",
+      remarks,
+      customValues,
+    };
+
     try {
-      await axios.post(`${API_BASE}/disa/add`, {
-        recordDate,
-        mouldCountNo: Number(mouldCountNo),
-        prevMouldCountNo,
-        noOfMoulds,
-        workCarriedOut: finalWorkCarriedOut,
-        preventiveWorkCarried: finalPreventiveWork,
-        operatorSignature: "APPROVED", // Invisible to user, but sent to backend for PDF generation
-        remarks,
-        customValues,
-      });
-
-      toast.success("Record saved successfully!");
-
-      setPrevMouldCountNo(Number(mouldCountNo));
-      setMouldCountNo("");
-      setWorkCarriedOut([""]);
-      setPreventiveWorkCarried([""]);
-      setRemarks("");
-      setCustomValues({});
-
+      if (recordId) {
+        // 🔥 UPDATE EXISTING RECORD
+        await axios.put(`${API_BASE}/disa/records/${recordId}`, payload);
+        toast.success("Record updated successfully!");
+      } else {
+        // 🔥 CREATE NEW RECORD
+        const res = await axios.post(`${API_BASE}/disa/add`, payload);
+        if(res.data.id) setRecordId(res.data.id); // Switch to edit mode automatically
+        setPrevMouldCountNo(Number(mouldCountNo));
+        toast.success("Record saved successfully!");
+      }
     } catch (err) {
       console.error(err);
       toast.error("Error saving record. Please try again.");
@@ -164,6 +217,7 @@ const DISASettingAdjustment = () => {
         <div className="bg-white w-full max-w-[90rem] rounded-xl p-8 shadow-2xl overflow-x-auto">
           <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">
             DISA Setting Adjustment Record
+            {recordId && <span className="ml-4 text-sm text-blue-600 bg-blue-100 px-3 py-1 rounded-full align-middle">(Editing Mode)</span>}
           </h2>
 
           <div className="min-w-[1200px]">
@@ -213,7 +267,13 @@ const DISASettingAdjustment = () => {
                   </td>
 
                   <td className="border border-gray-300 p-2 align-top">
-                    <input type="number" className="w-full border p-2 rounded bg-gray-100 cursor-not-allowed text-gray-600 focus:outline-none text-sm" value={noOfMoulds} readOnly />
+                    {/* 🔥 Make Calculated Moulds Editable */}
+                    <input 
+                      type="number" 
+                      className="w-full border p-2 rounded focus:outline-blue-500 text-sm bg-white text-gray-900" 
+                      value={noOfMoulds} 
+                      onChange={(e) => setNoOfMoulds(e.target.value === '' ? '' : Number(e.target.value))} 
+                    />
                   </td>
 
                   <td className="border border-gray-300 p-2 align-top">
@@ -255,8 +315,8 @@ const DISASettingAdjustment = () => {
             <button onClick={handleGenerateReport} className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-2 rounded font-bold transition-colors">
               Generate Report (PDF)
             </button>
-            <button onClick={handleSubmit} className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-2 rounded font-bold transition-colors">
-              Submit
+            <button onClick={handleSubmit} className={`${recordId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-500 hover:bg-orange-600'} text-white px-8 py-2 rounded font-bold transition-colors`}>
+              {recordId ? 'Update Data' : 'Submit'}
             </button>
           </div>
         </div>

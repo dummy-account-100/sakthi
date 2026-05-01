@@ -33,11 +33,14 @@ const getShiftAndDate = () => {
 const FourMChangeMonitoring = () => {
   const initialTimeData = getShiftAndDate();
 
+  // Primary States
+  const [recordId, setRecordId] = useState(null); // Tracks if editing an existing record
   const [line, setLine] = useState("DISA - I");
-  const [partName, setPartName] = useState("");
-
   const [recordDate, setRecordDate] = useState(initialTimeData.recordDate);
   const [shift, setShift] = useState(initialTimeData.shift);
+  
+  // Form Fields
+  const [partName, setPartName] = useState("");
   const [mcNo, setMcNo] = useState("");
   const [type4M, setType4M] = useState("");
   const [description, setDescription] = useState("");
@@ -63,30 +66,25 @@ const FourMChangeMonitoring = () => {
   const [customColumns, setCustomColumns] = useState([]);
   const [customValues, setCustomValues] = useState({});
 
+  // 1. Fetch initial dropdown data
   useEffect(() => {
-    // Fetch Incharges & HODs
     axios.get(`${API_BASE}/4m-change/incharges`)
       .then((res) => {
-        // SAFETY NET: If undefined, default to empty arrays
         setInchargeList(res.data.supervisors || []);
         setHodList(res.data.hods || []);
       })
       .catch((err) => console.error("Error fetching incharges:", err));
 
-    // Fetch 4M Types
     axios.get(`${API_BASE}/4m-change/types`)
       .then((res) => {
-        // SAFETY NET: Force it to be an array
         const safe4MData = Array.isArray(res.data) ? res.data : [];
         setFourMOptions(safe4MData);
         if (safe4MData.length > 0) setType4M(safe4MData[0].typeName);
       })
       .catch((err) => console.error("Error fetching 4M types:", err));
 
-    // Fetch Custom Columns
     axios.get(`${API_BASE}/4m-change/custom-columns`)
       .then((res) => {
-        // SAFETY NET: Force it to be an array
         const safeColumnsData = Array.isArray(res.data) ? res.data : [];
         setCustomColumns(safeColumnsData);
         
@@ -96,6 +94,68 @@ const FourMChangeMonitoring = () => {
       })
       .catch((err) => console.error("Error fetching custom columns:", err));
   }, []);
+
+  // 2. 🔥 CHECK EXISTING DATA WHEN LINE, DATE, OR SHIFT CHANGES
+  useEffect(() => {
+    const fetchExistingData = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/4m-change/check`, {
+          params: { line, date: recordDate, shift }
+        });
+        
+        if (res.data && res.data.id) {
+          // Data found -> Populate Form
+          setRecordId(res.data.id);
+          setPartName(res.data.partName || "");
+          setMcNo(res.data.mcNo || "");
+          setType4M(res.data.type4M || "");
+          setDescription(res.data.description || "");
+          setFirstPart(res.data.firstPart || "-");
+          setLastPart(res.data.lastPart || "-");
+          setInspFreq(res.data.inspFreq || "-");
+          setRetroChecking(res.data.retroChecking || "-");
+          setQuarantine(res.data.quarantine || "-");
+          setPartId(res.data.partId || "-");
+          setInternalComm(res.data.internalComm || "-");
+          setInchargeSign(res.data.inchargeSign || "");
+          setAssignedHOD(res.data.AssignedHOD || "");
+
+          if (res.data.customValues) {
+            setCustomValues(prev => ({ ...prev, ...res.data.customValues }));
+          }
+          toast.info("Loaded existing record.");
+        } else {
+          // No Data -> Reset Form Fields
+          setRecordId(null);
+          setPartName("");
+          setMcNo("");
+          setDescription("");
+          setFirstPart("-");
+          setLastPart("-");
+          setInspFreq("-");
+          setRetroChecking("-");
+          setQuarantine("-");
+          setPartId("-");
+          setInternalComm("-");
+          setInchargeSign("");
+          setAssignedHOD("");
+          
+          if (fourMOptions?.length > 0) setType4M(fourMOptions[0].typeName);
+
+          const resetVals = {};
+          customColumns?.forEach(col => { resetVals[col.id] = ""; });
+          setCustomValues(resetVals);
+        }
+      } catch (err) {
+        console.error("Failed to check existing data", err);
+      }
+    };
+    
+    if (line && recordDate && shift) {
+      fetchExistingData();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line, recordDate, shift]); // Intentionally not triggering on fourMOptions or customColumns
 
   const handleCustomValueChange = (columnId, value) => {
     setCustomValues(prev => ({ ...prev, [columnId]: value }));
@@ -116,26 +176,23 @@ const FourMChangeMonitoring = () => {
       return;
     }
 
+    const payload = {
+      line, partName, recordDate, shift, mcNo, type4M, description,
+      firstPart, lastPart, inspFreq, retroChecking, quarantine,
+      partId, internalComm, inchargeSign, assignedHOD, customValues
+    };
+
     try {
-      await axios.post(`${API_BASE}/4m-change/add`, {
-        line, partName, recordDate, shift, mcNo, type4M, description,
-        firstPart, lastPart, inspFreq, retroChecking, quarantine,
-        partId, internalComm, inchargeSign, assignedHOD,
-        customValues
-      });
-
-      toast.success("Record saved successfully!");
-
-      setMcNo(""); setDescription("");
-      if (fourMOptions?.length > 0) setType4M(fourMOptions[0].typeName);
-      setFirstPart("-"); setLastPart("-"); setInspFreq("-");
-      setRetroChecking("-"); setQuarantine("-"); setPartId("-");
-      setInternalComm("-"); setInchargeSign(""); setAssignedHOD("");
-
-      const resetVals = {};
-      customColumns?.forEach(col => { resetVals[col.id] = ""; });
-      setCustomValues(resetVals);
-
+      if (recordId) {
+        // 🔥 UPDATE EXISTING RECORD
+        await axios.put(`${API_BASE}/4m-change/records/${recordId}`, payload);
+        toast.success("Record updated successfully!");
+      } else {
+        // 🔥 CREATE NEW RECORD
+        const res = await axios.post(`${API_BASE}/4m-change/add`, payload);
+        if(res.data.id) setRecordId(res.data.id); // Switch to edit mode automatically
+        toast.success("Record saved successfully!");
+      }
     } catch (err) {
       console.error(err);
       toast.error("Error saving record. Please try again.");
@@ -157,7 +214,7 @@ const FourMChangeMonitoring = () => {
       toast.success("PDF Downloaded successfully!");
     } catch (err) {
       console.error("Download failed", err);
-      toast.error("Failed to download PDF. Please check your connection or login again.");
+      toast.error("Failed to download PDF.");
     }
   };
 
@@ -176,10 +233,11 @@ const FourMChangeMonitoring = () => {
       <Header />
       <ToastContainer position="top-right" autoClose={3000} hideProgressBar={false} />
 
-      <div className="min-h-screen bg-[#2d2d2d] flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-[#2d2d2d] flex flex-col items-center p-6">
         <div className="bg-white w-full max-w-[95rem] rounded-xl p-8 shadow-2xl overflow-x-auto">
           <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">
             4M CHANGE MONITORING CHECK SHEET
+            {recordId && <span className="ml-4 text-sm text-blue-600 bg-blue-100 px-3 py-1 rounded-full align-middle">(Editing Mode)</span>}
           </h2>
 
           <div className="flex justify-between items-center mb-6 bg-gray-50 p-4 rounded border border-gray-300 shadow-sm">
@@ -351,7 +409,9 @@ const FourMChangeMonitoring = () => {
 
             <div className="flex gap-4">
               <button onClick={handleGenerateReport} className="bg-gray-800 hover:bg-gray-900 text-white px-6 py-3 rounded font-bold transition-colors shadow">Preview PDF</button>
-              <button onClick={handleSubmit} className="bg-orange-500 hover:bg-orange-600 text-white px-10 py-3 rounded font-bold transition-colors shadow">Submit & Assign</button>
+              <button onClick={handleSubmit} className={`${recordId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-orange-500 hover:bg-orange-600'} text-white px-10 py-3 rounded font-bold transition-colors shadow`}>
+                {recordId ? 'Update & Assign' : 'Submit & Assign'}
+              </button>
             </div>
           </div>
 

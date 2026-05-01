@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { X, CheckCircle, AlertTriangle, FileDown, Loader, Save, PlusCircle, Trash2, Lock, Send } from 'lucide-react';
+import { X, CheckCircle, AlertTriangle, FileDown, Loader, Save, PlusCircle, Trash2, Lock, Send, Edit3 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Header from '../components/Header';
@@ -246,7 +246,7 @@ const DmmSettingParameters = () => {
     }
 
     if (activeShifts.length === 0 && !isHofSubmission) {
-      return setNotification({ show: true, type: 'error', message: 'Please select an operator (or mark as Line Idle) for at least one new shift before submitting.' });
+      return setNotification({ show: true, type: 'error', message: 'Please select an operator (or mark as Line Idle) for at least one new or edited shift before submitting.' });
     }
 
     let hasEmpty = false;
@@ -489,10 +489,25 @@ const DmmSettingParameters = () => {
                             <div className="flex items-center gap-6">
                               <span className="font-black text-gray-800 text-lg">SHIFT {shift}</span>
 
+                              {/* 🔥 EDIT SHIFT FUNCTIONALITY ADDED HERE 🔥 */}
                               {isLocked && (
-                                <span className="flex items-center gap-1.5 bg-green-100 border border-green-400 text-green-700 text-xs font-black px-3 py-1 rounded-full">
-                                  <Lock size={12} /> SUBMITTED – READ ONLY
-                                </span>
+                                <div className="flex items-center gap-3">
+                                  <span className="flex items-center gap-1.5 bg-green-100 border border-green-400 text-green-700 text-xs font-black px-3 py-1 rounded-full shadow-sm">
+                                    <CheckCircle size={12} /> SUBMITTED
+                                  </span>
+                                  <button
+                                    onClick={() => {
+                                      setSubmittedShifts(prev => {
+                                        const newSet = new Set(prev);
+                                        newSet.delete(shift);
+                                        return newSet;
+                                      });
+                                    }}
+                                    className="flex items-center gap-1 bg-white border border-blue-400 text-blue-700 hover:bg-blue-50 hover:text-blue-800 text-[10px] font-black px-3 py-1 rounded shadow-sm uppercase transition-colors"
+                                  >
+                                    <Edit3 size={12} /> Edit Shift
+                                  </button>
+                                </div>
                               )}
 
                               {!isLocked && (

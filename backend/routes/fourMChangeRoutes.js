@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const sql = require("../db"); // Adjusted to safe import
+const sql = require("../db"); 
 const PDFDocument = require("pdfkit");
 const path = require("path");
 const fs = require("fs");
@@ -87,8 +87,44 @@ router.delete("/custom-columns/:id", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  RECORDS CRUD (🔥 UPDATED TO INCLUDE qfHistory FOR ADMIN BULK EXPORT)
+//  RECORDS CRUD
 // ══════════════════════════════════════════════════════════════════════════════
+
+// 🔥 CHECK EXISTING RECORD
+router.get("/check", async (req, res) => {
+    try {
+        const { line, date, shift } = req.query;
+
+        const request = new sql.Request();
+        request.input('line', sql.VarChar, line);
+        request.input('date', sql.Date, date);
+        request.input('shift', sql.VarChar, shift);
+
+        const result = await request.query(`
+            SELECT TOP 1 * FROM FourMChangeRecord 
+            WHERE line = @line AND CAST(recordDate AS DATE) = CAST(@date AS DATE) AND shift = @shift
+            ORDER BY id DESC
+        `);
+
+        if (result.recordset.length === 0) return res.json(null);
+
+        const record = result.recordset[0];
+
+        // Fetch attached custom values
+        const valReq = new sql.Request();
+        valReq.input('recordId', sql.Int, record.id);
+        const valResult = await valReq.query(`SELECT columnId, value FROM FourMCustomColumnValues WHERE recordId = @recordId`);
+        
+        const customValues = {};
+        valResult.recordset.forEach(v => { customValues[v.columnId] = v.value; });
+
+        res.json({ ...record, customValues });
+    } catch (err) {
+        console.error("Check existing error:", err);
+        res.status(500).json({ message: "DB error" });
+    }
+});
+
 router.get("/records", async (req, res) => {
     try {
         const recordsResult = await sql.query(`SELECT * FROM FourMChangeRecord ORDER BY id DESC`);
@@ -116,7 +152,6 @@ router.get("/records", async (req, res) => {
     } catch (err) { res.status(500).json({ message: "DB error", error: err.message }); }
 });
 
-// ── Admin: Fetch records by single date ───────────────────────────────────────
 router.get("/records-by-date", async (req, res) => {
     try {
         const { date } = req.query;
@@ -156,7 +191,6 @@ router.get("/records-by-date", async (req, res) => {
     }
 });
 
-// ── Admin: Update a single 4M record ─────────────────────────────────────────
 router.put("/records/:id", async (req, res) => {
     try {
         const { id } = req.params;
@@ -248,7 +282,7 @@ router.post("/add", async (req, res) => {
                 }
             }
         }
-        res.json({ message: "Saved" });
+        res.json({ message: "Saved", id: newRecordId }); // Note: Pass the newly generated ID back so React goes into Edit Mode
     } catch (err) { res.status(500).json({ message: "Insert failed", error: err.message }); }
 });
 
@@ -283,7 +317,7 @@ router.post("/sign-hod", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  DYNAMIC PDF REPORT (🔥 ADDED DYNAMIC QF HISTORY)
+//  DYNAMIC PDF REPORT
 // ══════════════════════════════════════════════════════════════════════════════
 router.get("/report", async (req, res) => {
     try {
@@ -449,7 +483,7 @@ const drawFooter = (yPos, dynamicQfString) => {
                     const base64Data = hodSignature.split('base64,');
                     const imgBuffer = Buffer.from(base64Data, 'base64');
                     // Placed perfectly next to "HOD Sign :"
-                    doc.image(imgBuffer, rightX + 55, footerY - 15, { fit: [width - 4, height - 4]});
+                    doc.image(imgBuffer, rightX + 55, footerY - 15, { fit: [100, 30] }); // Fallback bounding box dimensions
                 } catch (e) { }
             } else {
                 // Pending State

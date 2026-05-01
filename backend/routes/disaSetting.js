@@ -90,6 +90,40 @@ router.delete("/custom-columns/:id", async (req, res) => {
 //  CORE RECORD ROUTES
 // ══════════════════════════════════════════════════════════════════════════════
 
+// 🔥 CHECK EXISTING DATA BY DATE
+router.get("/check", async (req, res) => {
+    try {
+        const { date } = req.query;
+
+        const request = new sql.Request();
+        request.input('date', sql.Date, date);
+
+        const result = await request.query(`
+            SELECT TOP 1 * FROM DISASettingAdjustmentRecord 
+            WHERE CAST(recordDate AS DATE) = CAST(@date AS DATE)
+            ORDER BY id DESC
+        `);
+
+        if (result.recordset.length === 0) return res.json(null);
+
+        const record = result.recordset[0];
+
+        // Fetch attached custom values
+        const valReq = new sql.Request();
+        valReq.input('recordId', sql.Int, record.id);
+        const valResult = await valReq.query(`SELECT columnId, value FROM DISACustomColumnValues WHERE recordId = @recordId`);
+        
+        const customValues = {};
+        valResult.recordset.forEach(v => { customValues[v.columnId] = v.value; });
+
+        res.json({ ...record, customValues });
+    } catch (err) {
+        console.error("Check existing error:", err);
+        res.status(500).json({ message: "DB error" });
+    }
+});
+
+
 router.get("/last-mould-count", async (req, res) => {
     try {
         const request = new sql.Request();

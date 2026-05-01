@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import Header from "../components/Header";
-import SignatureCanvas from "react-signature-canvas";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { Loader, X, CheckCircle } from "lucide-react"; 
@@ -32,6 +31,30 @@ const getDynamicQfString = (recordDate, qfHistory, defaultFallback) => {
   return qfHistory[qfHistory.length - 1].qfValue || defaultFallback;
 };
 
+// 🔥 Base columns matching the main form
+const baseColumns = [
+  { key: 'Customer', label: 'CUSTOMER' },
+  { key: 'ItemDescription', label: 'ITEM\nDESCRIPTION' },
+  { key: 'Time', label: 'TIME' },
+  { key: 'PpThickness', label: 'PP\nTHICKNESS\n(mm)' },
+  { key: 'PpHeight', label: 'PP\nHEIGHT\n(mm)' },
+  { key: 'SpThickness', label: 'SP\nTHICKNESS\n(mm)' },
+  { key: 'SpHeight', label: 'SP\nHEIGHT\n(mm)' },
+  { key: 'CoreMaskThickness', label: 'CORE MASK\nTHICKNESS\n(mm)' },
+  { key: 'CoreMaskOut', label: 'CORE MASK\nHEIGHT\n(OUTSIDE) mm' },
+  { key: 'CoreMaskIn', label: 'CORE MASK\nHEIGHT\n(INSIDE) mm' },
+  { key: 'SandShotPressure', label: 'SAND SHOT\nPRESSURE\nBAR' },
+  { key: 'CorrectionShotTime', label: 'CORRECTION\nOF SHOT TIME\n(SEC)' },
+  { key: 'SqueezePressure', label: 'SQUEEZE\nPRESSURE\nKp/Cm2 / bar' },
+  { key: 'PpStripAccel', label: 'PP STRIPPING\nACCELERATION' },
+  { key: 'PpStripDist', label: 'PP STRIPPING\nDISTANCE' },
+  { key: 'SpStripAccel', label: 'SP STRIPPING\nACCELERATION' },
+  { key: 'SpStripDist', label: 'SP STRIPPING\nDISTANCE' },
+  { key: 'MouldThickness', label: 'MOULD\nTHICKNESS\n(± 10mm)' },
+  { key: 'CloseUpForce', label: 'CLOSE UP\nFORCE (Kp)' },
+  { key: 'Remarks', label: 'REMARKS' }
+];
+
 const Supervisor = () => {
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
   const currentSupervisor = storedUser.username || "supervisor1";
@@ -46,14 +69,12 @@ const Supervisor = () => {
   const [selectedDisaReport, setSelectedDisaReport] = useState(null);
   const [disaPdfUrl, setDisaPdfUrl] = useState(null); 
   const [isDisaPdfLoading, setIsDisaPdfLoading] = useState(false); 
-  const disaSigCanvas = useRef({});
 
   // --- States for Daily Production Performance ---
   const [dpReports, setDpReports] = useState([]);
   const [selectedDpReport, setSelectedDpReport] = useState(null);
   const [dpPdfUrl, setDpPdfUrl] = useState(null); 
   const [isDpPdfLoading, setIsDpPdfLoading] = useState(false); 
-  const dpSigCanvas = useRef({});
 
   // --- States for Bottom Level Audit ---
   const [bottomReports, setBottomReports] = useState([]);
@@ -61,11 +82,9 @@ const Supervisor = () => {
   const [bottomPdfUrl, setBottomPdfUrl] = useState(null);
   const [isBottomPdfLoading, setIsBottomPdfLoading] = useState(false);
   
-
   // --- States for Non-Conformance Reports (NCR) ---
   const [ncrReports, setNcrReports] = useState([]);
   const [selectedNcrReport, setSelectedNcrReport] = useState(null);
-
 
   // --- States for DMM Setting Parameters ---
   const [dmmReports, setDmmReports] = useState([]);
@@ -73,13 +92,11 @@ const Supervisor = () => {
   const [dmmPdfUrl, setDmmPdfUrl] = useState(null);
   const [isDmmPdfLoading, setIsDmmPdfLoading] = useState(false);
   
-
   // --- States for 4M Change Reports ---
   const [fourMReports, setFourMReports] = useState([]);
   const [selectedFourMReport, setSelectedFourMReport] = useState(null);
   const [fourMPdfUrl, setFourMPdfUrl] = useState(null);
   const [isFourMPdfLoading, setIsFourMPdfLoading] = useState(false);
-  const fourMSigCanvas = useRef({});
 
   // --- States for Error Proof Reaction Plans ---
   const [errorReports, setErrorReports] = useState([]);
@@ -95,7 +112,7 @@ const Supervisor = () => {
 
   useEffect(() => {
     fetchDisaReports();
-    fetchDpReports(); // 🔥 Fetch Daily Performance
+    fetchDpReports();
     fetchBottomReports();
     fetchNcrReports(); 
     fetchDmmReports();
@@ -159,7 +176,6 @@ const Supervisor = () => {
   };
 
   const submitDisaSignature = async () => {
-    // Send "Approved" string instead of base64 image data
     try {
       await axios.post(`${API_BASE}/forms/sign`, { reportId: selectedDisaReport.id, signature: "Approved" });
       toast.success("Disamatic Report approved successfully!");
@@ -215,7 +231,7 @@ const Supervisor = () => {
     } catch (err) { toast.error("Failed to load Bottom Level Audits."); }
   };
 
-const handleOpenBottomModal = async (report) => {
+  const handleOpenBottomModal = async (report) => {
     setSelectedBottomReport(report); 
     setBottomPdfUrl(null); 
     setIsBottomPdfLoading(true);
@@ -348,7 +364,6 @@ const handleOpenBottomModal = async (report) => {
       doc.rect(50, 10, 237, 20); doc.setFontSize(16); doc.setFont('helvetica', 'bold');
       doc.text("LAYERED PROCESS AUDIT - BOTTOM LEVEL", 168.5, 18, { align: 'center' }); doc.setFontSize(14); doc.text("Non-Conformance Report", 168.5, 26, { align: 'center' });
 
-      // FIX: Insert signature instead of empty string
       const ncRows = ncReports.map((r, index) => {
           const sigVal = r.SupervisorSignature || r.Sign || '';
           return [ index + 1, new Date(r.ReportDate).toLocaleDateString('en-GB'), r.NonConformityDetails || '', r.Correction || '', r.RootCause || '', r.CorrectiveAction || '', r.TargetDate ? new Date(r.TargetDate).toLocaleDateString('en-GB') : '', r.Responsibility || '', sigVal, r.Status || '' ];
@@ -402,7 +417,7 @@ const handleOpenBottomModal = async (report) => {
     setIsBottomPdfLoading(false);
   };
 
-const submitBottomSignature = async () => {
+  const submitBottomSignature = async () => {
     const localDate = new Date(selectedBottomReport.reportDate);
     const offset = localDate.getTimezoneOffset();
     const cleanDate = new Date(localDate.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
@@ -424,7 +439,7 @@ const submitBottomSignature = async () => {
   // ==========================================
   // 4. NCR LOGIC (🔥 FETCHES FROM BOTH LPA AND CHECKLIST)
   // ==========================================
-const fetchNcrReports = async () => {
+  const fetchNcrReports = async () => {
     try {
       let lpaData = [];
       let checklistData = [];
@@ -439,7 +454,6 @@ const fetchNcrReports = async () => {
         checklistData = (resChecklist.data || []).map(r => ({ ...r, source: 'Checklist' }));
       } catch (err) { console.warn("Checklist NCR fetch error", err); }
 
-      // Merge and sort by Date (Descending)
       const combined = [...lpaData, ...checklistData].sort((a, b) => new Date(b.ReportDate) - new Date(a.ReportDate));
       setNcrReports(combined);
     } catch (err) { 
@@ -467,7 +481,7 @@ const fetchNcrReports = async () => {
   };
 
   // ==========================================
-  // 5. DMM SETTINGS LOGIC
+  // 5. DMM SETTINGS LOGIC - FULL PDF GENERATION
   // ==========================================
   const fetchDmmReports = async () => {
     try {
@@ -485,9 +499,21 @@ const fetchNcrReports = async () => {
       const dateStr = localDate.toISOString().split('T')[0];
       const disaMachine = report.disa;
 
-      const res = await axios.get(`${API_BASE}/dmm-settings/details`, { params: { date: dateStr, disa: disaMachine } });
+      // 🔥 Fetch BOTH the report data and the custom column configuration
+      const [res, configRes] = await Promise.all([
+        axios.get(`${API_BASE}/dmm-settings/details`, { params: { date: dateStr, disa: disaMachine } }),
+        axios.get(`${API_BASE}/config/dmm-setting-parameters/master`)
+      ]);
+
       const { shiftsData, shiftsMeta } = res.data;
       const qfHistory = res.data.qfHistory || []; 
+
+      // 🔥 Build the complete columns array
+      const customCols = (configRes.data.config || []).map(c => ({
+        key: `custom_${c.id}`, id: c.id, label: c.columnLabel.replace('\\n', '\n'),
+        inputType: c.inputType, width: c.columnWidth, isCustom: true
+      }));
+      const allColumns = [...baseColumns, ...customCols];
 
       const dynamicQf = getDynamicQfString(dateStr, qfHistory, "QF/07/FBP-13, Rev.No:06 dt 08.10.2025");
 
@@ -495,9 +521,9 @@ const fetchNcrReports = async () => {
       doc.setLineWidth(0.3); doc.rect(10, 10, 40, 20); doc.setFontSize(14); doc.setFont('helvetica', 'bold');
       try { doc.addImage(logo, 'PNG', 12, 11, 36, 18); } catch(e){ doc.text("SAKTHI", 30, 18, { align: 'center' }); doc.text("AUTO", 30, 26, { align: 'center' }); }
       
-      doc.rect(50, 10, 180, 20); doc.setFontSize(16); doc.text("DMM SETTING PARAMETERS CHECK SHEET", 140, 22, { align: 'center' });
-      doc.rect(230, 10, 57, 20); doc.setFontSize(11); doc.text(`${disaMachine}`, 258.5, 16, { align: 'center' });
-      doc.line(230, 20, 287, 20); doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(`DATE: ${formatDate(dateStr)}`, 258.5, 26, { align: 'center' });
+      doc.rect(50, 10, 197, 20); doc.setFontSize(16); doc.text("DMM SETTING PARAMETERS CHECK SHEET", 148.5, 22, { align: 'center' });
+      doc.rect(247, 10, 40, 20); doc.setFontSize(11); doc.text(`${disaMachine}`, 267, 16, { align: 'center' });
+      doc.line(247, 20, 287, 20); doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(`DATE: ${formatDate(dateStr)}`, 267, 26, { align: 'center' });
 
       autoTable(doc, {
         startY: 35, margin: { left: 10, right: 10 }, 
@@ -512,65 +538,56 @@ const fetchNcrReports = async () => {
         didDrawCell: function (data) {
            if (data.section === 'body' && data.column.index === 3) {
                const shiftNum = data.row.index + 1;
-               const sigData = shiftsMeta[shiftNum]?.supervisorSignature;
-               if (sigData && sigData.startsWith('data:image')) {
-                   try { doc.addImage(sigData, 'PNG', data.cell.x + 2, data.cell.y + 1, data.cell.width - 4, data.cell.height - 2); } catch (e) {}
+               const sig = shiftsMeta[shiftNum]?.supervisorSignature;
+
+               if (sig && String(sig).trim().toUpperCase() === "APPROVED") {
+                 doc.setDrawColor(0, 128, 0); doc.setLineWidth(0.5);
+                 doc.line(data.cell.x + 2, data.cell.y + 4, data.cell.x + 4, data.cell.y + 6);
+                 doc.line(data.cell.x + 4, data.cell.y + 6, data.cell.x + 8, data.cell.y + 2);
+                 doc.setDrawColor(0, 0, 0);
+                 
+                 doc.setFontSize(5); doc.setTextColor(0, 128, 0); doc.setFont('helvetica', 'bold');
+                 doc.text("APPROVED", data.cell.x + 9, data.cell.y + 5);
+                 doc.setTextColor(0, 0, 0); doc.setFont('helvetica', 'normal');
+               } else if (sig && String(sig).startsWith('data:image')) { 
+                 try { doc.addImage(sig, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { } 
                }
            }
         }
       });
 
-      const columns = [ { key: 'Customer', label: 'CUSTOMER' }, { key: 'ItemDescription', label: 'ITEM\nDESCRIPTION' }, { key: 'Time', label: 'TIME' }, { key: 'PpThickness', label: 'PP\nTHICKNESS\n(mm)' }, { key: 'PpHeight', label: 'PP\nHEIGHT\n(mm)' }, { key: 'SpThickness', label: 'SP\nTHICKNESS\n(mm)' }, { key: 'SpHeight', label: 'SP\nHEIGHT\n(mm)' }, { key: 'CoreMaskOut', label: 'CORE MASK\nHEIGHT\n(OUTSIDE) mm' }, { key: 'CoreMaskIn', label: 'CORE MASK\nHEIGHT\n(INSIDE) mm' }, { key: 'SandShotPressure', label: 'SAND SHOT\nPRESSURE\nBAR' }, { key: 'CorrectionShotTime', label: 'CORRECTION\nOF SHOT TIME\n(SEC)' }, { key: 'SqueezePressure', label: 'SQUEEZE\nPRESSURE\nKg/Cm2 / bar' }, { key: 'PpStripAccel', label: 'PP STRIPPING\nACCELERATION' }, { key: 'PpStripDist', label: 'PP STRIPPING\nDISTANCE' }, { key: 'SpStripAccel', label: 'SP STRIPPING\nACCELERATION' }, { key: 'SpStripDist', label: 'SP STRIPPING\nDISTANCE' }, { key: 'MouldThickness', label: 'MOULD\nTHICKNESS\n(± 10mm)' }, { key: 'CloseUpForce', label: 'CLOSE UP\nFORCE (Kg)' }, { key: 'Remarks', label: 'REMARKS' } ];
-
       let currentY = doc.lastAutoTable.finalY + 8; 
       [1, 2, 3].forEach((shift, index) => {
          const isIdle = shiftsMeta[shift].isIdle;
          const shiftLabel = shift === 1 ? 'I' : shift === 2 ? 'II' : 'III';
-         const tableHeader = [ [{ content: `SHIFT ${shiftLabel}`, colSpan: columns.length + 1, styles: { halign: 'center', fontStyle: 'bold', fillColor: [200, 200, 200], textColor: [0,0,0] } }], [{ content: 'S.No', styles: { cellWidth: 8 } }, ...columns.map(col => ({ content: col.label, styles: { cellWidth: 'wrap' } }))] ];
+         
+         // 🔥 Construct table header dynamically based on ALL columns
+         const tableHeader = [ 
+           [{ content: `SHIFT ${shiftLabel}`, colSpan: allColumns.length + 1, styles: { halign: 'center', fontStyle: 'bold', fillColor: [200, 200, 200], textColor: [0,0,0] } }], 
+           [{ content: 'S.No', styles: { cellWidth: 8 } }, ...allColumns.map(col => ({ content: col.label, styles: { cellWidth: 'wrap' } }))] 
+         ];
 
          let tableBody = [];
-         if (isIdle) { tableBody.push([{ content: 'L I N E   I D L E', colSpan: columns.length + 1, styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', fontSize: 14, textColor: [100, 100, 100], fillColor: [245, 245, 245], minCellHeight: 15 } }]); } 
+         if (isIdle) { 
+           tableBody.push([{ content: 'L I N E   I D L E', colSpan: allColumns.length + 1, styles: { halign: 'center', valign: 'middle', fontStyle: 'bold', fontSize: 14, textColor: [100, 100, 100], fillColor: [245, 245, 245], minCellHeight: 15 } }]); 
+         } 
          else {
             tableBody = (shiftsData[shift] || []).map((row, idx) => {
                 const pdfRow = [(idx + 1).toString()];
-                columns.forEach(col => { const val = row[col.key]; pdfRow.push(val === '' || val === null || val === undefined ? '-' : val.toString()); });
+                allColumns.forEach(col => { 
+                  // Check if it's a custom column to map the correct value
+                  const val = col.isCustom ? row.customValues?.[col.id] : row[col.key]; 
+                  pdfRow.push(val === '' || val === null || val === undefined ? '-' : val.toString()); 
+                });
                 return pdfRow;
             });
          }
          autoTable(doc, {
-        startY: 35, margin: { left: 10, right: 10 }, 
-        head: [['SHIFT', 'OPERATOR NAME', 'VERIFIED BY', 'SIGNATURE']],
-        body: [
-            ['SHIFT I', shiftsMeta[1].operator || '-', shiftsMeta[1].supervisor || '-', ''],
-            ['SHIFT II', shiftsMeta[2].operator || '-', shiftsMeta[2].supervisor || '-', ''],
-            ['SHIFT III', shiftsMeta[3].operator || '-', shiftsMeta[3].supervisor || '-', '']
-        ],
-        theme: 'grid', styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, halign: 'center', valign: 'middle' },
-        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-        didDrawCell: function (data) {
-          if (data.section === 'body' && data.column.index === 3) {
-            const shiftNum = data.row.index + 1;
-            const sig = shiftsMeta[shiftNum]?.supervisorSignature;
-
-            if (sig && String(sig).trim().toUpperCase() === "APPROVED") {
-              // Draw rightmark + APPROVED text
-              doc.setDrawColor(0, 128, 0); doc.setLineWidth(0.5);
-              doc.line(data.cell.x + 2, data.cell.y + 4, data.cell.x + 4, data.cell.y + 6);
-              doc.line(data.cell.x + 4, data.cell.y + 6, data.cell.x + 8, data.cell.y + 2);
-              doc.setDrawColor(0, 0, 0);
-              
-              doc.setFontSize(5);
-              doc.setTextColor(0, 128, 0);
-              doc.setFont('helvetica', 'bold');
-              doc.text("APPROVED", data.cell.x + 9, data.cell.y + 5);
-              doc.setTextColor(0, 0, 0); 
-              doc.setFont('helvetica', 'normal');
-            } else if (sig && String(sig).startsWith('data:image')) { 
-              try { doc.addImage(sig, 'PNG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2); } catch (e) { } 
-            }
-          }
-        }
-      });
+           startY: currentY, margin: { left: 5, right: 5 }, head: tableHeader, body: tableBody, theme: 'grid',
+           styles: { fontSize: 5.5, cellPadding: 0.8, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0], halign: 'center', valign: 'middle' },
+           headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', fontSize: 5 },
+           columnStyles: { 0: { cellWidth: 8 } }
+         });
 
          currentY = doc.lastAutoTable.finalY + 5; 
          if (currentY > 175 && index < 2) { 
@@ -578,6 +595,7 @@ const fetchNcrReports = async () => {
              doc.addPage(); currentY = 15; 
          }
       });
+      
       doc.setFontSize(8); doc.text(dynamicQf, 10, 200);
 
       const pdfBlobUrl = doc.output('bloburl'); setDmmPdfUrl(pdfBlobUrl);
@@ -586,7 +604,6 @@ const fetchNcrReports = async () => {
   };
 
   const submitDmmSignature = async () => {
-    // Removed canvas check
     const localDate = new Date(selectedDmmReport.reportDate);
     const offset = localDate.getTimezoneOffset();
     const cleanDate = new Date(localDate.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
@@ -596,7 +613,7 @@ const fetchNcrReports = async () => {
         date: cleanDate, 
         disaMachine: selectedDmmReport.disa, 
         shift: selectedDmmReport.shift, 
-        signature: "APPROVED" // Pass the string here!
+        signature: "APPROVED" 
       });
       toast.success("DMM Settings Shift signed successfully!");
       setSelectedDmmReport(null); 
@@ -1138,8 +1155,6 @@ const fetchNcrReports = async () => {
                     <p><span className="font-bold">Machine:</span> {selectedDmmReport.disa}</p>
                   </div>
                   
-                  {/* SignatureCanvas Removed! */}
-
                   <div className="mt-auto">
                       <button onClick={submitDmmSignature} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-4 rounded-xl font-black text-lg uppercase tracking-wider shadow-lg transition-transform hover:-translate-y-1">
                         Approve Report
