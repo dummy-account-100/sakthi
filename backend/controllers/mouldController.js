@@ -25,7 +25,7 @@ const mouldController = {
 
       // 🔥 Fetch HOFs list and current Assigned HOF from the DB to send to the frontend
       const hofResult = await sql.query`SELECT username as OperatorName FROM dbo.DisaUsersTable WHERE role = 'hof' ORDER BY username`;
-      const assignedHOF = transRes.recordset.length > 0 ? transRes.recordset[0].AssignedHOF : '';
+      const assignedHOF = transRes.recordset.length > 0 ? transRes.recordset.AssignedHOF : '';
 
       const shiftData = { 1: { customValues: {} }, 2: { customValues: {} }, 3: { customValues: {} } };
 
@@ -80,7 +80,6 @@ const mouldController = {
 
   saveMouldDetails: async (req, res) => {
     try {
-      // 🔥 ADDED assignedHOF extracting from the payload
       const { date, disa, shiftsData, assignedHOF } = req.body;
       
       const transaction = new sql.Transaction();
@@ -99,7 +98,6 @@ const mouldController = {
           const data = shiftsData[shift];
           if (!data) continue;
 
-          // 🔥 ADDED AssignedHOF to the INSERT Query below
           const writeReq = new sql.Request(transaction);
           await writeReq.query`
               INSERT INTO UnPouredMouldDetails (
@@ -192,7 +190,8 @@ const mouldController = {
                   SELECT 
                       r.disa,
                       p.mouldCounterNo,
-                      p.poured,
+                      TRY_CAST(p.produced AS INT) AS produced,
+                      TRY_CAST(p.poured AS INT) AS poured,
                       r.shift,
                       ROW_NUMBER() OVER(PARTITION BY r.disa ORDER BY p.id ASC) as rn_asc,
                       ROW_NUMBER() OVER(PARTITION BY r.disa ORDER BY p.id DESC) as rn_desc
@@ -205,14 +204,15 @@ const mouldController = {
                       disa,
                       MAX(CASE WHEN rn_asc = 1 THEN mouldCounterNo END) as mouldCounterOpen,
                       MAX(CASE WHEN rn_desc = 1 THEN mouldCounterNo END) as mouldCounterClose,
-                      SUM(CASE WHEN rn_desc > 1 THEN ISNULL(poured, 0) ELSE 0 END) as totalPoured
+                      SUM(ISNULL(produced, 0)) as totalProduced,
+                      SUM(ISNULL(poured, 0)) as totalPoured
                   FROM DailyProduction
                   GROUP BY disa
               ),
               DelaysData AS (
                   SELECT 
                       r.disa,
-                      SUM(d.durationMinutes) AS totalDelayMinutes
+                      SUM(TRY_CAST(d.durationMinutes AS INT)) AS totalDelayMinutes
                   FROM DisamaticProductReport r
                   LEFT JOIN DisamaticDelays d ON r.id = d.reportId
                   WHERE r.reportDate = ${date}
@@ -230,11 +230,11 @@ const mouldController = {
                   d.disa,
                   a.mouldCounterClose,
                   a.mouldCounterOpen,
-                  (ISNULL(a.mouldCounterClose, 0) - ISNULL(a.mouldCounterOpen, 0)) AS producedMould,
+                  ISNULL(a.totalProduced, 0) AS producedMould,
                   ISNULL(a.totalPoured, 0) AS pouredMould,
                   ISNULL(del.totalDelayMinutes, 0) AS totalDelayMinutes,
                   ISNULL(sc.activeShifts, 0) AS activeShifts
-              FROM (VALUES ('I'), ('II'), ('III'), ('IV')) AS d(disa)
+              FROM (VALUES ('I'), ('II'), ('III'), ('IV'), ('V'), ('VI')) AS d(disa)
               LEFT JOIN Aggregated a ON d.disa = a.disa
               LEFT JOIN DelaysData del ON d.disa = del.disa
               LEFT JOIN ShiftCount sc ON d.disa = sc.disa
@@ -249,6 +249,7 @@ const mouldController = {
           }
 
           const responseData = result.recordset.map(row => {
+              // 🔥 Values drawn directly from the SUM calculations
               const produced = row.producedMould > 0 ? row.producedMould : 0;
               const poured = row.pouredMould || 0;
               const delaysMins = row.totalDelayMinutes || 0;
