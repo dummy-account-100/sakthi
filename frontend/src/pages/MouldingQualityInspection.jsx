@@ -214,7 +214,7 @@ const MouldingQualityInspection = () => {
     }
   };
 
-  const handleSubmit = async () => {
+const handleSubmit = async () => {
     let hasEmpty = false;
     rows.forEach(row => {
       const keysToCheck = [
@@ -229,12 +229,15 @@ const MouldingQualityInspection = () => {
     });
 
     if (hasEmpty) return toast.error("Please fill all input fields. Type '-' if empty.");
-    if (!verifiedBy || !approvedBy) return toast.error("Operator and Supervisor names are required!");
+    
+    // 🔥 CHANGED: Only Supervisor (approvedBy) is strictly required now.
+    if (!approvedBy) return toast.error("Supervisor name is required!");
 
     const payload = {
       recordDate: date,
       disaMachine,
-      verifiedBy,
+      // 🔥 CHANGED: If verifiedBy is empty, default it to a hyphen to prevent DB/PDF rendering issues
+      verifiedBy: verifiedBy && verifiedBy.trim() !== "" ? verifiedBy : "-",
       operatorSignature: "APPROVED",
       approvedBy,
       rows
