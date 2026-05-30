@@ -743,11 +743,24 @@ const DisamaticProductReport = () => {
     return true;
   };
 
-  const handleSubmit = async (e) => {
+const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!validateForm()) {
       toast.error("Please fill ALL fields. Type a hyphen '-' if there is no data.");
+      return;
+    }
+
+    // 🔥 NEW VALIDATION: Check if Poured >= Produced
+    const hasInvalidPoured = productions.some(p => 
+      p.poured !== "" && 
+      p.poured !== "-" && 
+      p.produced !== "-" && 
+      Number(p.poured) >= Number(p.produced)
+    );
+
+    if (hasInvalidPoured) {
+      toast.error("Form cannot be submitted. Poured must be less than produced.");
       return;
     }
 
@@ -966,12 +979,30 @@ const DisamaticProductReport = () => {
 
                           <div>
                             <label className="font-medium text-sm text-gray-700">Poured</label>
-                            <input type="text" value={String(prod.poured)} onChange={(e) => updateProduction(index, "poured", e.target.value)} className="w-full border border-gray-300 p-2 rounded focus:outline-orange-500 bg-white" placeholder="Type '-' if none" />
+                            <input 
+                              type="text" 
+                              value={String(prod.poured)} 
+                              onChange={(e) => updateProduction(index, "poured", e.target.value)} 
+                              className={`w-full border p-2 rounded focus:outline-orange-500 bg-white ${
+                                prod.poured !== "" && prod.poured !== "-" && prod.produced !== "-" && Number(prod.poured) >= Number(prod.produced) 
+                                  ? 'border-red-500 focus:outline-red-500' 
+                                  : 'border-gray-300'
+                              }`} 
+                              placeholder="Type '-' if none" 
+                            />
+                            
+                            {/* 🔥 NEW: Show red error text if Poured >= Produced */}
+                            {prod.poured !== "" && prod.poured !== "-" && prod.produced !== "-" && Number(prod.poured) >= Number(prod.produced) && (
+                              <div className="mt-1 text-red-600 font-bold text-[11px] uppercase tracking-wider">
+                                Poured should be less than produced
+                              </div>
+                            )}
+
                             {quantity !== null && !isNaN(quantity) && (
-                            <div className="mt-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-blue-700 font-bold text-sm">
-                              Quantity : {quantity}
-                            </div>
-                          )}
+                              <div className="mt-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-blue-700 font-bold text-sm">
+                                Quantity : {quantity}
+                              </div>
+                            )}
                           </div>
 
                           <div>
