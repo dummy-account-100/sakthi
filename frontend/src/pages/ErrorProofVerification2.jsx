@@ -46,7 +46,20 @@ const HeaderSearchableSelect = ({ options, displayKey, onSelect, value, placehol
 };
 
 const ErrorProofVerification2 = () => {
-  const [headerData, setHeaderData] = useState({ disaMachine: 'DISA - I', reviewedBy: '', approvedBy: '', assignedHOF: '', operatorSignature: '', hofSignature: '', isHofSent: false });
+  // 🔥 NEW: Check if logged-in user is a supervisor
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const isSupervisor = storedUser.role?.toLowerCase() === "supervisor";
+  const defaultSupervisor = isSupervisor ? (storedUser.username || "") : "";
+
+  const [headerData, setHeaderData] = useState({ 
+    disaMachine: 'DISA - I', 
+    reviewedBy: '', 
+    approvedBy: defaultSupervisor, // 🔥 Set default here
+    assignedHOF: '', 
+    operatorSignature: '', 
+    hofSignature: '', 
+    isHofSent: false 
+  });
   const [verifications, setVerifications] = useState([]);
   const [reactionPlans, setReactionPlans] = useState([]);
 
@@ -138,23 +151,29 @@ const ErrorProofVerification2 = () => {
       }
 
       setVerifications(mergedVerifications);
-      setReactionPlans(res.data.reactionPlans || []);
+      
+      // 🔥 Map over existing reaction plans to ensure ApprovedBy is filled if missing
+      const fetchedPlans = res.data.reactionPlans || [];
+      setReactionPlans(fetchedPlans.map(rp => ({
+        ...rp,
+        ApprovedBy: rp.ApprovedBy || defaultSupervisor
+      })));
 
       if (transData.length > 0) {
         setHeaderData(prev => ({
           ...prev,
-          reviewedBy: transData[0].ReviewedByHOF || '',
-          approvedBy: transData[0].ApprovedBy || '',
-          assignedHOF: transData[0].AssignedHOF || '',
-          operatorSignature: transData[0].OperatorSignature || '',
-          hofSignature: transData[0].HOFSignature || '',
-          isHofSent: !!transData[0].AssignedHOF
+          reviewedBy: transData.ReviewedByHOF || '',
+          approvedBy: transData.ApprovedBy || defaultSupervisor, // 🔥 Fallback
+          assignedHOF: transData.AssignedHOF || '',
+          operatorSignature: transData.OperatorSignature || '',
+          hofSignature: transData.HOFSignature || '',
+          isHofSent: !!transData.AssignedHOF
         }));
       } else {
         setHeaderData(prev => ({
           ...prev,
           reviewedBy: '',
-          approvedBy: '',
+          approvedBy: defaultSupervisor, // 🔥 Reset to default
           assignedHOF: '',
           operatorSignature: '',
           hofSignature: '',
@@ -183,7 +202,13 @@ const ErrorProofVerification2 = () => {
     if (value === 'NOT OK') {
       setReactionPlans(prev => {
         if (prev.find(p => p.VerificationId === row.Id && p.VerificationDateShift === shiftLabel)) return prev;
-        return [...prev, { VerificationId: row.Id, ErrorProofNo: '', ErrorProofName: row.ErrorProofName, VerificationDateShift: shiftLabel, Problem: '', RootCause: '', CorrectiveAction: '', Status: 'Pending', ReviewedBy: '', ApprovedBy: '', Remarks: '', SupervisorSignature: '' }];
+        return [...prev, { 
+          VerificationId: row.Id, ErrorProofNo: '', ErrorProofName: row.ErrorProofName, 
+          VerificationDateShift: shiftLabel, Problem: '', RootCause: '', CorrectiveAction: '', 
+          Status: 'Pending', ReviewedBy: '', 
+          ApprovedBy: defaultSupervisor, // 🔥 Insert default supervisor here
+          Remarks: '', SupervisorSignature: '' 
+        }];
       });
     } else if (value === 'OK') {
       setReactionPlans(prev => prev.filter(p => !(p.VerificationId === row.Id && p.VerificationDateShift === shiftLabel)));

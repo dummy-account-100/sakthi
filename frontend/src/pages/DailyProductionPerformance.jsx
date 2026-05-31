@@ -347,6 +347,11 @@ const DailyProductionPerformance = () => {
   const [disa, setDisa] = useState("");
   const [resetKey, setResetKey] = useState(0);
 
+  // 🔥 NEW: Check if logged-in user is a supervisor
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const isSupervisor = storedUser.role?.toLowerCase() === "supervisor";
+  const defaultSupervisor = isSupervisor ? (storedUser.username || "") : "";
+
   // --- DROPDOWN DATA ---
   const [components, setComponents] = useState([]);
   const [incharges, setIncharges] = useState([]);
@@ -486,7 +491,7 @@ const DailyProductionPerformance = () => {
   const [unplannedReasons, setUnplannedReasons] = useState("");
 
   const [signatures, setSignatures] = useState({
-    incharge: "",
+    incharge: defaultSupervisor, // 🔥 Set default here
     hof: "",
     hod: ""
   });
@@ -675,7 +680,7 @@ const DailyProductionPerformance = () => {
       });
       setDetails([{ patternCode: "", itemDescription: "-", planned: "", unplanned: "", mouldsProd: "", mouldsPour: "", cavity: "-", unitWeight: "-", totalWeight: "-" }]);
       setUnplannedReasons("");
-      setSignatures({ incharge: "", hof: "", hod: "" });
+      setSignatures({ incharge: defaultSupervisor, hof: "", hod: "" }); // 🔥 Maintain supervisor after submit
       setFormData(initialFormState);
       setDisa("");
       setResetKey(prev => prev + 1);

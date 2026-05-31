@@ -60,13 +60,18 @@ const getShiftDate = () => {
 };
 
 const BottomLevelAudit = () => {
+  // 🔥 NEW: Check if logged-in user is a supervisor
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const isSupervisor = storedUser.role?.toLowerCase() === "supervisor";
+  const defaultSupervisor = isSupervisor ? (storedUser.username || "") : "";
+
   const [checklist, setChecklist] = useState([]);
   const [supervisors, setSupervisors] = useState([]);
   const [hofs, setHofs] = useState([]);
   const [reportsMap, setReportsMap] = useState({});
   const [headerData, setHeaderData] = useState({
     date: getShiftDate(),
-    supervisorName: '',
+    supervisorName: defaultSupervisor, // 🔥 Set default here
     assignedHOF: '',
     disaMachine: 'DISA - I'
   });
@@ -100,7 +105,12 @@ const BottomLevelAudit = () => {
         }
       });
       setChecklist(mergedList);
-      setHeaderData(prev => ({ ...prev, supervisorName: foundSupName, assignedHOF: foundHOF }));
+      // 🔥 Lock to logged-in supervisor if applicable, otherwise fallback to DB data
+      setHeaderData(prev => ({ 
+        ...prev, 
+        supervisorName: isSupervisor ? defaultSupervisor : (foundSupName || ""), 
+        assignedHOF: foundHOF 
+      }));
       const reportsObj = {};
       res.data.reports.forEach(r => { reportsObj[r.MasterId] = r; });
       setReportsMap(reportsObj);

@@ -52,7 +52,13 @@ const FourMChangeMonitoring = () => {
   const [quarantine, setQuarantine] = useState("-");
   const [partId, setPartId] = useState("-");
   const [internalComm, setInternalComm] = useState("-");
-  const [inchargeSign, setInchargeSign] = useState("");
+
+  // 🔥 NEW: Check if logged-in user is a supervisor
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const isSupervisor = storedUser.role?.toLowerCase() === "supervisor";
+  const defaultSupervisor = isSupervisor ? (storedUser.username || "") : "";
+
+  const [inchargeSign, setInchargeSign] = useState(defaultSupervisor); // 🔥 Set default here
 
   const [inchargeList, setInchargeList] = useState([]);
   const [showInchargeDropdown, setShowInchargeDropdown] = useState(false);
@@ -117,7 +123,7 @@ const FourMChangeMonitoring = () => {
           setQuarantine(res.data.quarantine || "-");
           setPartId(res.data.partId || "-");
           setInternalComm(res.data.internalComm || "-");
-          setInchargeSign(res.data.inchargeSign || "");
+          setInchargeSign(res.data.inchargeSign || defaultSupervisor); // 🔥 Use existing or fallback
           setAssignedHOD(res.data.AssignedHOD || "");
 
           if (res.data.customValues) {
@@ -137,7 +143,7 @@ const FourMChangeMonitoring = () => {
           setQuarantine("-");
           setPartId("-");
           setInternalComm("-");
-          setInchargeSign("");
+          setInchargeSign(defaultSupervisor); // 🔥 Reset to default supervisor
           setAssignedHOD("");
           
           if (fourMOptions?.length > 0) setType4M(fourMOptions[0].typeName);

@@ -442,6 +442,11 @@ const MultiSelectDropdown = ({ options, displayKey, selectedValue, onChange }) =
 const DisamaticProductReport = () => {
   const { date: initDate, shift: initShift } = getProductionDateTime();
 
+  // 🔥 NEW: Check if logged-in user is a supervisor
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const isSupervisor = storedUser.role?.toLowerCase() === "supervisor";
+  const defaultSupervisor = isSupervisor ? (storedUser.username || "") : "";
+
   const initialFormState = {
     disa: "",
     date: initDate,
@@ -451,7 +456,7 @@ const DisamaticProductReport = () => {
     ppOperator: "", 
     significantEvent: "",
     maintenance: "",
-    supervisorName: "",
+    supervisorName: defaultSupervisor,
   };
 
   const [formData, setFormData] = useState(() => {
@@ -514,19 +519,21 @@ const DisamaticProductReport = () => {
             params: { disa: formData.disa, date: formData.date, shift: formData.shift }
           });
           
-          if (res.data) {
+            if (res.data) {
             setFormData((prev) => ({
               ...prev,
               incharge: res.data.incharge || "",
               member: res.data.member || "",
               ppOperator: res.data.ppOperator || "",
-              supervisorName: res.data.supervisorName || "",
+              // 🔥 Fallback to fetched data ONLY if not logged in as a supervisor
+              supervisorName: isSupervisor ? defaultSupervisor : (res.data.supervisorName || ""),
             }));
             if (!isFirstRender.current) toast.success(`Personnel auto-filled for DISA-${formData.disa}`);
           } else {
             setFormData((prev) => ({
               ...prev,
-              incharge: "", member: "", ppOperator: "", supervisorName: ""
+              incharge: "", member: "", ppOperator: "", 
+              supervisorName: defaultSupervisor // 🔥 Reset to default supervisor
             }));
             if (!isFirstRender.current) toast.info(`First entry for DISA-${formData.disa} in this shift.`);
           }
@@ -571,7 +578,7 @@ const DisamaticProductReport = () => {
         updated.incharge = "";
         updated.member = "";
         updated.ppOperator = "";
-        updated.supervisorName = "";
+        updated.supervisorName = defaultSupervisor; // 🔥 Lock supervisor
       }
       return updated;
     });
@@ -582,7 +589,8 @@ const DisamaticProductReport = () => {
     setFormData((prev) => ({ 
       ...prev, 
       disa: selectedDisa,
-      incharge: "", member: "", ppOperator: "", supervisorName: ""
+      incharge: "", member: "", ppOperator: "", 
+      supervisorName: defaultSupervisor // 🔥 Lock supervisor
     }));
   };
 
@@ -778,7 +786,7 @@ const handleSubmit = async (e) => {
         incharge: prev.incharge,
         member: prev.member,
         ppOperator: prev.ppOperator,
-        supervisorName: prev.supervisorName
+        supervisorName: defaultSupervisor // 🔥 Maintain supervisor after submit
       }));
 
       setProductions([{ componentName: "", patternCode: "", pouredWeight: "", castedWeight: "", cavity: 0, mouldCounterNo: "", produced: "", poured: "", cycleTime: "", mouldsPerHour: "", remarks: "" }]);

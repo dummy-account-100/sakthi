@@ -59,6 +59,11 @@ const getShiftDate = () => {
 };
 
 const DisaMachineCheckList = () => {
+  // 🔥 NEW: Check if logged-in user is a supervisor
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const isSupervisor = storedUser.role?.toLowerCase() === "supervisor";
+  const defaultSupervisor = isSupervisor ? (storedUser.username || "") : "";
+
   const [checklist, setChecklist] = useState([]);
   const [operators, setOperators] = useState([]);
   const [supervisors, setSupervisors] = useState([]); 
@@ -132,15 +137,19 @@ const DisaMachineCheckList = () => {
         correction: existingReport.Correction, 
         rootCause: existingReport.RootCause, 
         correctiveAction: existingReport.CorrectiveAction, 
-        targetDate: existingReport.TargetDate ? existingReport.TargetDate.split('T')[0] : headerData.date, 
-        responsibility: existingReport.Responsibility, 
+        targetDate: existingReport.TargetDate ? existingReport.TargetDate.split('T') : headerData.date, 
+        // 🔥 Use existing responsibility, or fallback to the logged-in supervisor
+        responsibility: existingReport.Responsibility || defaultSupervisor, 
         sign: existingReport.Sign, 
         status: existingReport.Status 
       });
     } else {
       setNcForm({ 
         ncDetails: '', correction: '', rootCause: '', correctiveAction: '', 
-        targetDate: headerData.date, responsibility: '', sign: headerData.operatorName || 'N/A', status: 'Pending' 
+        targetDate: headerData.date, 
+        // 🔥 Auto-select logged-in supervisor for NEW NCRs
+        responsibility: defaultSupervisor, 
+        sign: headerData.operatorName || 'N/A', status: 'Pending' 
       });
     }
     setIsModalOpen(true);

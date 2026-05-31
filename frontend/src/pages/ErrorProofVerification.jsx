@@ -74,9 +74,14 @@ const ErrorProofVerification = () => {
   const [problem, setProblem] = useState("");
   const [rootCause, setRootCause] = useState("");
   const [correctiveAction, setCorrectiveAction] = useState("");
+  // 🔥 NEW: Check if logged-in user is a supervisor
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const isSupervisor = storedUser.role?.toLowerCase() === "supervisor";
+  const defaultSupervisor = isSupervisor ? (storedUser.username || "") : "";
+
   const [status] = useState("Pending");
   const [reviewedByReaction, setReviewedByReaction] = useState("");
-  const [approvedBy, setApprovedBy] = useState("");
+  const [approvedBy, setApprovedBy] = useState(defaultSupervisor); // 🔥 Set default here
   const [remarks, setRemarks] = useState("");
 
   const verifiedBy = ""; 
@@ -102,6 +107,7 @@ const ErrorProofVerification = () => {
     } catch (err) { console.error("Error fetching initial data", err); }
   };
 
+
   // Fetch existing data when date changes (like 4M Change form)
   const fetchExistingData = async () => {
     try {
@@ -121,22 +127,22 @@ const ErrorProofVerification = () => {
         setObservations(loadedObs);
 
         // Load assigned HOF from the first verification
-        setAssignedHOF(verifications[0].AssignedHOF || "");
+        setAssignedHOF(verifications.AssignedHOF || "");
 
         // If there's a reaction plan, load its fields
         if (reactionPlans.length > 0) {
-          const rp = reactionPlans[0];
+          const rp = reactionPlans; // 🔥 FIXED: Added so it reads the object properly
           setErrorProofNo(rp.errorProofNo || "");
           setProblem(rp.problem || "");
           setRootCause(rp.rootCause || "");
           setCorrectiveAction(rp.correctiveAction || "");
           setReviewedByReaction(rp.reviewedBy || "");
-          setApprovedBy(rp.approvedBy || "");
+          setApprovedBy(rp.approvedBy || defaultSupervisor); // 🔥 Use existing or fallback to default
           setRemarks(rp.remarks || "");
         } else {
           // No reaction plans — clear the fields
           setErrorProofNo(""); setProblem(""); setRootCause(""); setCorrectiveAction("");
-          setReviewedByReaction(""); setApprovedBy(""); setRemarks("");
+          setReviewedByReaction(""); setApprovedBy(defaultSupervisor); setRemarks(""); // 🔥 Reset to default
         }
 
         setIsEditMode(true);
@@ -145,7 +151,9 @@ const ErrorProofVerification = () => {
         setObservations({});
         setAssignedHOF("");
         setErrorProofNo(""); setProblem(""); setRootCause(""); setCorrectiveAction("");
-        setReviewedByReaction(""); setApprovedBy(""); setRemarks("");
+        setReviewedByReaction(""); 
+        setApprovedBy(defaultSupervisor); // 🔥 FIXED: Retain default supervisor on empty days
+        setRemarks("");
         setIsEditMode(false);
       }
     } catch (err) { console.error("Error fetching existing data", err); }
@@ -163,7 +171,7 @@ const ErrorProofVerification = () => {
       setRootCause("");
       setCorrectiveAction("");
       setReviewedByReaction("");
-      setApprovedBy("");
+      setApprovedBy(defaultSupervisor); // 🔥 Keep the default supervisor intact
       setRemarks("");
     }
   };

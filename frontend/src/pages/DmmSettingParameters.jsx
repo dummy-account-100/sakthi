@@ -112,6 +112,11 @@ const createEmptyRow = () => {
 };
 
 const DmmSettingParameters = () => {
+  // 🔥 NEW: Check if logged-in user is a supervisor
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const isSupervisor = storedUser.role?.toLowerCase() === "supervisor";
+  const defaultSupervisor = isSupervisor ? (storedUser.username || "") : "";
+
   const [headerData, setHeaderData] = useState({ 
     date: getShiftDate(), 
     disaMachine: 'DISA - I',
@@ -121,11 +126,10 @@ const DmmSettingParameters = () => {
   const [allColumns, setAllColumns] = useState([...baseColumns]);
 
   const [shiftsMeta, setShiftsMeta] = useState({
-    1: { operator: '', supervisor: '', supervisorSignature: '', isIdle: false },
-    2: { operator: '', supervisor: '', supervisorSignature: '', isIdle: false },
-    3: { operator: '', supervisor: '', supervisorSignature: '', isIdle: false }
+    1: { operator: '', supervisor: defaultSupervisor, supervisorSignature: '', isIdle: false }, // 🔥 Default applied
+    2: { operator: '', supervisor: defaultSupervisor, supervisorSignature: '', isIdle: false },
+    3: { operator: '', supervisor: defaultSupervisor, supervisorSignature: '', isIdle: false }
   });
-
   const [shiftsData, setShiftsData] = useState({ 1: [], 2: [], 3: [] });
   const [submittedShifts, setSubmittedShifts] = useState(new Set());
   const [dropdowns, setDropdowns] = useState({ operators: [], supervisors: [], hofs: [] }); 
@@ -166,13 +170,20 @@ const DmmSettingParameters = () => {
 
       const newSubmittedShifts = new Set();
       const loadedMeta = {
-        1: { operator: '', supervisor: '', supervisorSignature: '', isIdle: false },
-        2: { operator: '', supervisor: '', supervisorSignature: '', isIdle: false },
-        3: { operator: '', supervisor: '', supervisorSignature: '', isIdle: false }
+        1: { operator: '', supervisor: defaultSupervisor, supervisorSignature: '', isIdle: false },
+        2: { operator: '', supervisor: defaultSupervisor, supervisorSignature: '', isIdle: false },
+        3: { operator: '', supervisor: defaultSupervisor, supervisorSignature: '', isIdle: false }
       };
+      
       if (res.data.shiftsMeta) {
         for (let i = 1; i <= 3; i++) {
-          if (res.data.shiftsMeta[i]) loadedMeta[i] = res.data.shiftsMeta[i];
+          if (res.data.shiftsMeta[i]) {
+            loadedMeta[i] = res.data.shiftsMeta[i];
+            // 🔥 Keep default supervisor if DB doesn't have one saved for this shift yet
+            if (!loadedMeta[i].supervisor) {
+              loadedMeta[i].supervisor = defaultSupervisor;
+            }
+          }
         }
       }
       setShiftsMeta(loadedMeta);

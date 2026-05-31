@@ -115,9 +115,14 @@ const MouldingQualityInspection = () => {
   const [supervisorList, setSupervisorList] = useState([]);
   const [components, setComponents] = useState([]); 
   
+  // 🔥 NEW: Check if logged-in user is a supervisor
+  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const isSupervisor = storedUser.role?.toLowerCase() === "supervisor";
+  const defaultSupervisor = isSupervisor ? (storedUser.username || "") : "";
+
   // Form States
   const [verifiedBy, setVerifiedBy] = useState("");
-  const [approvedBy, setApprovedBy] = useState("");
+  const [approvedBy, setApprovedBy] = useState(defaultSupervisor); // 🔥 Set default here
 
   const getEmptyRow = (index, shiftVal = currentShift) => ({
     sNo: String(index), shift: shiftVal, partName: "", dataCode: "", fmSoftRamming: "",
@@ -155,14 +160,14 @@ const MouldingQualityInspection = () => {
           // Data found -> Populate Form
           setReportId(res.data.id);
           setVerifiedBy(res.data.verifiedBy || "");
-          setApprovedBy(res.data.approvedBy || "");
+          setApprovedBy(res.data.approvedBy || defaultSupervisor); // 🔥 Use existing or default
           setRows(res.data.rows && res.data.rows.length > 0 ? res.data.rows : [getEmptyRow(1, currentShift)]);
           toast.info("Loaded existing report for selected Date, Shift, and Machine.");
         } else {
           // No Data -> Reset Form
           setReportId(null);
           setVerifiedBy("");
-          setApprovedBy("");
+          setApprovedBy(defaultSupervisor); // 🔥 Reset to default supervisor
           setRows([getEmptyRow(1, currentShift)]);
         }
       } catch (err) {
